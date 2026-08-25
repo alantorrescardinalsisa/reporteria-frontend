@@ -1,1319 +1,253 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
-  AlertCircle,
-  BarChart3,
-  CheckCircle2,
-  ChevronDown,
-  ChevronRight,
-  Database,
-  Filter,
-  Gauge,
-  Info,
-  ListChecks,
-  Loader2,
-  RefreshCw,
-  Server,
-  Truck,
-  Upload,
-  Users,
-  X,
+  AlertCircle, BarChart3, CheckCircle2, Clock3, Database, Filter,
+  Gauge, ListChecks, RefreshCw, Server, Truck, Upload, Users,
 } from 'lucide-react';
 import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
-import {
-  api,
-  MetricaTrackeo,
-  TrackeoCampana,
-  TrackeoFilters,
-  TrackeoListaPrestador,
-  TrackeoPrestador,
-  TrackeoResumen,
-  TrackeoServicio,
+  api, CampanaMetric, IngestStatus, PrestadorMetric, PrestadorOption,
+  TrackeoFilters, TrackeoSummary, TrackeoUniversos,
 } from './api';
 import './App.css';
 
-type View = 'metricas' | 'prestadores' | 'carga';
-type SortKey =
-  | 'total_general'
-  | 'uso_enviador'
-  | 'efectividad_enviador'
-  | 'cumplimiento_demora_porcentaje';
-type UploadTone = 'success' | 'duplicate' | 'error' | 'progress';
+type Page = 'metrics' | 'providers' | 'upload';
+type Tone = 'blue' | 'green' | 'amber' | 'slate' | 'red';
 
-type DrilldownState = {
-  open: boolean;
-  title: string;
-  services: TrackeoServicio[];
-  loading: boolean;
-  error: string;
-};
-
-type MultiOption = { value: string; label: string; count: number };
-
-const initialFilters: TrackeoFilters = {
-  fecha_desde: '2026-08-06',
-  fecha_hasta: '2026-08-19',
+const DEFAULT_FILTERS: TrackeoFilters = {
+  fecha_desde: '2026-08-01',
+  fecha_hasta: '2026-08-24',
   campanas: [],
   prestador_ids: [],
 };
 
-const numberFormat = new Intl.NumberFormat('es-AR', {
-  maximumFractionDigits: 0,
-});
-const decimalFormat = new Intl.NumberFormat('es-AR', {
-  minimumFractionDigits: 1,
-  maximumFractionDigits: 1,
-});
+const nf = (value?: number | null) => new Intl.NumberFormat('es-AR').format(Number(value || 0));
+const pct = (value?: number | null) => `${new Intl.NumberFormat('es-AR', { maximumFractionDigits: 1 }).format(Number(value || 0) * 100)} %`;
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const nf = (value: number | null | undefined) =>
-  value == null ? '—' : numberFormat.format(Number(value));
-
-const pct = (value: number | null | undefined) =>
-  value == null ? '—' : `${decimalFormat.format(Number(value) * 100)} %`;
-
-const minutes = (value: number | null | undefined) =>
-  value == null ? 'Sin dato' : `${decimalFormat.format(Number(value))} min`;
-
-const tone = (value: number | null | undefined, good = 0.85, warn = 0.7) => {
-  if (value == null) return 'neutral';
-  return value >= good ? 'good' : value >= warn ? 'warn' : 'bad';
-};
-
-function MultiSelect({
-  label,
-  placeholder,
-  options,
-  selected,
-  onChange,
-}: {
-  label: string;
-  placeholder: string;
-  options: MultiOption[];
-  selected: string[];
-  onChange: (next: string[]) => void;
+function MetricCard({ icon, label, value, caption, tone = 'blue' }: {
+  icon: ReactNode; label: string; value: string; caption: string; tone?: Tone;
 }) {
-  const [open, setOpen] = useState(false);
-  const [search, setSearch] = useState('');
-  const containerRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    const onClickOutside = (event: MouseEvent) => {
-      if (
-        containerRef.current &&
-        !containerRef.current.contains(event.target as Node)
-      ) {
-        setOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', onClickOutside);
-    return () => document.removeEventListener('mousedown', onClickOutside);
-  }, []);
-
-  const filtered = useMemo(() => {
-    const query = search.trim().toLocaleUpperCase('es-AR');
-    if (!query) return options;
-    return options.filter((option) =>
-      option.label.toLocaleUpperCase('es-AR').includes(query)
-    );
-  }, [options, search]);
-
-  const toggle = (value: string) => {
-    if (selected.includes(value)) {
-      onChange(selected.filter((item) => item !== value));
-    } else {
-      onChange([...selected, value]);
-    }
-  };
-
-  const summary =
-    selected.length === 0
-      ? placeholder
-      : selected.length === 1
-      ? options.find((option) => option.value === selected[0])?.label ||
-        '1 seleccionado'
-      : `${selected.length} seleccionados`;
-
   return (
-    <div className="multiSelect" ref={containerRef}>
-      <span className="multiLabel">{label}</span>
-      <button
-        type="button"
-        className="multiTrigger"
-        onClick={() => setOpen((value) => !value)}
-      >
-        <span className={selected.length ? 'multiValue' : 'multiPlaceholder'}>
-          {summary}
-        </span>
-        <ChevronDown size={16} />
-      </button>
-      {open && (
-        <div className="multiPanel">
-          <div className="multiPanelHead">
-            <input
-              type="search"
-              value={search}
-              placeholder="Buscar…"
-              onChange={(event) => setSearch(event.target.value)}
-            />
-            {selected.length > 0 && (
-              <button
-                type="button"
-                className="multiClear"
-                onClick={() => onChange([])}
-              >
-                Limpiar
-              </button>
-            )}
-          </div>
-          <div className="multiOptions">
-            {filtered.map((option) => (
-              <label key={option.value} className="multiOption">
-                <input
-                  type="checkbox"
-                  checked={selected.includes(option.value)}
-                  onChange={() => toggle(option.value)}
-                />
-                <span className="multiOptionLabel">{option.label}</span>
-                <span className="multiOptionCount">
-                  {numberFormat.format(option.count)}
-                </span>
-              </label>
-            ))}
-            {filtered.length === 0 && (
-              <div className="multiEmpty">Sin resultados.</div>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
+    <article className={`metric-card tone-${tone}`}>
+      <div className="metric-card-icon">{icon}</div>
+      <div>
+        <div className="metric-label">{label}</div>
+        <div className="metric-value">{value}</div>
+        <div className="metric-caption">{caption}</div>
+      </div>
+    </article>
   );
 }
 
-export default function App() {
-  const [view, setView] = useState<View>('metricas');
-  const [online, setOnline] = useState<boolean | null>(null);
-  const [version, setVersion] = useState('');
-  const [filters, setFilters] = useState<TrackeoFilters>(initialFilters);
-  const [applied, setApplied] = useState<TrackeoFilters>(initialFilters);
-  const [campaigns, setCampaigns] = useState<TrackeoCampana[]>([]);
-  const [providerOptions, setProviderOptions] = useState<
-    TrackeoListaPrestador[]
-  >([]);
-  const [summary, setSummary] = useState<TrackeoResumen | null>(null);
-  const [providers, setProviders] = useState<TrackeoPrestador[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [providerSearch, setProviderSearch] = useState('');
-  const [sortKey, setSortKey] = useState<SortKey>('total_general');
-  const [expandedProvider, setExpandedProvider] = useState<string | null>(null);
+function MultiSelect({ label, values, options, onChange, placeholder }: {
+  label: string; values: string[]; options: { value: string; label: string }[];
+  onChange: (values: string[]) => void; placeholder: string;
+}) {
+  return (
+    <label className="field">
+      <span>{label}</span>
+      <select
+        multiple
+        value={values}
+        onChange={(event) => onChange(Array.from(event.target.selectedOptions).map((option) => option.value))}
+      >
+        {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+      </select>
+      <small>{values.length ? `${values.length} seleccionado(s)` : placeholder}</small>
+    </label>
+  );
+}
 
+function App() {
+  const [page, setPage] = useState<Page>('metrics');
+  const [draft, setDraft] = useState<TrackeoFilters>(DEFAULT_FILTERS);
+  const [filters, setFilters] = useState<TrackeoFilters>(DEFAULT_FILTERS);
+  const [summary, setSummary] = useState<TrackeoSummary | null>(null);
+  const [universes, setUniverses] = useState<TrackeoUniversos | null>(null);
+  const [providers, setProviders] = useState<PrestadorMetric[]>([]);
+  const [providerOptions, setProviderOptions] = useState<PrestadorOption[]>([]);
+  const [campaigns, setCampaigns] = useState<CampanaMetric[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [backend, setBackend] = useState<{ connected: boolean; version?: string }>({ connected: false });
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [uploadMessage, setUploadMessage] = useState('');
-  const [uploadTone, setUploadTone] = useState<UploadTone>('success');
+  const [uploadMessage, setUploadMessage] = useState<string | null>(null);
+  const [ingestStatus, setIngestStatus] = useState<IngestStatus | null>(null);
 
-  const [drilldown, setDrilldown] = useState<DrilldownState>({
-    open: false,
-    title: '',
-    services: [],
-    loading: false,
-    error: '',
-  });
-
-  const loadData = async (nextFilters = applied) => {
-    if (!nextFilters.fecha_desde || !nextFilters.fecha_hasta) {
-      setError('Selecciona una fecha desde y una fecha hasta.');
-      return;
-    }
-
+  const load = useCallback(async (next: TrackeoFilters) => {
     setLoading(true);
-    setError('');
+    setError(null);
     try {
-      const health = await api.health();
-      setOnline(health.ok);
-      setVersion(health.version);
-
-      const [
-        summaryResponse,
-        providersResponse,
-        campaignsResponse,
-        listResponse,
-      ] = await Promise.all([
-        api.trackeoResumen(nextFilters),
-        api.trackeoPrestadores(nextFilters),
-        api.trackeoCampanas(
-          nextFilters.fecha_desde,
-          nextFilters.fecha_hasta,
-          nextFilters.prestador_ids
-        ),
-        api.trackeoListaPrestadores(
-          nextFilters.fecha_desde,
-          nextFilters.fecha_hasta,
-          nextFilters.campanas
-        ),
+      const [summaryResult, universeResult, providerResult, campaignResult, optionResult] = await Promise.all([
+        api.trackeoResumen(next),
+        api.trackeoUniversos(next),
+        api.trackeoPrestadores(next),
+        api.trackeoCampanas(next.fecha_desde, next.fecha_hasta, next.prestador_ids),
+        api.trackeoListaPrestadores(next.fecha_desde, next.fecha_hasta, next.campanas),
       ]);
-
-      setSummary(summaryResponse.resumen);
-      setProviders(providersResponse.prestadores);
-      setCampaigns(campaignsResponse.campanas);
-      setProviderOptions(listResponse.prestadores);
-    } catch (loadError) {
-      setOnline(false);
-      setSummary(null);
-      setProviders([]);
-      setError(
-        loadError instanceof Error ? loadError.message : String(loadError)
-      );
+      setSummary(summaryResult.resumen);
+      setUniverses(universeResult.universos);
+      setProviders(providerResult.prestadores || []);
+      setCampaigns(campaignResult.campanas || []);
+      setProviderOptions(optionResult.prestadores || []);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'No se pudieron cargar las métricas.');
     } finally {
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    void loadData(initialFilters);
   }, []);
 
-  const applyFilters = () => {
-    if (filters.fecha_desde > filters.fecha_hasta) {
-      setError('La fecha desde no puede ser posterior a la fecha hasta.');
-      return;
-    }
-    setApplied(filters);
-    setExpandedProvider(null);
-    void loadData(filters);
-  };
+  useEffect(() => { void load(filters); }, [filters, load]);
+  useEffect(() => {
+    const check = async () => {
+      try { const result = await api.health(); setBackend({ connected: result.ok, version: result.version }); }
+      catch { setBackend({ connected: false }); }
+    };
+    void check();
+    const timer = window.setInterval(check, 30000);
+    return () => window.clearInterval(timer);
+  }, []);
 
-  const resetFilters = () => {
-    const reset = { ...initialFilters, campanas: [], prestador_ids: [] };
-    setFilters(reset);
-    setApplied(reset);
-    setExpandedProvider(null);
-    void loadData(reset);
-  };
+  const campaignOptions = useMemo(
+    () => campaigns.map((campaign) => ({ value: campaign.campana, label: `${campaign.campana} (${nf(campaign.servicios)})` })),
+    [campaigns],
+  );
+  const providerSelectOptions = useMemo(
+    () => providerOptions.map((provider) => ({ value: provider.prestador_id, label: provider.prestador })),
+    [providerOptions],
+  );
 
-  const onDateChange = (key: 'fecha_desde' | 'fecha_hasta', value: string) => {
-    setFilters((current) => ({
-      ...current,
-      [key]: value,
-      campanas: [],
-      prestador_ids: [],
-    }));
-  };
-
-  const onCampaignsChange = (next: string[]) => {
-    const nextFilters = { ...filters, campanas: next };
-    setFilters(nextFilters);
-    void api
-      .trackeoListaPrestadores(
-        nextFilters.fecha_desde,
-        nextFilters.fecha_hasta,
-        next
-      )
-      .then((response) => setProviderOptions(response.prestadores))
-      .catch(() => setProviderOptions([]));
-  };
-
-  const onProvidersChange = (next: string[]) => {
-    const nextFilters = { ...filters, prestador_ids: next };
-    setFilters(nextFilters);
-    void api
-      .trackeoCampanas(nextFilters.fecha_desde, nextFilters.fecha_hasta, next)
-      .then((response) => setCampaigns(response.campanas))
-      .catch(() => setCampaigns([]));
-  };
-
-  const openDrilldown = async (
-    title: string,
-    metric: MetricaTrackeo | null,
-    prestadorIds: string[] | null = null
-  ) => {
-    setDrilldown({ open: true, title, services: [], loading: true, error: '' });
-    try {
-      const response = await api.trackeoServicios(
-        applied,
-        metric,
-        prestadorIds
-      );
-      setDrilldown((current) => ({
-        ...current,
-        services: response.servicios,
-        loading: false,
-      }));
-    } catch (drillError) {
-      setDrilldown((current) => ({
-        ...current,
-        loading: false,
-        error:
-          drillError instanceof Error ? drillError.message : String(drillError),
-      }));
-    }
-  };
-
-  const upload = async () => {
-    if (!file) return;
+  const submitUpload = async () => {
+    if (!file || uploading) return;
     setUploading(true);
-    setUploadTone('progress');
-    setUploadMessage('Conectando con el servidor…');
-
+    setUploadMessage('Subiendo el archivo y creando el trabajo…');
+    setIngestStatus(null);
     try {
-      await api.wake();
-
-      // 1) Iniciar la ingesta (responde rápido)
-      setUploadMessage('Subiendo el archivo…');
-      const start = await api.ingestarIniciar(file);
-
-      if (start.status === 'duplicado') {
-        setUploadTone('duplicate');
-        setUploadMessage(
-          `${start.mensaje || 'El archivo ya había sido cargado.'}${
-            start.existente ? ` Archivo existente: ${start.existente}.` : ''
-          }`
-        );
-        setFile(null);
+      const result = await api.ingest(file);
+      if (result.status === 'duplicado') {
+        setUploadMessage(`${result.mensaje} Archivo existente: ${result.existente || 'sin nombre'}.`);
         return;
       }
-
-      if (!start.report_id) {
-        throw new Error('El servidor no devolvió un identificador de reporte.');
-      }
-
-      // 2) Polling del estado hasta que termine
-      setUploadTone('progress');
-      setUploadMessage(
-        'Procesando en el servidor… Podés seguir usando la app; esto puede tardar en reportes grandes.'
-      );
-
-      const finalStatus = await api.ingestarEsperar(start.report_id, (tick) => {
-        if (tick.status === 'procesando') {
-          setUploadTone('progress');
-          setUploadMessage(
-            'Procesando en el servidor… (los datos se están insertando)'
-          );
+      if (!result.report_id) throw new Error('El backend no devolvió report_id.');
+      setUploadMessage('Archivo en cola. Iniciando procesamiento masivo…');
+      for (let attempt = 0; attempt < 600; attempt += 1) {
+        const state = await api.ingestStatus(result.report_id);
+        setIngestStatus(state);
+        if (state.status === 'procesado') {
+          setUploadMessage(`Carga completada: ${nf(state.filas_procesadas)} filas procesadas.`);
+          setFile(null);
+          await load(filters);
+          return;
         }
-      });
-
-      if (finalStatus.status === 'error') {
-        setUploadTone('error');
-        setUploadMessage(
-          `El procesamiento falló: ${
-            finalStatus.detalle || 'error desconocido'
-          }`
-        );
-        return;
+        if (state.status === 'error' || state.status === 'cancelado') {
+          throw new Error(state.error_msg || `El procesamiento terminó en estado ${state.status}.`);
+        }
+        setUploadMessage(`${state.etapa || state.status}: ${nf(state.filas_procesadas)} filas procesadas.`);
+        await sleep(3000);
       }
-
-      setUploadTone('success');
-      const procesadas =
-        finalStatus.filas_procesadas ?? finalStatus.filas_totales ?? 0;
-      setUploadMessage(
-        `Carga completada. Filas del reporte en la base: ${procesadas}.`
-      );
-      setFile(null);
-      await loadData(applied);
-    } catch (uploadError) {
-      setUploadTone('error');
-      const message =
-        uploadError instanceof Error ? uploadError.message : 'Error al cargar.';
-      const looksLikeNetwork =
-        message === '' ||
-        message.toLowerCase().includes('failed to fetch') ||
-        message.toLowerCase().includes('networkerror') ||
-        message.toLowerCase().includes('load failed');
-      setUploadMessage(
-        looksLikeNetwork
-          ? 'No se pudo conectar con el servidor. Reintentá en unos segundos.'
-          : message
-      );
+      setUploadMessage('El trabajo continúa en la cola. Consultá el estado desde la plataforma.');
+    } catch (cause) {
+      setUploadMessage(cause instanceof Error ? cause.message : 'No se pudo procesar el archivo.');
     } finally {
       setUploading(false);
     }
   };
 
-  const comparisonLabel = useMemo(() => {
-    const parts: string[] = [];
-    if (applied.prestador_ids.length)
-      parts.push(`${applied.prestador_ids.length} prestador(es)`);
-    if (applied.campanas.length)
-      parts.push(`${applied.campanas.length} campaña(s)`);
-    return parts.length ? `Comparando: ${parts.join(' · ')}` : '';
-  }, [applied]);
-
-  const campaignOptions: MultiOption[] = useMemo(
-    () =>
-      campaigns.map((campaign) => ({
-        value: campaign.campana,
-        label: campaign.campana,
-        count: campaign.servicios,
-      })),
-    [campaigns]
-  );
-
-  const providerSelectOptions: MultiOption[] = useMemo(
-    () =>
-      providerOptions.map((option) => ({
-        value: option.prestador_id,
-        label: option.prestador,
-        count: option.servicios,
-      })),
-    [providerOptions]
-  );
-
-  const delayDistribution = useMemo(
-    () =>
-      summary
-        ? [
-            {
-              key: 'MENOS_60' as const,
-              label: 'Menos de 60',
-              value: summary.menos_60_cantidad,
-              percentage: summary.menos_60_porcentaje,
-            },
-            {
-              key: 'ENTRE_61_90' as const,
-              label: '61 a 90',
-              value: summary.entre_61_90_cantidad,
-              percentage: summary.entre_61_90_porcentaje,
-            },
-            {
-              key: 'ENTRE_91_120' as const,
-              label: '91 a 120',
-              value: summary.entre_91_120_cantidad,
-              percentage: summary.entre_91_120_porcentaje,
-            },
-            {
-              key: 'ENTRE_121_180' as const,
-              label: '121 a 180',
-              value: summary.entre_121_180_cantidad,
-              percentage: summary.entre_121_180_porcentaje,
-            },
-            {
-              key: 'MAS_181' as const,
-              label: 'Más de 181',
-              value: summary.mas_181_cantidad,
-              percentage: summary.mas_181_porcentaje,
-            },
-            {
-              key: 'NA' as const,
-              label: 'Sin demora real',
-              value: summary.na_cantidad,
-              percentage: summary.na_porcentaje,
-            },
-          ]
-        : [],
-    [summary]
-  );
-
-  const filteredProviders = useMemo(() => {
-    const query = providerSearch.trim().toLocaleUpperCase('es-AR');
-    const filtered = query
-      ? providers.filter((provider) =>
-          provider.prestador.toLocaleUpperCase('es-AR').includes(query)
-        )
-      : [...providers];
-
-    return filtered.sort((a, b) => {
-      if (sortKey === 'total_general') return b.total_general - a.total_general;
-      return Number(a[sortKey]) - Number(b[sortKey]);
-    });
-  }, [providers, providerSearch, sortKey]);
-
-  const UploadMessageIcon =
-    uploadTone === 'duplicate'
-      ? Info
-      : uploadTone === 'error'
-      ? AlertCircle
-      : uploadTone === 'progress'
-      ? Loader2
-      : CheckCircle2;
-
   return (
-    <div className="app">
+    <div className="app-shell">
       <aside className="sidebar">
-        <div className="brand">
-          <Database />
-          <div>
-            <strong>Reportería</strong>
-            <span>Prestadores</span>
-          </div>
-        </div>
-
+        <div className="brand"><Database size={26} /><div><strong>Reportería</strong><span>Prestadores</span></div></div>
         <nav>
-          <button
-            className={view === 'metricas' ? 'active' : ''}
-            onClick={() => setView('metricas')}
-          >
-            <BarChart3 />
-            Métricas de Trackeo
-          </button>
-          <button
-            className={view === 'prestadores' ? 'active' : ''}
-            onClick={() => setView('prestadores')}
-          >
-            <Users />
-            Detalle por prestador
-          </button>
-          <button
-            className={view === 'carga' ? 'active' : ''}
-            onClick={() => setView('carga')}
-          >
-            <Upload />
-            Cargar reportes
-          </button>
+          <button className={page === 'metrics' ? 'active' : ''} onClick={() => setPage('metrics')}><BarChart3 /> Métricas de Trackeo</button>
+          <button className={page === 'providers' ? 'active' : ''} onClick={() => setPage('providers')}><Users /> Detalle por prestador</button>
+          <button className={page === 'upload' ? 'active' : ''} onClick={() => setPage('upload')}><Upload /> Cargar reportes</button>
         </nav>
-
-        <div className="apiStatus">
-          <Server />
-          <div>
-            <span>Backend {version ? `v${version}` : ''}</span>
-            <strong className={online ? 'ok' : 'bad'}>
-              {online === null
-                ? 'Comprobando'
-                : online
-                ? 'Conectado'
-                : 'Sin conexión'}
-            </strong>
-          </div>
-        </div>
+        <div className="backend-badge"><Server size={18} /><div><span>Backend {backend.version ? `v${backend.version}` : ''}</span><strong className={backend.connected ? 'ok' : 'bad'}>{backend.connected ? 'Conectado' : 'Sin conexión'}</strong></div></div>
       </aside>
 
-      <main>
-        <header className="pageHeader">
-          <div>
-            <p>Cardinal Assistance</p>
-            <h1>
-              {view === 'metricas'
-                ? 'Métricas de Trackeo'
-                : view === 'prestadores'
-                ? 'Análisis por prestador'
-                : 'Carga de reportes'}
-            </h1>
-            <span className="subtitle">
-              {comparisonLabel ||
-                'Modelo equivalente al Excel, recalculado desde Trackeo como única fuente de verdad'}
-            </span>
-          </div>
-          <button
-            className="outlineButton"
-            onClick={() => void loadData(applied)}
-            disabled={loading}
-          >
-            <RefreshCw className={loading ? 'spin' : ''} />
-            Actualizar
-          </button>
-        </header>
+      <main className="main-content">
+        <header><div><h1>{page === 'metrics' ? 'Métricas de Trackeo' : page === 'providers' ? 'Detalle por prestador' : 'Cargar reportes'}</h1><p>Modelo auditable con universos cargado, vehicular, evaluable e histórico.</p></div></header>
 
-        {view !== 'carga' && (
-          <section className="filterPanel">
-            <div className="filterTitle">
-              <Filter />
-              <div>
-                <strong>Filtros globales</strong>
-                <span>
-                  Seleccioná varias campañas y/o prestadores para comparar en
-                  conjunto
-                </span>
-              </div>
+        {page !== 'upload' && (
+          <section className="panel filters-panel">
+            <div className="panel-title"><Filter size={21} /><div><h2>Filtros globales</h2><p>Aplican a todos los universos e indicadores.</p></div></div>
+            <div className="filters-grid">
+              <label className="field"><span>Desde</span><input type="date" value={draft.fecha_desde} onChange={(e) => setDraft({ ...draft, fecha_desde: e.target.value })} /></label>
+              <label className="field"><span>Hasta</span><input type="date" value={draft.fecha_hasta} onChange={(e) => setDraft({ ...draft, fecha_hasta: e.target.value })} /></label>
+              <MultiSelect label="Campañas" values={draft.campanas} options={campaignOptions} placeholder="Todas las campañas" onChange={(campanas) => setDraft({ ...draft, campanas })} />
+              <MultiSelect label="Prestadores" values={draft.prestador_ids} options={providerSelectOptions} placeholder="Todos los prestadores" onChange={(prestador_ids) => setDraft({ ...draft, prestador_ids })} />
             </div>
-            <div className="filterGrid trackeoFilters">
-              <label>
-                Desde
-                <input
-                  type="date"
-                  value={filters.fecha_desde}
-                  onChange={(event) =>
-                    onDateChange('fecha_desde', event.target.value)
-                  }
-                />
-              </label>
-              <label>
-                Hasta
-                <input
-                  type="date"
-                  value={filters.fecha_hasta}
-                  onChange={(event) =>
-                    onDateChange('fecha_hasta', event.target.value)
-                  }
-                />
-              </label>
-              <MultiSelect
-                label="Campañas"
-                placeholder="Todas las campañas"
-                options={campaignOptions}
-                selected={filters.campanas}
-                onChange={onCampaignsChange}
-              />
-              <MultiSelect
-                label="Prestadores"
-                placeholder="Todos los prestadores"
-                options={providerSelectOptions}
-                selected={filters.prestador_ids}
-                onChange={onProvidersChange}
-              />
-            </div>
-            <div className="filterActions">
-              <button className="ghostButton" onClick={resetFilters}>
-                Restablecer
-              </button>
-              <button
-                className="primaryButton"
-                onClick={applyFilters}
-                disabled={loading}
-              >
-                Aplicar filtros
-              </button>
+            <div className="filter-actions">
+              <button className="secondary" onClick={() => { setDraft(DEFAULT_FILTERS); setFilters(DEFAULT_FILTERS); }}>Restablecer</button>
+              <button className="primary" onClick={() => setFilters({ ...draft })}>{loading ? <RefreshCw className="spin" size={18} /> : null} Aplicar filtros</button>
             </div>
           </section>
         )}
 
-        {error && (
-          <div className="notice errorNotice">
-            <AlertCircle />
-            <div>
-              <strong>No se pudieron cargar las métricas</strong>
-              <span>{error}</span>
-            </div>
-          </div>
-        )}
+        {error && <div className="alert"><AlertCircle />{error}</div>}
 
-        {loading && view !== 'carga' && (
-          <div className="loadingPanel">Actualizando métricas…</div>
-        )}
-
-        {!loading && view === 'metricas' && summary && (
+        {page === 'metrics' && (
           <>
-            <section className="metricGrid">
-              <MetricCard
-                icon={<Database />}
-                label="Servicios consultados"
-                value={nf(summary.servicios_consultados)}
-                caption={`${nf(summary.enviador_si)} con enviador · ${nf(
-                  summary.enviador_no
-                )} sin enviador`}
-                onClick={() =>
-                  void openDrilldown('Todos los servicios consultados', null)
-                }
-              />
-              <MetricCard
-                icon={<Gauge />}
-                label="Uso del enviador"
-                value={pct(summary.uso_enviador)}
-                caption={`${nf(summary.enviador_si)} servicios con Enviador OK`}
-                tone={tone(summary.uso_enviador, 0.9, 0.8)}
-                onClick={() =>
-                  void openDrilldown('Servicios con Enviador OK', 'ENVIADOR_SI')
-                }
-              />
-              <MetricCard
-                icon={<Truck />}
-                label="Asigna móvil"
-                value={nf(summary.asigna_movil)}
-                caption={`${pct(summary.efectividad_enviador)} de efectividad`}
-                tone={tone(summary.efectividad_enviador, 0.9, 0.8)}
-                onClick={() =>
-                  void openDrilldown(
-                    'Servicios que asignaron móvil',
-                    'ASIGNA_MOVIL'
-                  )
-                }
-              />
-              <MetricCard
-                icon={<AlertCircle />}
-                label="No asigna móvil"
-                value={nf(summary.no_asigna_movil_cantidad)}
-                caption={pct(summary.no_asigna_movil_porcentaje)}
-                tone={
-                  summary.no_asigna_movil_porcentaje <= 0.1 ? 'good' : 'warn'
-                }
-                onClick={() =>
-                  void openDrilldown(
-                    'Servicios que no asignaron móvil',
-                    'NO_ASIGNA_MOVIL'
-                  )
-                }
-              />
-              <MetricCard
-                icon={<ListChecks />}
-                label="Servicios programados"
-                value={nf(summary.servicios_programados)}
-                caption={`${pct(
-                  summary.programados_porcentaje
-                )} sobre Enviador SI`}
-                onClick={() =>
-                  void openDrilldown('Servicios programados', 'PROGRAMADOS')
-                }
-              />
-              <MetricCard
-                icon={<CheckCircle2 />}
-                label="Cumplimiento de demora"
-                value={pct(summary.cumplimiento_demora)}
-                caption={`${nf(summary.servicios_cumplidos)} cumplen · ${nf(
-                  summary.servicios_no_cumplidos
-                )} no cumplen`}
-                tone={tone(summary.cumplimiento_demora)}
-                onClick={() =>
-                  void openDrilldown(
-                    'Servicios que cumplen la demora',
-                    'CUMPLE_DEMORA'
-                  )
-                }
-              />
+            <section className="section-heading"><h2>Universos analíticos</h2><p>Control de volumen y separación de servicios aptos para KPIs.</p></section>
+            <section className="metric-grid universe-grid">
+              <MetricCard icon={<Database />} label="Servicios en el periodo" value={nf(universes?.servicios_cargados)} caption="Total visible para las fechas seleccionadas" tone="blue" />
+              <MetricCard icon={<Truck />} label="Servicios vehiculares" value={nf(universes?.servicios_vehiculares)} caption="Finalizados, cancelados y en curso" tone="slate" />
+              <MetricCard icon={<CheckCircle2 />} label="Servicios evaluables" value={nf(universes?.servicios_evaluables)} caption="Base ampliada recomendada para KPIs" tone="green" />
+              <MetricCard icon={<AlertCircle />} label="Vehiculares cancelados" value={nf(universes?.servicios_cancelados)} caption="Separados del cumplimiento operativo" tone="amber" />
+              <MetricCard icon={<Clock3 />} label="Vehiculares no finalizados" value={nf(universes?.servicios_no_finalizados)} caption="Pendientes o en curso" tone="slate" />
+              <MetricCard icon={<ListChecks />} label="Universo Excel histórico" value={nf(universes?.universo_excel_historico)} caption="Mantiene comparabilidad histórica" tone="blue" />
             </section>
 
-            <section className="contentGrid">
-              <article className="card chartCard">
-                <div className="cardHead">
-                  <div>
-                    <h2>Distribución de los servicios cumplidos</h2>
-                    <p>
-                      Porcentaje calculado sobre{' '}
-                      {nf(summary.servicios_cumplidos)} servicios cumplidos
-                    </p>
-                  </div>
-                </div>
-                <div className="chart">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      data={delayDistribution}
-                      margin={{ top: 10, right: 10, left: -18, bottom: 12 }}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                      <XAxis dataKey="label" tick={{ fontSize: 12 }} />
-                      <YAxis allowDecimals={false} />
-                      <Tooltip
-                        formatter={(value: number) => [nf(value), 'Servicios']}
-                      />
-                      <Bar
-                        dataKey="value"
-                        name="Servicios"
-                        radius={[8, 8, 0, 0]}
-                      >
-                        {delayDistribution.map((item, index) => (
-                          <Cell
-                            key={item.key}
-                            fill={
-                              [
-                                '#10b981',
-                                '#3b82f6',
-                                '#f59e0b',
-                                '#f97316',
-                                '#ef4444',
-                                '#94a3b8',
-                              ][index]
-                            }
-                            cursor="pointer"
-                            onClick={() =>
-                              void openDrilldown(
-                                `Cumplidos: ${item.label}`,
-                                item.key
-                              )
-                            }
-                          />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </article>
-
-              <article className="card funnelCard">
-                <div className="cardHead">
-                  <div>
-                    <h2>Embudo del enviador</h2>
-                    <p>
-                      Secuencia equivalente a las tablas dinámicas del Excel
-                    </p>
-                  </div>
-                </div>
-                <div className="funnelList">
-                  <FunnelRow
-                    label="Universo consultado"
-                    value={summary.servicios_consultados}
-                    percentage={1}
-                  />
-                  <FunnelRow
-                    label="Enviador OK"
-                    value={summary.enviador_si}
-                    percentage={summary.uso_enviador}
-                  />
-                  <FunnelRow
-                    label="Asigna móvil"
-                    value={summary.asigna_movil}
-                    percentage={summary.efectividad_enviador}
-                  />
-                  <FunnelRow
-                    label="Programados"
-                    value={summary.servicios_programados}
-                    percentage={summary.programados_porcentaje}
-                  />
-                  <FunnelRow
-                    label="Cumplen demora"
-                    value={summary.servicios_cumplidos}
-                    percentage={summary.cumplimiento_demora}
-                  />
-                </div>
-              </article>
+            <section className="section-heading"><h2>KPIs históricos del Excel</h2><p>Estos indicadores conservan la regla histórica para no alterar las comparaciones.</p></section>
+            <section className="metric-grid">
+              <MetricCard icon={<Database />} label="Universo Excel evaluable" value={nf(summary?.servicios_consultados)} caption={`${nf(summary?.enviador_si)} con enviador · ${nf(summary?.enviador_no)} sin enviador`} />
+              <MetricCard icon={<Gauge />} label="Uso del enviador" value={pct(summary?.uso_enviador)} caption={`${nf(summary?.enviador_si)} servicios con Enviador OK`} tone="amber" />
+              <MetricCard icon={<Truck />} label="Asigna móvil" value={nf(summary?.asigna_movil)} caption={`${pct(summary?.efectividad_enviador)} de efectividad`} tone="green" />
+              <MetricCard icon={<AlertCircle />} label="No asigna móvil" value={nf(summary?.no_asigna_movil_cantidad)} caption={pct(summary?.no_asigna_movil_porcentaje)} tone="amber" />
+              <MetricCard icon={<ListChecks />} label="Servicios programados" value={nf(summary?.servicios_programados)} caption={`${pct(summary?.programados_porcentaje)} sobre Enviador Sí`} tone="blue" />
+              <MetricCard icon={<CheckCircle2 />} label="Cumplimiento de demora" value={pct(summary?.cumplimiento_demora)} caption={`${nf(summary?.servicios_cumplidos)} cumplen · ${nf(summary?.servicios_no_cumplidos)} no cumplen`} tone="green" />
             </section>
 
-            <section className="card compactTableCard">
-              <div className="cardHead">
-                <div>
-                  <h2>Resumen de rangos</h2>
-                  <p>
-                    Haz clic en una fila para ver los servicios individuales
-                  </p>
-                </div>
-              </div>
-              <div className="tableWrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Rango</th>
-                      <th>Servicios</th>
-                      <th>Porcentaje sobre cumplidos</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {delayDistribution.map((item) => (
-                      <tr
-                        key={item.key}
-                        className="clickableRow"
-                        onClick={() =>
-                          void openDrilldown(
-                            `Cumplidos: ${item.label}`,
-                            item.key
-                          )
-                        }
-                      >
-                        <td className="provider">{item.label}</td>
-                        <td>{nf(item.value)}</td>
-                        <td>{pct(item.percentage)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            <section className="panel">
+              <div className="panel-title"><BarChart3 /><div><h2>Distribución de servicios cumplidos</h2><p>Porcentaje sobre {nf(summary?.servicios_cumplidos)} servicios cumplidos.</p></div></div>
+              <div className="distribution">
+                {[
+                  ['Menos de 60', summary?.menos_60_cantidad, summary?.menos_60_porcentaje],
+                  ['61 a 90', summary?.entre_61_90_cantidad, summary?.entre_61_90_porcentaje],
+                  ['91 a 120', summary?.entre_91_120_cantidad, summary?.entre_91_120_porcentaje],
+                  ['121 a 180', summary?.entre_121_180_cantidad, summary?.entre_121_180_porcentaje],
+                  ['Más de 181', summary?.mas_181_cantidad, summary?.mas_181_porcentaje],
+                  ['N/A', summary?.na_cantidad, summary?.na_porcentaje],
+                ].map(([label, count, ratio]) => (
+                  <div className="bar-row" key={String(label)}><span>{label}</span><div><i style={{ width: `${Math.min(100, Number(ratio || 0) * 100)}%` }} /></div><strong>{nf(Number(count))} · {pct(Number(ratio))}</strong></div>
+                ))}
               </div>
             </section>
           </>
         )}
 
-        {!loading && view === 'prestadores' && (
-          <>
-            <section className="providerControls">
-              <label className="searchControl">
-                Buscar prestador
-                <input
-                  type="search"
-                  value={providerSearch}
-                  placeholder="Nombre del prestador"
-                  onChange={(event) => setProviderSearch(event.target.value)}
-                />
-              </label>
-              <label>
-                Ordenar por
-                <select
-                  value={sortKey}
-                  onChange={(event) =>
-                    setSortKey(event.target.value as SortKey)
-                  }
-                >
-                  <option value="total_general">Más servicios</option>
-                  <option value="uso_enviador">Menor uso del enviador</option>
-                  <option value="efectividad_enviador">
-                    Menor efectividad
-                  </option>
-                  <option value="cumplimiento_demora_porcentaje">
-                    Menor cumplimiento
-                  </option>
-                </select>
-              </label>
-              <div className="providerCount">
-                {nf(filteredProviders.length)} prestadores
-              </div>
-            </section>
-
-            <section className="card tableCard">
-              <div className="tableWrap providerTableWrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th></th>
-                      <th>Prestador</th>
-                      <th>Total</th>
-                      <th>Env. SI</th>
-                      <th>Env. NO</th>
-                      <th>% uso</th>
-                      <th>Asigna móvil</th>
-                      <th>% no asigna</th>
-                      <th>Programados</th>
-                      <th>Efectividad</th>
-                      <th>Cumplidos</th>
-                      <th>% cumplimiento</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredProviders.map((provider) => {
-                      const expanded =
-                        expandedProvider === provider.prestador_id;
-                      return (
-                        <Fragment key={provider.prestador_id}>
-                          <tr
-                            className="clickableRow"
-                            onClick={() =>
-                              setExpandedProvider(
-                                expanded ? null : provider.prestador_id
-                              )
-                            }
-                          >
-                            <td>
-                              {expanded ? (
-                                <ChevronDown size={16} />
-                              ) : (
-                                <ChevronRight size={16} />
-                              )}
-                            </td>
-                            <td className="provider">{provider.prestador}</td>
-                            <td>{nf(provider.total_general)}</td>
-                            <td>{nf(provider.enviador_si)}</td>
-                            <td>{nf(provider.enviador_no)}</td>
-                            <td>
-                              <span
-                                className={`pill ${tone(
-                                  provider.uso_enviador,
-                                  0.9,
-                                  0.8
-                                )}`}
-                              >
-                                {pct(provider.uso_enviador)}
-                              </span>
-                            </td>
-                            <td>{nf(provider.asigna_movil)}</td>
-                            <td>{pct(provider.no_asigna_movil_porcentaje)}</td>
-                            <td>{nf(provider.servicios_programados)}</td>
-                            <td>
-                              <span
-                                className={`pill ${tone(
-                                  provider.efectividad_enviador,
-                                  0.9,
-                                  0.8
-                                )}`}
-                              >
-                                {pct(provider.efectividad_enviador)}
-                              </span>
-                            </td>
-                            <td>{nf(provider.cumplimiento_demora_cantidad)}</td>
-                            <td>
-                              <span
-                                className={`pill ${tone(
-                                  provider.cumplimiento_demora_porcentaje
-                                )}`}
-                              >
-                                {pct(provider.cumplimiento_demora_porcentaje)}
-                              </span>
-                            </td>
-                          </tr>
-                          {expanded && (
-                            <tr className="providerDetailRow">
-                              <td></td>
-                              <td colSpan={11}>
-                                <div className="providerDetail">
-                                  <ProviderMetric
-                                    label="Enviador SI"
-                                    value={provider.enviador_si}
-                                    percentage={provider.uso_enviador}
-                                    onClick={() =>
-                                      void openDrilldown(
-                                        `${provider.prestador}: Enviador SI`,
-                                        'ENVIADOR_SI',
-                                        [provider.prestador_id]
-                                      )
-                                    }
-                                  />
-                                  <ProviderMetric
-                                    label="Enviador NO"
-                                    value={provider.enviador_no}
-                                    onClick={() =>
-                                      void openDrilldown(
-                                        `${provider.prestador}: Enviador NO`,
-                                        'ENVIADOR_NO',
-                                        [provider.prestador_id]
-                                      )
-                                    }
-                                  />
-                                  <ProviderMetric
-                                    label="No asigna móvil"
-                                    value={provider.no_asigna_movil_cantidad}
-                                    percentage={
-                                      provider.no_asigna_movil_porcentaje
-                                    }
-                                    onClick={() =>
-                                      void openDrilldown(
-                                        `${provider.prestador}: no asigna móvil`,
-                                        'NO_ASIGNA_MOVIL',
-                                        [provider.prestador_id]
-                                      )
-                                    }
-                                  />
-                                  <ProviderMetric
-                                    label="Programados"
-                                    value={provider.servicios_programados}
-                                    percentage={provider.programados_porcentaje}
-                                    onClick={() =>
-                                      void openDrilldown(
-                                        `${provider.prestador}: programados`,
-                                        'PROGRAMADOS',
-                                        [provider.prestador_id]
-                                      )
-                                    }
-                                  />
-                                  <ProviderMetric
-                                    label="Cumplen demora"
-                                    value={
-                                      provider.cumplimiento_demora_cantidad
-                                    }
-                                    percentage={
-                                      provider.cumplimiento_demora_porcentaje
-                                    }
-                                    onClick={() =>
-                                      void openDrilldown(
-                                        `${provider.prestador}: cumplen demora`,
-                                        'CUMPLE_DEMORA',
-                                        [provider.prestador_id]
-                                      )
-                                    }
-                                  />
-                                </div>
-                              </td>
-                            </tr>
-                          )}
-                        </Fragment>
-                      );
-                    })}
-                  </tbody>
-                </table>
-                {filteredProviders.length === 0 && (
-                  <div className="empty">
-                    No hay prestadores para los filtros seleccionados.
-                  </div>
-                )}
-              </div>
-            </section>
-          </>
+        {page === 'providers' && (
+          <section className="panel">
+            <div className="panel-title"><Users /><div><h2>Prestadores</h2><p>{nf(providers.length)} prestadores en el universo histórico filtrado.</p></div></div>
+            <div className="table-wrap"><table><thead><tr><th>Prestador</th><th>Servicios</th><th>Uso enviador</th><th>Asigna móvil</th><th>Cumplimiento</th></tr></thead><tbody>{providers.map((p) => <tr key={p.prestador_id}><td>{p.prestador}</td><td>{nf(p.servicios)}</td><td>{pct(p.uso_enviador)}</td><td>{nf(p.asigna_movil)}</td><td>{pct(p.cumplimiento_demora)}</td></tr>)}</tbody></table></div>
+          </section>
         )}
 
-        {view === 'carga' && (
-          <section className="card uploadCard standaloneUpload">
-            <div className="cardHead">
-              <div>
-                <h2>Ingestar un reporte</h2>
-                <p>
-                  Se procesa en segundo plano: podés cargar reportes grandes sin
-                  que se corte por tiempo
-                </p>
-              </div>
-            </div>
-            <div className="uploadBody">
-              <label className="filePicker">
-                <Upload />
-                <span>{file?.name || 'Elegir archivo Excel'}</span>
-                <input
-                  type="file"
-                  accept=".xlsx,.xls"
-                  disabled={uploading}
-                  onChange={(event) => {
-                    setFile(event.target.files?.[0] || null);
-                    setUploadMessage('');
-                  }}
-                />
-              </label>
-              <button
-                className="primaryButton"
-                disabled={!file || uploading}
-                onClick={() => void upload()}
-              >
-                {uploading ? 'Procesando…' : 'Procesar reporte'}
-              </button>
-            </div>
-            {uploadMessage && (
-              <div className={`uploadMessage ${uploadTone}`}>
-                <UploadMessageIcon
-                  className={uploadTone === 'progress' ? 'spin' : ''}
-                />
-                <span>{uploadMessage}</span>
-              </div>
-            )}
+        {page === 'upload' && (
+          <section className="panel upload-panel">
+            <div className="panel-title"><Upload /><div><h2>Nueva carga</h2><p>El archivo se guarda en Storage y se procesa mediante COPY + staging + merge SQL.</p></div></div>
+            <label className="upload-box"><input type="file" accept=".xlsx,.xlsm" onChange={(event) => setFile(event.target.files?.[0] || null)} /><Upload size={36} /><strong>{file ? file.name : 'Seleccioná un archivo Excel'}</strong><span>{file ? `${(file.size / 1024 / 1024).toFixed(2)} MB` : 'Formatos admitidos: .xlsx y .xlsm'}</span></label>
+            <button className="primary upload-button" disabled={!file || uploading} onClick={() => void submitUpload()}>{uploading ? <RefreshCw className="spin" /> : <Upload />} {uploading ? 'Procesando…' : 'Procesar reporte'}</button>
+            {uploadMessage && <div className="status-box"><strong>{uploadMessage}</strong>{ingestStatus && <><span>Estado: {ingestStatus.status} · Etapa: {ingestStatus.etapa || 'sin etapa'}</span><span>Filas: {nf(ingestStatus.filas_procesadas)} / {ingestStatus.filas_totales == null ? 'pendiente' : nf(ingestStatus.filas_totales)}</span></>}</div>}
           </section>
         )}
       </main>
 
-      {drilldown.open && (
-        <div
-          className="modalBackdrop"
-          onMouseDown={() =>
-            setDrilldown((current) => ({ ...current, open: false }))
-          }
-        >
-          <section
-            className="modal"
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            <div className="modalHead">
-              <div>
-                <h2>{drilldown.title}</h2>
-                <p>
-                  {drilldown.loading
-                    ? 'Consultando…'
-                    : `${nf(drilldown.services.length)} servicios`}
-                </p>
-              </div>
-              <button
-                className="iconButton"
-                onClick={() =>
-                  setDrilldown((current) => ({ ...current, open: false }))
-                }
-              >
-                <X />
-              </button>
-            </div>
-            {drilldown.error && (
-              <div className="notice errorNotice">
-                <AlertCircle />
-                <span>{drilldown.error}</span>
-              </div>
-            )}
-            {drilldown.loading ? (
-              <div className="loadingPanel">Cargando servicios…</div>
-            ) : (
-              <div className="tableWrap modalTableWrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Servicio</th>
-                      <th>Orden</th>
-                      <th>Fecha</th>
-                      <th>Prestador</th>
-                      <th>Campaña</th>
-                      <th>Tipo</th>
-                      <th>Estado</th>
-                      <th>Prometida</th>
-                      <th>Real</th>
-                      <th>Rango</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {drilldown.services.map((service) => (
-                      <tr key={service.servicio_row_id}>
-                        <td>{service.id_servicio_prestado}</td>
-                        <td>{service.id_orden_de_servicio}</td>
-                        <td>
-                          {new Date(
-                            `${service.fecha}T00:00:00`
-                          ).toLocaleDateString('es-AR')}
-                        </td>
-                        <td className="provider">{service.prestador}</td>
-                        <td>{service.campana}</td>
-                        <td>{service.tipo_de_servicio}</td>
-                        <td>{service.estado}</td>
-                        <td>{minutes(service.demora_prometida)}</td>
-                        <td>{minutes(service.demora_real)}</td>
-                        <td>
-                          {service.rango_demora_real === 'N/A'
-                            ? 'Sin demora real'
-                            : service.rango_demora_real}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {drilldown.services.length === 0 && (
-                  <div className="empty">
-                    No hay servicios para esta métrica.
-                  </div>
-                )}
-              </div>
-            )}
-          </section>
-        </div>
-      )}
+      <style>{`
+        :root{font-family:Inter,system-ui,sans-serif;color:#10203b;background:#f4f7fb}*{box-sizing:border-box}body{margin:0}.app-shell{display:grid;grid-template-columns:280px 1fr;min-height:100vh}.sidebar{position:sticky;top:0;height:100vh;background:#0d2749;color:white;padding:28px 20px;display:flex;flex-direction:column}.brand{display:flex;gap:13px;align-items:center;padding:5px 12px 30px}.brand svg{background:#2463eb;padding:9px;border-radius:12px;width:42px;height:42px}.brand strong{display:block;font-size:22px}.brand span{color:#80d7ff}.sidebar nav{display:grid;gap:10px}.sidebar button{border:0;background:transparent;color:#dbe9ff;padding:15px;border-radius:12px;display:flex;gap:12px;align-items:center;font-size:16px;cursor:pointer}.sidebar button.active,.sidebar button:hover{background:#1b477e;color:white}.sidebar button svg{width:21px}.backend-badge{margin-top:auto;border:1px solid #34506f;border-radius:13px;padding:15px;display:flex;gap:12px;align-items:center}.backend-badge span,.backend-badge strong{display:block;font-size:13px}.backend-badge .ok{color:#36e3ac}.backend-badge .bad{color:#ff8b8b}.main-content{padding:34px 38px;max-width:1600px;width:100%;margin:auto}.main-content header h1{font-size:30px;margin:0}.main-content header p,.panel-title p,.section-heading p{color:#64748b;margin:6px 0 0}.panel{background:white;border:1px solid #dbe4f0;border-radius:18px;padding:24px;margin-top:22px;box-shadow:0 2px 8px #15365a0c}.panel-title{display:flex;gap:13px;align-items:flex-start}.panel-title h2,.section-heading h2{margin:0;font-size:20px}.filters-grid{display:grid;grid-template-columns:190px 190px 1fr 1fr;gap:18px;margin-top:20px}.field{display:grid;gap:7px;font-weight:700;font-size:13px}.field input,.field select{border:1px solid #cbd8e8;border-radius:11px;padding:12px;background:white;min-height:45px}.field select[multiple]{height:88px}.field small{font-weight:400;color:#7b8da5}.filter-actions{display:flex;justify-content:flex-end;gap:12px;margin-top:18px}button.primary,button.secondary{border:0;border-radius:11px;padding:13px 19px;font-weight:800;display:inline-flex;gap:8px;align-items:center;cursor:pointer}button.primary{background:#2663eb;color:white}button.secondary{background:#edf2f7;color:#32445d}button:disabled{opacity:.55;cursor:not-allowed}.section-heading{margin-top:30px}.metric-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;margin-top:14px}.metric-card{background:white;border:1px solid #dce6f2;border-radius:17px;padding:23px;display:flex;gap:17px;min-height:150px}.metric-card-icon{width:54px;height:54px;border-radius:14px;display:grid;place-items:center;background:#eaf2ff;color:#2563eb;flex:0 0 auto}.tone-green{border-color:#83e4bd}.tone-green .metric-card-icon{background:#e6fbf3;color:#009c68}.tone-amber{border-color:#f7ca58}.tone-amber .metric-card-icon{background:#fff7dd;color:#c66b00}.tone-slate .metric-card-icon{background:#edf1f6;color:#516176}.tone-red .metric-card-icon{background:#ffeded;color:#d33}.metric-label{font-weight:800;color:#5b6f8a}.metric-value{font-size:34px;font-weight:900;color:#06142e;margin-top:7px}.metric-caption{color:#667891;margin-top:5px}.distribution{display:grid;gap:14px;margin-top:22px}.bar-row{display:grid;grid-template-columns:140px 1fr 180px;gap:15px;align-items:center}.bar-row>div{height:14px;background:#e9eff7;border-radius:20px;overflow:hidden}.bar-row i{display:block;height:100%;background:#18b982;border-radius:20px}.table-wrap{overflow:auto;margin-top:18px}table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:13px;border-bottom:1px solid #e6edf5}th{color:#53667e;background:#f8fafc}.upload-panel{max-width:850px}.upload-box{margin-top:22px;border:2px dashed #9eb5d1;border-radius:16px;padding:44px;display:grid;place-items:center;gap:9px;cursor:pointer;background:#f8fbff}.upload-box input{display:none}.upload-button{margin-top:18px}.status-box{margin-top:18px;background:#eef5ff;border-radius:12px;padding:16px;display:grid;gap:5px}.alert{margin-top:20px;background:#fff0f0;color:#a80000;padding:14px;border-radius:12px;display:flex;gap:10px}.spin{animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}@media(max-width:1100px){.app-shell{grid-template-columns:1fr}.sidebar{position:static;height:auto}.sidebar nav{grid-template-columns:repeat(3,1fr)}.backend-badge{margin-top:20px}.filters-grid,.metric-grid{grid-template-columns:repeat(2,1fr)}}@media(max-width:700px){.main-content{padding:22px 14px}.sidebar nav,.filters-grid,.metric-grid{grid-template-columns:1fr}.bar-row{grid-template-columns:1fr}.app-shell{display:block}}
+      `}</style>
     </div>
   );
 }
 
-function MetricCard({
-  icon,
-  label,
-  value,
-  caption,
-  tone: cardTone = 'neutral',
-  onClick,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-  caption: string;
-  tone?: string;
-  onClick: () => void;
-}) {
-  return (
-    <button className={`metricCard ${cardTone}`} onClick={onClick}>
-      <span className="metricIcon">{icon}</span>
-      <span className="metricBody">
-        <span>{label}</span>
-        <strong>{value}</strong>
-        <small>{caption}</small>
-      </span>
-    </button>
-  );
-}
-
-function FunnelRow({
-  label,
-  value,
-  percentage,
-}: {
-  label: string;
-  value: number;
-  percentage: number;
-}) {
-  return (
-    <div className="funnelRow">
-      <div>
-        <span>{label}</span>
-        <strong>{nf(value)}</strong>
-      </div>
-      <div className="funnelTrack">
-        <span
-          style={{ width: `${Math.max(2, Math.min(100, percentage * 100))}%` }}
-        />
-      </div>
-      <small>{pct(percentage)}</small>
-    </div>
-  );
-}
-
-function ProviderMetric({
-  label,
-  value,
-  percentage,
-  onClick,
-}: {
-  label: string;
-  value: number;
-  percentage?: number;
-  onClick: () => void;
-}) {
-  return (
-    <button className="providerMetric" onClick={onClick}>
-      <span>{label}</span>
-      <strong>{nf(value)}</strong>
-      {percentage != null && <small>{pct(percentage)}</small>}
-    </button>
-  );
-}
+export default App;
