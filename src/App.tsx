@@ -42,13 +42,17 @@ const DEFAULT_FILTERS: TrackeoFilters = {
   prestador_ids: [],
 };
 
-const nf = (value?: number | null) =>
-  new Intl.NumberFormat('es-AR').format(Number(value || 0));
+const nf = (value?: number | null) => {
+  if (value === undefined || value === null) return '—';
+  return new Intl.NumberFormat('es-AR').format(value);
+};
 
-const pct = (value?: number | null) =>
-  `${new Intl.NumberFormat('es-AR', {
+const pct = (value?: number | null) => {
+  if (value === undefined || value === null) return '—';
+  return `${new Intl.NumberFormat('es-AR', {
     maximumFractionDigits: 1,
-  }).format(Number(value || 0) * 100)} %`;
+  }).format(value * 100)} %`;
+};
 
 const sleep = (ms: number) =>
   new Promise<void>((resolve) => window.setTimeout(resolve, ms));
@@ -144,43 +148,69 @@ function App() {
     setLoading(true);
     setError(null);
 
-    try {
-      const [
-        summaryResult,
-        universeResult,
-        providerResult,
-        campaignResult,
-        optionResult,
-      ] = await Promise.all([
-        api.trackeoResumen(next),
-        api.trackeoUniversos(next),
-        api.trackeoPrestadores(next),
-        api.trackeoCampanas(
-          next.fecha_desde,
-          next.fecha_hasta,
-          next.prestador_ids,
-        ),
-        api.trackeoListaPrestadores(
-          next.fecha_desde,
-          next.fecha_hasta,
-          next.campanas,
-        ),
-      ]);
+    const results = await Promise.allSettled([
+      api.trackeoResumen(next),
+      api.trackeoUniversos(next),
+      api.trackeoPrestadores(next),
+      api.trackeoCampanas(
+        next.fecha_desde,
+        next.fecha_hasta,
+        next.prestador_ids,
+      ),
+      api.trackeoListaPrestadores(
+        next.fecha_desde,
+        next.fecha_hasta,
+        next.campanas,
+      ),
+    ]);
 
-      setSummary(summaryResult.resumen);
-      setUniverses(universeResult.universos);
-      setProviders(providerResult.prestadores || []);
-      setCampaigns(campaignResult.campanas || []);
-      setProviderOptions(optionResult.prestadores || []);
-    } catch (cause) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : 'No se pudieron cargar las métricas.',
-      );
-    } finally {
-      setLoading(false);
+    const [
+      summaryResult,
+      universeResult,
+      providerResult,
+      campaignResult,
+      optionResult,
+    ] = results;
+
+    const errors: string[] = [];
+    const reason = (scope: string, value: unknown) =>
+      `${scope}: ${value instanceof Error ? value.message : String(value)}`;
+
+    if (summaryResult.status === 'fulfilled') {
+      setSummary(summaryResult.value.resumen);
+    } else {
+      errors.push(reason('Resumen', summaryResult.reason));
     }
+
+    if (universeResult.status === 'fulfilled') {
+      setUniverses(universeResult.value.universos);
+    } else {
+      errors.push(reason('Universos', universeResult.reason));
+    }
+
+    if (providerResult.status === 'fulfilled') {
+      setProviders(providerResult.value.prestadores || []);
+    } else {
+      errors.push(reason('Prestadores', providerResult.reason));
+    }
+
+    if (campaignResult.status === 'fulfilled') {
+      setCampaigns(campaignResult.value.campanas || []);
+    } else {
+      errors.push(reason('Campañas', campaignResult.reason));
+    }
+
+    if (optionResult.status === 'fulfilled') {
+      setProviderOptions(optionResult.value.prestadores || []);
+    } else {
+      errors.push(reason('Lista de prestadores', optionResult.reason));
+    }
+
+    if (errors.length > 0) {
+      setError(`Algunas consultas no pudieron actualizarse. ${errors.join(' | ')}`);
+    }
+
+    setLoading(false);
   }, []);
 
   useEffect(() => {
