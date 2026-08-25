@@ -1,0 +1,49 @@
+/* ============================================================
+   REFUERZO MULTISELECT  —  pegar al FINAL de src/App.css
+   Gana sobre reglas globales de styles.css (label, #root, etc.)
+   ============================================================ */
+
+.filterPanel .multiPanel .multiOptions .multiOption {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 10px !important;
+  text-align: left !important;
+  padding: 8px 10px !important;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 500;
+  color: #1e293b;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.filterPanel .multiPanel .multiOptions .multiOption input[type='checkbox'] {
+  width: 16px !important;
+  min-width: 16px !important;
+  height: 16px !important;
+  min-height: 16px !important;
+  margin: 0 !important;
+  flex: 0 0 auto !important;
+}
+
+.filterPanel .multiPanel .multiOptions .multiOption .multiOptionLabel {
+  flex: 1 1 auto !important;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left !important;
+}
+
+.filterPanel .multiPanel .multiOptions .multiOption .multiOptionCount {
+  flex: 0 0 auto !important;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* Que el panel no tenga scroll horizontal por opciones anchas */
+.filterPanel .multiPanel .multiOptions {
+  overflow-x: hidden !important;
+}
