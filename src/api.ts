@@ -61,15 +61,25 @@ export type PrestadorOption = {
 };
 
 export type PrestadorMetric = PrestadorOption & {
+  total_general?: number;
+  enviador_no?: number;
   enviador_si?: number;
   uso_enviador?: number;
   asigna_movil?: number;
+  no_asigna_movil_cantidad?: number;
+  no_asigna_movil_porcentaje?: number;
   efectividad_enviador?: number;
+  servicios_programados?: number;
+  programados_porcentaje?: number;
   cumplimiento_demora?: number;
+  cumplimiento_demora_porcentaje?: number;
+  cumplimiento_demora_cantidad?: number;
+  no_cumplimiento_demora_cantidad?: number;
 };
 
 export type CampanaMetric = {
   campana: string;
+  campana_normalizada?: string;
   servicios: number;
 };
 
@@ -78,7 +88,7 @@ export type IngestResponse = {
   report_id?: string;
   report_id_existente?: string;
   existente?: string;
-  mensaje: string;
+  mensaje?: string;
   request_id?: string;
 };
 
@@ -86,7 +96,13 @@ export type IngestStatus = {
   id: string;
   file_name: string | null;
   tipo_reporte: string | null;
-  status: 'pendiente' | 'procesando' | 'procesado' | 'error' | 'reintentar' | 'cancelado';
+  status:
+    | 'pendiente'
+    | 'procesando'
+    | 'procesado'
+    | 'error'
+    | 'reintentar'
+    | 'cancelado';
   etapa: string | null;
   error_msg: string | null;
   filas_totales: number | null;
@@ -99,29 +115,70 @@ export type IngestStatus = {
   finalizado_at: string | null;
 };
 
-function qs(params: Record<string, string | string[] | null | undefined>) {
-  const search = new URLSearchParams();
+type QueryValue = string | number | undefined | null | string[];
+
+function qs(params: Record<string, QueryValue>): string {
+  const query = new URLSearchParams();
+
   Object.entries(params).forEach(([key, value]) => {
-    if (Array.isArray(value)) value.forEach((item) => search.append(key, item));
-    else if (value !== null && value !== undefined && value !== '') search.set(key, value);
+    if (Array.isArray(value)) {
+      value.forEach((item) => {
+        if (item !== '') query.append(key, item);
+      });
+      return;
+    }
+
+    if (value !== '' && value !== undefined && value !== null) {
+      query.set(key, String(value));
+    }
   });
-  const value = search.toString();
-  return value ? `?${value}` : '';
+
+  const serialized = query.toString();
+  return serialized ? `?${serialized}` : '';
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, init);
-  const text = await response.text();
-  let body: any = null;
-  try { body = text ? JSON.parse(text) : null; } catch { body = text; }
-  if (!response.ok) {
-    const message = body?.detail?.mensaje || body?.detail?.error || body?.detail || body?.mensaje || `HTTP ${response.status}`;
-    throw new Error(typeof message === 'string' ? message : JSON.stringify(message));
+  let response: Response;
+
+  try {
+    response = await fetch(`${API_URL}${path}`, {
+      cache: 'no-store',
+      ...init,
+    });
+  } catch (error) {
+    throw new Error(error instanceof Error ? error.message : String(error));
   }
+
+  const text = await response.text();
+  let body: unknown;
+
+  try {
+    body = text ? JSON.parse(text) : null;
+  } catch {
+    body = text;
+  }
+
+  if (!response.ok) {
+    const payload = body as {
+      mensaje?: string;
+      detail?: string | { mensaje?: string; error?: string };
+    };
+
+    const message =
+      typeof payload?.detail === 'string'
+        ? payload.detail
+        : payload?.detail?.mensaje ||
+          payload?.detail?.error ||
+          payload?.mensaje ||
+          `Error HTTP ${response.status}`;
+
+    throw new Error(message);
+  }
+
   return body as T;
 }
 
-function filterQuery(filters: TrackeoFilters) {
+function filterQuery(filters: TrackeoFilters): string {
   return qs({
     fecha_desde: filters.fecha_desde,
     fecha_hasta: filters.fecha_hasta,
@@ -131,37 +188,85 @@ function filterQuery(filters: TrackeoFilters) {
 }
 
 export const api = {
+  url: API_URL,
+
   health: () => request<{ ok: boolean; version: string }>('/health'),
 
   trackeoResumen: (filters: TrackeoFilters) =>
-    request<{ resumen: TrackeoSummary }>(`/api/metricas-trackeo/resumen${filterQuery(filters)}`),
+    request<{ resumen: TrackeoSummary }>(
+      `/api/metricas-trackeo/resumen${filterQuery(filters)}`,
+    ),
 
   trackeoUniversos: (filters: TrackeoFilters) =>
-    request<{ universos: TrackeoUniversos }>(`/api/metricas-trackeo/universos${filterQuery(filters)}`),
-
-  trackeoPrestadores: (filters: TrackeoFilters) =>
-    request<{ cantidad_prestadores: number; prestadores: PrestadorMetric[] }>(
-      `/api/metricas-trackeo/prestadores${filterQuery(filters)}`,
+    request<{ universos: TrackeoUniversos }>(
+      `/api/metricas-trackeo/universos${filterQuery(filters)}`,
     ),
 
-  trackeoCampanas: (fecha_desde: string, fecha_hasta: string, prestador_ids: string[] = []) =>
-    request<{ cantidad_campanas: number; total_servicios: number; campanas: CampanaMetric[] }>(
-      `/api/metricas-trackeo/campanas${qs({ fecha_desde, fecha_hasta, prestador_id: prestador_ids })}`,
+  trackeoPrestadores: async (filters: TrackeoFilters) => {
+    const response = await request<{
+      cantidad_prestadores: number;
+      prestadores: PrestadorMetric[];
+    }>(`/api/metricas-trackeo/prestadores${filterQuery(filters)}`);
+
+    return {
+      ...response,
+      prestadores: response.prestadores.map((prestador) => ({
+        ...prestador,
+        servicios: prestador.servicios ?? prestador.total_general ?? 0,
+        cumplimiento_demora:
+          prestador.cumplimiento_demora ??
+          prestador.cumplimiento_demora_porcentaje ??
+          0,
+      })),
+    };
+  },
+
+  trackeoCampanas: (
+    fechaDesde: string,
+    fechaHasta: string,
+    prestadorIds: string[] = [],
+  ) =>
+    request<{
+      cantidad_campanas: number;
+      total_servicios: number;
+      campanas: CampanaMetric[];
+    }>(
+      `/api/metricas-trackeo/campanas${qs({
+        fecha_desde: fechaDesde,
+        fecha_hasta: fechaHasta,
+        prestador_id: prestadorIds,
+      })}`,
     ),
 
-  trackeoListaPrestadores: (fecha_desde: string, fecha_hasta: string, campanas: string[] = []) =>
-    request<{ cantidad_prestadores: number; prestadores: PrestadorOption[] }>(
-      `/api/metricas-trackeo/lista-prestadores${qs({ fecha_desde, fecha_hasta, campana: campanas })}`,
+  trackeoListaPrestadores: (
+    fechaDesde: string,
+    fechaHasta: string,
+    campanas: string[] = [],
+  ) =>
+    request<{
+      cantidad_prestadores: number;
+      prestadores: PrestadorOption[];
+    }>(
+      `/api/metricas-trackeo/lista-prestadores${qs({
+        fecha_desde: fechaDesde,
+        fecha_hasta: fechaHasta,
+        campana: campanas,
+      })}`,
     ),
 
   ingest: async (file: File, uploadedBy = 'dashboard') => {
-    const form = new FormData();
-    form.append('file', file);
-    form.append('uploaded_by', uploadedBy);
-    return request<IngestResponse>('/ingestar', { method: 'POST', body: form });
+    const body = new FormData();
+    body.append('file', file, file.name);
+    body.append('uploaded_by', uploadedBy);
+
+    return request<IngestResponse>('/ingestar', {
+      method: 'POST',
+      body,
+    });
   },
 
-  ingestStatus: (reportId: string) => request<IngestStatus>(`/ingestar/estado/${reportId}`),
+  ingestStatus: (reportId: string) =>
+    request<IngestStatus>(`/ingestar/estado/${reportId}`),
 };
 
 export { API_URL };
