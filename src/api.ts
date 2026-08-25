@@ -137,45 +137,77 @@ function qs(params: Record<string, QueryValue>): string {
   return serialized ? `?${serialized}` : '';
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  let response: Response;
+const RETRYABLE_STATUS = new Set([502, 503, 504]);
 
-  try {
-    response = await fetch(`${API_URL}${path}`, {
-      cache: 'no-store',
-      ...init,
-    });
-  } catch (error) {
-    throw new Error(error instanceof Error ? error.message : String(error));
+const wait = (milliseconds: number) =>
+  new Promise<void>((resolve) => window.setTimeout(resolve, milliseconds));
+
+async function request<T>(
+  path: string,
+  init?: RequestInit,
+  maxAttempts = 4,
+): Promise<T> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const response = await fetch(`${API_URL}${path}`, {
+        cache: 'no-store',
+        ...init,
+      });
+
+      const text = await response.text();
+      let body: unknown;
+
+      try {
+        body = text ? JSON.parse(text) : null;
+      } catch {
+        body = text;
+      }
+
+      if (response.ok) return body as T;
+
+      const payload = body as {
+        mensaje?: string;
+        detail?:
+          | string
+          | {
+              mensaje?: string;
+              error?: string;
+              funcion?: string;
+              request_id?: string;
+            };
+      };
+
+      const message =
+        typeof payload?.detail === 'string'
+          ? payload.detail
+          : payload?.detail?.mensaje ||
+            payload?.detail?.error ||
+            payload?.mensaje ||
+            `Error HTTP ${response.status}`;
+
+      const functionName =
+        typeof payload?.detail === 'object'
+          ? payload.detail?.funcion
+          : undefined;
+
+      lastError = new Error(
+        functionName ? `${message} (${functionName})` : message,
+      );
+
+      if (!RETRYABLE_STATUS.has(response.status) || attempt >= maxAttempts) {
+        throw lastError;
+      }
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      if (attempt >= maxAttempts) throw lastError;
+    }
+
+    await wait(600 * 2 ** (attempt - 1));
   }
 
-  const text = await response.text();
-  let body: unknown;
-
-  try {
-    body = text ? JSON.parse(text) : null;
-  } catch {
-    body = text;
-  }
-
-  if (!response.ok) {
-    const payload = body as {
-      mensaje?: string;
-      detail?: string | { mensaje?: string; error?: string };
-    };
-
-    const message =
-      typeof payload?.detail === 'string'
-        ? payload.detail
-        : payload?.detail?.mensaje ||
-          payload?.detail?.error ||
-          payload?.mensaje ||
-          `Error HTTP ${response.status}`;
-
-    throw new Error(message);
-  }
-
-  return body as T;
+  throw lastError || new Error('No se pudo completar la consulta.');
 }
 
 function filterQuery(filters: TrackeoFilters): string {
