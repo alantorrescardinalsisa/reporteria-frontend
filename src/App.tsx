@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -9,16 +10,19 @@ import {
   AlertCircle,
   BarChart3,
   CheckCircle2,
+  ChevronDown,
   Clock3,
   Database,
   Filter,
   Gauge,
   ListChecks,
   RefreshCw,
+  Search,
   Server,
   Truck,
   Upload,
   Users,
+  X,
 } from 'lucide-react';
 import {
   api,
@@ -33,7 +37,12 @@ import {
 import './App.css';
 
 type Page = 'metrics' | 'providers' | 'upload';
-type Tone = 'blue' | 'green' | 'amber' | 'slate' | 'red';
+type Tone = 'blue' | 'green' | 'amber' | 'slate';
+
+type SelectOption = {
+  value: string;
+  label: string;
+};
 
 const DEFAULT_FILTERS: TrackeoFilters = {
   fecha_desde: '2026-08-01',
@@ -49,9 +58,7 @@ const nf = (value?: number | null) => {
 
 const pct = (value?: number | null) => {
   if (value === undefined || value === null) return '—';
-  return `${new Intl.NumberFormat('es-AR', {
-    maximumFractionDigits: 1,
-  }).format(value * 100)} %`;
+  return `${new Intl.NumberFormat('es-AR', { maximumFractionDigits: 1 }).format(value * 100)} %`;
 };
 
 const sleep = (ms: number) =>
@@ -91,36 +98,182 @@ function MultiSelect({
 }: {
   label: string;
   values: string[];
-  options: Array<{ value: string; label: string }>;
+  options: SelectOption[];
   onChange: (values: string[]) => void;
   placeholder: string;
 }) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const containerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const onOutside = (event: MouseEvent) => {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(event.target as Node)
+      ) {
+        setOpen(false);
+      }
+    };
+
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+
+    document.addEventListener('mousedown', onOutside);
+    document.addEventListener('keydown', onEscape);
+    return () => {
+      document.removeEventListener('mousedown', onOutside);
+      document.removeEventListener('keydown', onEscape);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!open) setSearch('');
+  }, [open]);
+
+  const filteredOptions = useMemo(() => {
+    const term = search.trim().toLocaleLowerCase('es');
+    if (!term) return options;
+    return options.filter((option) =>
+      option.label.toLocaleLowerCase('es').includes(term),
+    );
+  }, [options, search]);
+
+  const selectedLabels = useMemo(
+    () =>
+      options
+        .filter((option) => values.includes(option.value))
+        .map((option) => option.label),
+    [options, values],
+  );
+
+  const toggle = (value: string) => {
+    onChange(
+      values.includes(value)
+        ? values.filter((current) => current !== value)
+        : [...values, value],
+    );
+  };
+
+  const selectVisible = () => {
+    onChange(
+      Array.from(
+        new Set([...values, ...filteredOptions.map((option) => option.value)]),
+      ),
+    );
+  };
+
+  const triggerText =
+    values.length === 0
+      ? placeholder
+      : values.length === 1
+        ? selectedLabels[0] || '1 seleccionado'
+        : `${values.length} seleccionados`;
+
   return (
-    <label className="field">
-      <span>{label}</span>
-      <select
-        multiple
-        value={values}
-        onChange={(event) =>
-          onChange(
-            Array.from(event.target.selectedOptions).map(
-              (option) => option.value,
-            ),
-          )
-        }
+    <div className="multi-select-field" ref={containerRef}>
+      <span className="multi-select-label">{label}</span>
+
+      <button
+        type="button"
+        className={`multi-select-trigger${open ? ' open' : ''}`}
+        onClick={() => setOpen((current) => !current)}
+        aria-expanded={open}
+        aria-haspopup="listbox"
       >
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-      <small>
-        {values.length
-          ? `${values.length} seleccionado(s)`
-          : placeholder}
+        <span className={values.length ? 'multi-select-value' : 'multi-select-placeholder'}>
+          {triggerText}
+        </span>
+        <ChevronDown
+          size={18}
+          className={`multi-select-chevron${open ? ' open' : ''}`}
+        />
+      </button>
+
+      <small className="multi-select-help">
+        {values.length === 0
+          ? placeholder
+          : `${values.length} opción${values.length === 1 ? '' : 'es'} seleccionada${values.length === 1 ? '' : 's'}`}
       </small>
-    </label>
+
+      {open && (
+        <div className="multi-select-menu">
+          <div className="multi-select-search-row">
+            <Search size={16} />
+            <input
+              className="multi-select-search"
+              type="search"
+              value={search}
+              placeholder={`Buscar ${label.toLocaleLowerCase('es')}…`}
+              onChange={(event) => setSearch(event.target.value)}
+              autoFocus
+            />
+            {search && (
+              <button
+                type="button"
+                className="icon-button"
+                onClick={() => setSearch('')}
+                aria-label="Limpiar búsqueda"
+              >
+                <X size={15} />
+              </button>
+            )}
+          </div>
+
+          <div className="multi-select-actions">
+            <button
+              type="button"
+              onClick={selectVisible}
+              disabled={filteredOptions.length === 0}
+            >
+              Seleccionar visibles
+            </button>
+            <button
+              type="button"
+              onClick={() => onChange([])}
+              disabled={values.length === 0}
+            >
+              Limpiar
+            </button>
+          </div>
+
+          <div
+            className="multi-select-options"
+            role="listbox"
+            aria-multiselectable="true"
+          >
+            {filteredOptions.length === 0 ? (
+              <div className="multi-select-empty">No se encontraron opciones</div>
+            ) : (
+              filteredOptions.map((option) => {
+                const checked = values.includes(option.value);
+                return (
+                  <label
+                    key={option.value}
+                    className={`multi-select-option${checked ? ' selected' : ''}`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggle(option.value)}
+                    />
+                    <span>{option.label}</span>
+                  </label>
+                );
+              })
+            )}
+          </div>
+
+          <div className="multi-select-footer">
+            <span>{nf(filteredOptions.length)} opciones visibles</span>
+            <button type="button" onClick={() => setOpen(false)}>
+              Cerrar
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -135,10 +288,9 @@ function App() {
   const [campaigns, setCampaigns] = useState<CampanaMetric[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [backend, setBackend] = useState<{
-    connected: boolean;
-    version?: string;
-  }>({ connected: false });
+  const [backend, setBackend] = useState<{ connected: boolean; version?: string }>({
+    connected: false,
+  });
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState<string | null>(null);
@@ -152,64 +304,33 @@ function App() {
       api.trackeoResumen(next),
       api.trackeoUniversos(next),
       api.trackeoPrestadores(next),
-      api.trackeoCampanas(
-        next.fecha_desde,
-        next.fecha_hasta,
-        next.prestador_ids,
-      ),
-      api.trackeoListaPrestadores(
-        next.fecha_desde,
-        next.fecha_hasta,
-        next.campanas,
-      ),
+      api.trackeoCampanas(next.fecha_desde, next.fecha_hasta, next.prestador_ids),
+      api.trackeoListaPrestadores(next.fecha_desde, next.fecha_hasta, next.campanas),
     ]);
 
-    const [
-      summaryResult,
-      universeResult,
-      providerResult,
-      campaignResult,
-      optionResult,
-    ] = results;
-
+    const [summaryResult, universeResult, providerResult, campaignResult, optionResult] = results;
     const errors: string[] = [];
     const reason = (scope: string, value: unknown) =>
       `${scope}: ${value instanceof Error ? value.message : String(value)}`;
 
-    if (summaryResult.status === 'fulfilled') {
-      setSummary(summaryResult.value.resumen);
-    } else {
-      errors.push(reason('Resumen', summaryResult.reason));
-    }
+    if (summaryResult.status === 'fulfilled') setSummary(summaryResult.value.resumen);
+    else errors.push(reason('Resumen', summaryResult.reason));
 
-    if (universeResult.status === 'fulfilled') {
-      setUniverses(universeResult.value.universos);
-    } else {
-      errors.push(reason('Universos', universeResult.reason));
-    }
+    if (universeResult.status === 'fulfilled') setUniverses(universeResult.value.universos);
+    else errors.push(reason('Universos', universeResult.reason));
 
-    if (providerResult.status === 'fulfilled') {
-      setProviders(providerResult.value.prestadores || []);
-    } else {
-      errors.push(reason('Prestadores', providerResult.reason));
-    }
+    if (providerResult.status === 'fulfilled') setProviders(providerResult.value.prestadores || []);
+    else errors.push(reason('Prestadores', providerResult.reason));
 
-    if (campaignResult.status === 'fulfilled') {
-      setCampaigns(campaignResult.value.campanas || []);
-    } else {
-      errors.push(reason('Campañas', campaignResult.reason));
-    }
+    if (campaignResult.status === 'fulfilled') setCampaigns(campaignResult.value.campanas || []);
+    else errors.push(reason('Campañas', campaignResult.reason));
 
-    if (optionResult.status === 'fulfilled') {
-      setProviderOptions(optionResult.value.prestadores || []);
-    } else {
-      errors.push(reason('Lista de prestadores', optionResult.reason));
-    }
+    if (optionResult.status === 'fulfilled') setProviderOptions(optionResult.value.prestadores || []);
+    else errors.push(reason('Lista de prestadores', optionResult.reason));
 
-    if (errors.length > 0) {
+    if (errors.length) {
       setError(`Algunas consultas no pudieron actualizarse. ${errors.join(' | ')}`);
     }
-
     setLoading(false);
   }, []);
 
@@ -226,13 +347,12 @@ function App() {
         setBackend({ connected: false });
       }
     };
-
     void check();
     const timer = window.setInterval(check, 30_000);
     return () => window.clearInterval(timer);
   }, []);
 
-  const campaignOptions = useMemo(
+  const campaignOptions = useMemo<SelectOption[]>(
     () =>
       campaigns.map((campaign) => ({
         value: campaign.campana,
@@ -241,7 +361,7 @@ function App() {
     [campaigns],
   );
 
-  const providerSelectOptions = useMemo(
+  const providerSelectOptions = useMemo<SelectOption[]>(
     () =>
       providerOptions.map((provider) => ({
         value: provider.prestador_id,
@@ -252,69 +372,38 @@ function App() {
 
   const submitUpload = async () => {
     if (!file || uploading) return;
-
     setUploading(true);
     setUploadMessage('Subiendo el archivo y creando el trabajo…');
     setIngestStatus(null);
 
     try {
       const result = await api.ingest(file);
-
       if (result.status === 'duplicado') {
         setUploadMessage(
-          `${
-            result.mensaje || 'El archivo ya había sido cargado.'
-          } Archivo existente: ${result.existente || 'sin nombre'}.`,
+          `${result.mensaje || 'El archivo ya había sido cargado.'} Archivo existente: ${result.existente || 'sin nombre'}.`,
         );
         return;
       }
-
-      if (!result.report_id) {
-        throw new Error('El backend no devolvió report_id.');
-      }
-
-      setUploadMessage('Archivo en cola. Iniciando procesamiento masivo…');
+      if (!result.report_id) throw new Error('El backend no devolvió report_id.');
 
       for (let attempt = 0; attempt < 600; attempt += 1) {
         const state = await api.ingestStatus(result.report_id);
         setIngestStatus(state);
 
         if (state.status === 'procesado') {
-          setUploadMessage(
-            `Carga completada: ${nf(
-              state.filas_procesadas,
-            )} filas procesadas.`,
-          );
+          setUploadMessage(`Carga completada: ${nf(state.filas_procesadas)} filas procesadas.`);
           setFile(null);
           await load(filters);
           return;
         }
-
         if (state.status === 'error' || state.status === 'cancelado') {
-          throw new Error(
-            state.error_msg ||
-              `El procesamiento terminó en estado ${state.status}.`,
-          );
+          throw new Error(state.error_msg || `El procesamiento terminó en estado ${state.status}.`);
         }
-
-        setUploadMessage(
-          `${state.etapa || state.status}: ${nf(
-            state.filas_procesadas,
-          )} filas procesadas.`,
-        );
-
+        setUploadMessage(`${state.etapa || state.status}: ${nf(state.filas_procesadas)} filas procesadas.`);
         await sleep(3000);
       }
-
-      setUploadMessage(
-        'El trabajo continúa en la cola. Consultá el estado desde la plataforma.',
-      );
     } catch (cause) {
-      setUploadMessage(
-        cause instanceof Error
-          ? cause.message
-          : 'No se pudo procesar el archivo.',
-      );
+      setUploadMessage(cause instanceof Error ? cause.message : 'No se pudo procesar el archivo.');
     } finally {
       setUploading(false);
     }
@@ -325,39 +414,23 @@ function App() {
       <aside className="sidebar">
         <div className="brand">
           <Database size={26} />
-          <div>
-            <strong>Reportería</strong>
-            <span>Prestadores</span>
-          </div>
+          <div><strong>Reportería</strong><span>Prestadores</span></div>
         </div>
-
         <nav>
-          <button
-            className={page === 'metrics' ? 'active' : ''}
-            onClick={() => setPage('metrics')}
-          >
+          <button className={page === 'metrics' ? 'active' : ''} onClick={() => setPage('metrics')}>
             <BarChart3 /> Métricas de Trackeo
           </button>
-          <button
-            className={page === 'providers' ? 'active' : ''}
-            onClick={() => setPage('providers')}
-          >
+          <button className={page === 'providers' ? 'active' : ''} onClick={() => setPage('providers')}>
             <Users /> Detalle por prestador
           </button>
-          <button
-            className={page === 'upload' ? 'active' : ''}
-            onClick={() => setPage('upload')}
-          >
+          <button className={page === 'upload' ? 'active' : ''} onClick={() => setPage('upload')}>
             <Upload /> Cargar reportes
           </button>
         </nav>
-
         <div className="backend-badge">
           <Server size={18} />
           <div>
-            <span>
-              Backend {backend.version ? `v${backend.version}` : ''}
-            </span>
+            <span>Backend {backend.version ? `v${backend.version}` : ''}</span>
             <strong className={backend.connected ? 'ok' : 'bad'}>
               {backend.connected ? 'Conectado' : 'Sin conexión'}
             </strong>
@@ -367,27 +440,15 @@ function App() {
 
       <main className="main-content">
         <header>
-          <h1>
-            {page === 'metrics'
-              ? 'Métricas de Trackeo'
-              : page === 'providers'
-                ? 'Detalle por prestador'
-                : 'Cargar reportes'}
-          </h1>
-          <p>
-            Modelo auditable con universos cargado, vehicular, evaluable e
-            histórico.
-          </p>
+          <h1>{page === 'metrics' ? 'Métricas de Trackeo' : page === 'providers' ? 'Detalle por prestador' : 'Cargar reportes'}</h1>
+          <p>Modelo auditable con universos cargado, vehicular, evaluable e histórico.</p>
         </header>
 
         {page !== 'upload' && (
           <section className="panel filters-panel">
             <div className="panel-title">
               <Filter size={21} />
-              <div>
-                <h2>Filtros globales</h2>
-                <p>Aplican a todos los universos e indicadores.</p>
-              </div>
+              <div><h2>Filtros globales</h2><p>Aplican a todos los universos e indicadores.</p></div>
             </div>
 
             <div className="filters-grid">
@@ -396,10 +457,9 @@ function App() {
                 <input
                   type="date"
                   value={draft.fecha_desde}
-                  onChange={(event) =>
-                    setDraft({ ...draft, fecha_desde: event.target.value })
-                  }
+                  onChange={(event) => setDraft({ ...draft, fecha_desde: event.target.value })}
                 />
+                <small>Fecha inicial</small>
               </label>
 
               <label className="field">
@@ -407,10 +467,9 @@ function App() {
                 <input
                   type="date"
                   value={draft.fecha_hasta}
-                  onChange={(event) =>
-                    setDraft({ ...draft, fecha_hasta: event.target.value })
-                  }
+                  onChange={(event) => setDraft({ ...draft, fecha_hasta: event.target.value })}
                 />
+                <small>Fecha final</small>
               </label>
 
               <MultiSelect
@@ -426,9 +485,7 @@ function App() {
                 values={draft.prestador_ids}
                 options={providerSelectOptions}
                 placeholder="Todos los prestadores"
-                onChange={(prestador_ids) =>
-                  setDraft({ ...draft, prestador_ids })
-                }
+                onChange={(prestador_ids) => setDraft({ ...draft, prestador_ids })}
               />
             </div>
 
@@ -442,10 +499,7 @@ function App() {
               >
                 Restablecer
               </button>
-              <button
-                className="primary"
-                onClick={() => setFilters({ ...draft })}
-              >
+              <button className="primary" onClick={() => setFilters({ ...draft })}>
                 {loading && <RefreshCw className="spin" size={18} />}
                 Aplicar filtros
               </button>
@@ -453,11 +507,7 @@ function App() {
           </section>
         )}
 
-        {error && (
-          <div className="alert">
-            <AlertCircle /> {error}
-          </div>
-        )}
+        {error && <div className="alert"><AlertCircle /> {error}</div>}
 
         {page === 'metrics' && (
           <>
@@ -465,121 +515,33 @@ function App() {
               <h2>Universos analíticos</h2>
               <p>Control de volumen y separación de servicios aptos para KPIs.</p>
             </section>
-
-            <section className="metric-grid universe-grid">
-              <MetricCard
-                icon={<Database />}
-                label="Servicios en el periodo"
-                value={nf(universes?.servicios_cargados)}
-                caption="Total visible para las fechas seleccionadas"
-              />
-              <MetricCard
-                icon={<Truck />}
-                label="Servicios vehiculares"
-                value={nf(universes?.servicios_vehiculares)}
-                caption="Finalizados, cancelados y en curso"
-                tone="slate"
-              />
-              <MetricCard
-                icon={<CheckCircle2 />}
-                label="Servicios evaluables"
-                value={nf(universes?.servicios_evaluables)}
-                caption="Base ampliada recomendada para KPIs"
-                tone="green"
-              />
-              <MetricCard
-                icon={<AlertCircle />}
-                label="Vehiculares cancelados"
-                value={nf(universes?.servicios_cancelados)}
-                caption="Separados del cumplimiento operativo"
-                tone="amber"
-              />
-              <MetricCard
-                icon={<Clock3 />}
-                label="Vehiculares no finalizados"
-                value={nf(universes?.servicios_no_finalizados)}
-                caption="Pendientes o en curso"
-                tone="slate"
-              />
-              <MetricCard
-                icon={<ListChecks />}
-                label="Universo Excel histórico"
-                value={nf(universes?.universo_excel_historico)}
-                caption="Mantiene comparabilidad histórica"
-              />
+            <section className="metric-grid">
+              <MetricCard icon={<Database />} label="Servicios en el periodo" value={nf(universes?.servicios_cargados)} caption="Total visible para las fechas seleccionadas" />
+              <MetricCard icon={<Truck />} label="Servicios vehiculares" value={nf(universes?.servicios_vehiculares)} caption="Finalizados, cancelados y en curso" tone="slate" />
+              <MetricCard icon={<CheckCircle2 />} label="Servicios evaluables" value={nf(universes?.servicios_evaluables)} caption="Base ampliada recomendada para KPIs" tone="green" />
+              <MetricCard icon={<AlertCircle />} label="Vehiculares cancelados" value={nf(universes?.servicios_cancelados)} caption="Separados del cumplimiento operativo" tone="amber" />
+              <MetricCard icon={<Clock3 />} label="Vehiculares no finalizados" value={nf(universes?.servicios_no_finalizados)} caption="Pendientes o en curso" tone="slate" />
+              <MetricCard icon={<ListChecks />} label="Universo Excel histórico" value={nf(universes?.universo_excel_historico)} caption="Mantiene comparabilidad histórica" />
             </section>
 
             <section className="section-heading">
               <h2>KPIs históricos del Excel</h2>
-              <p>
-                Estos indicadores conservan la regla histórica para no alterar
-                las comparaciones.
-              </p>
+              <p>Estos indicadores conservan la regla histórica para no alterar las comparaciones.</p>
             </section>
-
             <section className="metric-grid">
-              <MetricCard
-                icon={<Database />}
-                label="Universo Excel evaluable"
-                value={nf(summary?.servicios_consultados)}
-                caption={`${nf(summary?.enviador_si)} con enviador · ${nf(
-                  summary?.enviador_no,
-                )} sin enviador`}
-              />
-              <MetricCard
-                icon={<Gauge />}
-                label="Uso del enviador"
-                value={pct(summary?.uso_enviador)}
-                caption={`${nf(
-                  summary?.enviador_si,
-                )} servicios con Enviador OK`}
-                tone="amber"
-              />
-              <MetricCard
-                icon={<Truck />}
-                label="Asigna móvil"
-                value={nf(summary?.asigna_movil)}
-                caption={`${pct(summary?.efectividad_enviador)} de efectividad`}
-                tone="green"
-              />
-              <MetricCard
-                icon={<AlertCircle />}
-                label="No asigna móvil"
-                value={nf(summary?.no_asigna_movil_cantidad)}
-                caption={pct(summary?.no_asigna_movil_porcentaje)}
-                tone="amber"
-              />
-              <MetricCard
-                icon={<ListChecks />}
-                label="Servicios programados"
-                value={nf(summary?.servicios_programados)}
-                caption={`${pct(
-                  summary?.programados_porcentaje,
-                )} sobre Enviador Sí`}
-              />
-              <MetricCard
-                icon={<CheckCircle2 />}
-                label="Cumplimiento de demora"
-                value={pct(summary?.cumplimiento_demora)}
-                caption={`${nf(summary?.servicios_cumplidos)} cumplen · ${nf(
-                  summary?.servicios_no_cumplidos,
-                )} no cumplen`}
-                tone="green"
-              />
+              <MetricCard icon={<Database />} label="Universo Excel evaluable" value={nf(summary?.servicios_consultados)} caption={`${nf(summary?.enviador_si)} con enviador · ${nf(summary?.enviador_no)} sin enviador`} />
+              <MetricCard icon={<Gauge />} label="Uso del enviador" value={pct(summary?.uso_enviador)} caption={`${nf(summary?.enviador_si)} servicios con Enviador OK`} tone="amber" />
+              <MetricCard icon={<Truck />} label="Asigna móvil" value={nf(summary?.asigna_movil)} caption={`${pct(summary?.efectividad_enviador)} de efectividad`} tone="green" />
+              <MetricCard icon={<AlertCircle />} label="No asigna móvil" value={nf(summary?.no_asigna_movil_cantidad)} caption={pct(summary?.no_asigna_movil_porcentaje)} tone="amber" />
+              <MetricCard icon={<ListChecks />} label="Servicios programados" value={nf(summary?.servicios_programados)} caption={`${pct(summary?.programados_porcentaje)} sobre Enviador Sí`} />
+              <MetricCard icon={<CheckCircle2 />} label="Cumplimiento de demora" value={pct(summary?.cumplimiento_demora)} caption={`${nf(summary?.servicios_cumplidos)} cumplen · ${nf(summary?.servicios_no_cumplidos)} no cumplen`} tone="green" />
             </section>
 
             <section className="panel">
               <div className="panel-title">
                 <BarChart3 />
-                <div>
-                  <h2>Distribución de servicios cumplidos</h2>
-                  <p>
-                    Porcentaje sobre {nf(summary?.servicios_cumplidos)} servicios
-                    cumplidos.
-                  </p>
-                </div>
+                <div><h2>Distribución de servicios cumplidos</h2><p>Porcentaje sobre {nf(summary?.servicios_cumplidos)} servicios cumplidos.</p></div>
               </div>
-
               <div className="distribution">
                 {[
                   ['Menos de 60', summary?.menos_60_cantidad, summary?.menos_60_porcentaje],
@@ -591,16 +553,8 @@ function App() {
                 ].map(([label, count, ratio]) => (
                   <div className="bar-row" key={String(label)}>
                     <span>{label}</span>
-                    <div>
-                      <i
-                        style={{
-                          width: `${Math.min(100, Number(ratio || 0) * 100)}%`,
-                        }}
-                      />
-                    </div>
-                    <strong>
-                      {nf(Number(count))} · {pct(Number(ratio))}
-                    </strong>
+                    <div><i style={{ width: `${Math.min(100, Number(ratio || 0) * 100)}%` }} /></div>
+                    <strong>{nf(Number(count))} · {pct(Number(ratio))}</strong>
                   </div>
                 ))}
               </div>
@@ -610,28 +564,10 @@ function App() {
 
         {page === 'providers' && (
           <section className="panel">
-            <div className="panel-title">
-              <Users />
-              <div>
-                <h2>Prestadores</h2>
-                <p>
-                  {nf(providers.length)} prestadores en el universo histórico
-                  filtrado.
-                </p>
-              </div>
-            </div>
-
+            <div className="panel-title"><Users /><div><h2>Prestadores</h2><p>{nf(providers.length)} prestadores filtrados.</p></div></div>
             <div className="table-wrap">
               <table>
-                <thead>
-                  <tr>
-                    <th>Prestador</th>
-                    <th>Servicios</th>
-                    <th>Uso enviador</th>
-                    <th>Asigna móvil</th>
-                    <th>Cumplimiento</th>
-                  </tr>
-                </thead>
+                <thead><tr><th>Prestador</th><th>Servicios</th><th>Uso enviador</th><th>Asigna móvil</th><th>Cumplimiento</th></tr></thead>
                 <tbody>
                   {providers.map((provider) => (
                     <tr key={provider.prestador_id}>
@@ -650,60 +586,24 @@ function App() {
 
         {page === 'upload' && (
           <section className="panel upload-panel">
-            <div className="panel-title">
-              <Upload />
-              <div>
-                <h2>Nueva carga</h2>
-                <p>
-                  El archivo se guarda en Storage y se procesa mediante COPY,
-                  staging y merge SQL.
-                </p>
-              </div>
-            </div>
-
+            <div className="panel-title"><Upload /><div><h2>Nueva carga</h2><p>Procesamiento mediante COPY, staging y merge SQL.</p></div></div>
             <label className="upload-box">
-              <input
-                type="file"
-                accept=".xlsx,.xlsm"
-                onChange={(event) => setFile(event.target.files?.[0] || null)}
-              />
+              <input type="file" accept=".xlsx,.xlsm" onChange={(event) => setFile(event.target.files?.[0] || null)} />
               <Upload size={36} />
               <strong>{file ? file.name : 'Seleccioná un archivo Excel'}</strong>
-              <span>
-                {file
-                  ? `${(file.size / 1024 / 1024).toFixed(2)} MB`
-                  : 'Formatos admitidos: .xlsx y .xlsm'}
-              </span>
+              <span>{file ? `${(file.size / 1024 / 1024).toFixed(2)} MB` : 'Formatos admitidos: .xlsx y .xlsm'}</span>
             </label>
-
-            <button
-              className="primary upload-button"
-              disabled={!file || uploading}
-              onClick={() => void submitUpload()}
-            >
-              {uploading ? (
-                <RefreshCw className="spin" />
-              ) : (
-                <Upload />
-              )}
+            <button className="primary upload-button" disabled={!file || uploading} onClick={() => void submitUpload()}>
+              {uploading ? <RefreshCw className="spin" /> : <Upload />}
               {uploading ? 'Procesando…' : 'Procesar reporte'}
             </button>
-
             {uploadMessage && (
               <div className="status-box">
                 <strong>{uploadMessage}</strong>
                 {ingestStatus && (
                   <>
-                    <span>
-                      Estado: {ingestStatus.status} · Etapa:{' '}
-                      {ingestStatus.etapa || 'sin etapa'}
-                    </span>
-                    <span>
-                      Filas: {nf(ingestStatus.filas_procesadas)} /{' '}
-                      {ingestStatus.filas_totales == null
-                        ? 'pendiente'
-                        : nf(ingestStatus.filas_totales)}
-                    </span>
+                    <span>Estado: {ingestStatus.status} · Etapa: {ingestStatus.etapa || 'sin etapa'}</span>
+                    <span>Filas: {nf(ingestStatus.filas_procesadas)} / {ingestStatus.filas_totales == null ? 'pendiente' : nf(ingestStatus.filas_totales)}</span>
                   </>
                 )}
               </div>
@@ -716,23 +616,30 @@ function App() {
         :root{font-family:Inter,system-ui,sans-serif;color:#10203b;background:#f4f7fb}
         *{box-sizing:border-box} body{margin:0}.app-shell{display:grid;grid-template-columns:260px minmax(0,1fr);min-height:100vh;width:100%}
         .sidebar{position:sticky;top:0;height:100vh;background:#0d2749;color:#fff;padding:28px 20px;display:flex;flex-direction:column}
-        .brand{display:flex;gap:13px;align-items:center;padding:5px 12px 30px}.brand svg{background:#2463eb;padding:9px;border-radius:12px;width:42px;height:42px}
-        .brand strong{display:block;font-size:22px}.brand span{color:#80d7ff}.sidebar nav{display:grid;gap:10px}
-        .sidebar button{border:0;background:transparent;color:#dbe9ff;padding:15px;border-radius:12px;display:flex;gap:12px;align-items:center;font-size:16px;cursor:pointer}
-        .sidebar button.active,.sidebar button:hover{background:#1b477e;color:#fff}.sidebar button svg{width:21px}.backend-badge{margin-top:auto;border:1px solid #34506f;border-radius:13px;padding:15px;display:flex;gap:12px;align-items:center}
-        .backend-badge span,.backend-badge strong{display:block;font-size:13px}.backend-badge .ok{color:#36e3ac}.backend-badge .bad{color:#ff8b8b}
+        .brand{display:flex;gap:13px;align-items:center;padding:5px 12px 30px}.brand svg{background:#2463eb;padding:9px;border-radius:12px;width:42px;height:42px}.brand strong{display:block;font-size:22px}.brand span{color:#80d7ff}.sidebar nav{display:grid;gap:10px}
+        .sidebar button{border:0;background:transparent;color:#dbe9ff;padding:15px;border-radius:12px;display:flex;gap:12px;align-items:center;font-size:16px;cursor:pointer}.sidebar button.active,.sidebar button:hover{background:#1b477e;color:#fff}.sidebar button svg{width:21px}
+        .backend-badge{margin-top:auto;border:1px solid #34506f;border-radius:13px;padding:15px;display:flex;gap:12px;align-items:center}.backend-badge span,.backend-badge strong{display:block;font-size:13px}.backend-badge .ok{color:#36e3ac}.backend-badge .bad{color:#ff8b8b}
         .main-content{min-width:0;width:100%;max-width:1600px;padding:34px 38px;margin:0 auto}.main-content header h1{font-size:30px;margin:0}.main-content header p,.panel-title p,.section-heading p{color:#64748b;margin:6px 0 0}
         .panel{background:#fff;border:1px solid #dbe4f0;border-radius:18px;padding:24px;margin-top:22px;box-shadow:0 2px 8px #15365a0c}.panel-title{display:flex;gap:13px;align-items:flex-start}.panel-title h2,.section-heading h2{margin:0;font-size:20px}
-        .filters-grid{display:grid;grid-template-columns:190px 190px 1fr 1fr;gap:18px;margin-top:20px}.field{display:grid;gap:7px;font-weight:700;font-size:13px}.field input,.field select{border:1px solid #cbd8e8;border-radius:11px;padding:12px;background:#fff;min-height:45px}.field select[multiple]{height:76px;overflow-y:auto;scrollbar-width:thin}.field select[multiple] option{padding:4px 7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.field small{font-weight:400;color:#7b8da5}
+        .filters-grid{display:grid;grid-template-columns:minmax(160px,190px) minmax(160px,190px) minmax(240px,1fr) minmax(240px,1fr);gap:18px;margin-top:20px;align-items:start}
+        .field,.multi-select-field{display:grid;grid-template-rows:18px 45px 18px;gap:7px;min-width:0;align-self:start;position:relative;font-size:13px;font-weight:700;color:#10203b}
+        .field>span,.multi-select-label{display:block;height:18px;line-height:18px}.field input{width:100%;height:45px;padding:0 12px;border:1px solid #cbd8e8;border-radius:11px;background:#fff;color:#10203b}.field small,.multi-select-help{display:block;height:18px;overflow:hidden;color:#7b8da5;font-size:12px;font-weight:400;line-height:18px;white-space:nowrap;text-overflow:ellipsis}
+        .multi-select-trigger{width:100%;height:45px;min-width:0;padding:0 13px;border:1px solid #cbd8e8;border-radius:11px;background:#fff;color:#10203b;display:flex;align-items:center;justify-content:space-between;gap:12px;text-align:left;font:inherit;cursor:pointer;transition:border-color .15s,box-shadow .15s}.multi-select-trigger:hover{border-color:#8eadd1}.multi-select-trigger:focus-visible,.multi-select-trigger.open{outline:none;border-color:#2663eb;box-shadow:0 0 0 3px rgba(38,99,235,.12)}
+        .multi-select-value,.multi-select-placeholder{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.multi-select-value{font-weight:600}.multi-select-placeholder{color:#64748b;font-weight:400}.multi-select-chevron{flex:0 0 auto;color:#64748b;transition:transform .15s}.multi-select-chevron.open{transform:rotate(180deg)}
+        .multi-select-menu{position:absolute;z-index:1000;top:75px;left:0;width:100%;min-width:300px;max-height:390px;overflow:hidden;border:1px solid #cbd8e8;border-radius:13px;background:#fff;box-shadow:0 18px 45px rgba(15,35,65,.18)}
+        .multi-select-search-row{height:54px;padding:8px 11px;border-bottom:1px solid #e5edf6;display:flex;align-items:center;gap:8px}.multi-select-search-row>svg{color:#64748b;flex:0 0 auto}.multi-select-search{min-width:0;flex:1;height:37px;border:0;outline:0;background:transparent;color:#10203b;font:inherit}.icon-button{border:0;background:transparent;color:#64748b;padding:4px;display:grid;place-items:center;cursor:pointer}
+        .multi-select-actions{display:flex;gap:8px;padding:9px 11px;border-bottom:1px solid #e5edf6;background:#f8fbff}.multi-select-actions button,.multi-select-footer button{border:0;border-radius:8px;background:#e9f1ff;color:#1f56c8;padding:7px 10px;font-size:12px;font-weight:700;cursor:pointer}.multi-select-actions button:disabled{opacity:.45;cursor:not-allowed}
+        .multi-select-options{max-height:230px;overflow-y:auto;padding:6px;scrollbar-width:thin}.multi-select-option{min-height:39px;padding:8px 9px;border-radius:8px;display:flex;align-items:flex-start;gap:9px;color:#253852;font-size:13px;font-weight:500;line-height:19px;cursor:pointer}.multi-select-option:hover{background:#f0f5fc}.multi-select-option.selected{background:#eaf2ff;color:#174ea6}.multi-select-option input{width:16px;height:16px;margin:1px 0 0;flex:0 0 auto;accent-color:#2663eb}.multi-select-option span{min-width:0;overflow-wrap:anywhere}.multi-select-empty{padding:24px 14px;color:#7b8da5;font-size:13px;text-align:center}
+        .multi-select-footer{min-height:45px;padding:8px 11px;border-top:1px solid #e5edf6;background:#f8fbff;display:flex;align-items:center;justify-content:space-between;gap:12px}.multi-select-footer span{color:#64748b;font-size:12px}
         .filter-actions{display:flex;justify-content:flex-end;gap:12px;margin-top:18px}button.primary,button.secondary{border:0;border-radius:11px;padding:13px 19px;font-weight:800;display:inline-flex;gap:8px;align-items:center;cursor:pointer}button.primary{background:#2663eb;color:#fff}button.secondary{background:#edf2f7;color:#32445d}button:disabled{opacity:.55;cursor:not-allowed}
         .section-heading{margin-top:30px}.metric-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;margin-top:14px}.metric-card{background:#fff;border:1px solid #dce6f2;border-radius:17px;padding:23px;display:flex;gap:17px;min-height:150px}.metric-card-icon{width:54px;height:54px;border-radius:14px;display:grid;place-items:center;background:#eaf2ff;color:#2563eb;flex:0 0 auto}.metric-card-content{min-width:0;flex:1}.metric-label,.metric-caption{overflow-wrap:anywhere}.metric-value{white-space:nowrap}
-        .tone-green{border-color:#83e4bd}.tone-green .metric-card-icon{background:#e6fbf3;color:#009c68}.tone-amber{border-color:#f7ca58}.tone-amber .metric-card-icon{background:#fff7dd;color:#c66b00}.tone-slate .metric-card-icon{background:#edf1f6;color:#516176}.tone-red .metric-card-icon{background:#ffeded;color:#d33}
-        .metric-label{font-weight:800;color:#5b6f8a}.metric-value{font-size:34px;font-weight:900;color:#06142e;margin-top:7px}.metric-caption{color:#667891;margin-top:5px}.distribution{display:grid;gap:14px;margin-top:22px}.bar-row{display:grid;grid-template-columns:140px 1fr 180px;gap:15px;align-items:center}.bar-row>div{height:14px;background:#e9eff7;border-radius:20px;overflow:hidden}.bar-row i{display:block;height:100%;background:#18b982;border-radius:20px}
+        .tone-green{border-color:#83e4bd}.tone-green .metric-card-icon{background:#e6fbf3;color:#009c68}.tone-amber{border-color:#f7ca58}.tone-amber .metric-card-icon{background:#fff7dd;color:#c66b00}.tone-slate .metric-card-icon{background:#edf1f6;color:#516176}.metric-label{font-weight:800;color:#5b6f8a}.metric-value{font-size:34px;font-weight:900;color:#06142e;margin-top:7px}.metric-caption{color:#667891;margin-top:5px}
+        .distribution{display:grid;gap:14px;margin-top:22px}.bar-row{display:grid;grid-template-columns:140px 1fr 180px;gap:15px;align-items:center}.bar-row>div{height:14px;background:#e9eff7;border-radius:20px;overflow:hidden}.bar-row i{display:block;height:100%;background:#18b982;border-radius:20px}
         .table-wrap{overflow:auto;margin-top:18px}table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:13px;border-bottom:1px solid #e6edf5}th{color:#53667e;background:#f8fafc}.upload-panel{max-width:850px}.upload-box{margin-top:22px;border:2px dashed #9eb5d1;border-radius:16px;padding:44px;display:grid;place-items:center;gap:9px;cursor:pointer;background:#f8fbff}.upload-box input{display:none}.upload-button{margin-top:18px}.status-box{margin-top:18px;background:#eef5ff;border-radius:12px;padding:16px;display:grid;gap:5px}.alert{margin-top:20px;background:#fff0f0;color:#a80000;padding:14px;border-radius:12px;display:flex;gap:10px}.spin{animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
-        @media (min-width:1280px){.app-shell{grid-template-columns:260px minmax(0,1fr)}.main-content{padding:34px 42px}.metric-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.filters-grid{grid-template-columns:minmax(160px,190px) minmax(160px,190px) minmax(260px,1fr) minmax(260px,1fr)}}
-        @media (min-width:821px) and (max-width:1279px){.app-shell{grid-template-columns:220px minmax(0,1fr)}.sidebar{position:sticky;top:0;height:100vh;padding:24px 14px}.brand{padding:4px 8px 28px}.brand strong{font-size:19px}.sidebar button{padding:13px 10px;font-size:14px}.main-content{padding:28px 24px;max-width:none}.filters-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.backend-badge{padding:12px}.bar-row{grid-template-columns:120px minmax(160px,1fr) 145px}}
-        @media (min-width:601px) and (max-width:820px){.app-shell{display:block}.sidebar{position:static;height:auto;padding:18px 22px}.brand{padding:0 0 18px}.sidebar nav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.sidebar button{justify-content:center;padding:12px 8px;font-size:13px}.backend-badge{margin-top:14px;width:fit-content}.main-content{padding:26px 22px}.filters-grid,.metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.bar-row{grid-template-columns:100px minmax(120px,1fr) 125px}}
-        @media (max-width:600px){.app-shell{display:block}.sidebar{position:static;height:auto;padding:16px}.brand{padding:0 0 16px}.sidebar nav{display:grid;grid-template-columns:1fr;gap:7px}.sidebar button{padding:12px;font-size:14px}.backend-badge{margin-top:14px}.main-content{padding:22px 14px}.main-content header h1{font-size:25px}.panel{padding:18px;border-radius:14px}.filters-grid,.metric-grid{grid-template-columns:1fr}.filter-actions{display:grid;grid-template-columns:1fr}.filter-actions button{justify-content:center;width:100%}.metric-card{min-height:130px;padding:19px}.metric-value{font-size:30px}.bar-row{grid-template-columns:1fr;gap:7px}.bar-row strong{text-align:left}}
+        @media(min-width:1280px){.filters-grid{grid-template-columns:minmax(160px,190px) minmax(160px,190px) minmax(260px,1fr) minmax(260px,1fr)}}
+        @media(min-width:821px) and (max-width:1279px){.app-shell{grid-template-columns:220px minmax(0,1fr)}.sidebar{padding:24px 14px}.main-content{padding:28px 24px;max-width:none}.filters-grid,.metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.bar-row{grid-template-columns:120px minmax(160px,1fr) 145px}}
+        @media(min-width:601px) and (max-width:820px){.app-shell{display:block}.sidebar{position:static;height:auto;padding:18px 22px}.sidebar nav{grid-template-columns:repeat(3,minmax(0,1fr))}.backend-badge{margin-top:14px;width:fit-content}.main-content{padding:26px 22px}.filters-grid,.metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.multi-select-menu{min-width:100%}}
+        @media(max-width:600px){.app-shell{display:block}.sidebar{position:static;height:auto;padding:16px}.sidebar nav,.filters-grid,.metric-grid{grid-template-columns:1fr}.backend-badge{margin-top:14px}.main-content{padding:22px 14px}.panel{padding:18px}.filter-actions{display:grid}.filter-actions button{justify-content:center}.bar-row{grid-template-columns:1fr}.multi-select-menu{min-width:100%;max-width:calc(100vw - 28px)}.multi-select-actions{flex-wrap:wrap}}
       `}</style>
     </div>
   );
