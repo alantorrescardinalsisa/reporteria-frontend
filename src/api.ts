@@ -73,8 +73,6 @@ export type PrestadorMetric = PrestadorOption & {
   programados_porcentaje?: number;
   cumplimiento_demora?: number;
   cumplimiento_demora_porcentaje?: number;
-  cumplimiento_demora_cantidad?: number;
-  no_cumplimiento_demora_cantidad?: number;
 };
 
 export type CampanaMetric = {
@@ -96,13 +94,7 @@ export type IngestStatus = {
   id: string;
   file_name: string | null;
   tipo_reporte: string | null;
-  status:
-    | 'pendiente'
-    | 'procesando'
-    | 'procesado'
-    | 'error'
-    | 'reintentar'
-    | 'cancelado';
+  status: 'pendiente' | 'procesando' | 'procesado' | 'error' | 'reintentar' | 'cancelado';
   etapa: string | null;
   error_msg: string | null;
   filas_totales: number | null;
@@ -119,94 +111,47 @@ type QueryValue = string | number | undefined | null | string[];
 
 function qs(params: Record<string, QueryValue>): string {
   const query = new URLSearchParams();
-
   Object.entries(params).forEach(([key, value]) => {
     if (Array.isArray(value)) {
-      value.forEach((item) => {
-        if (item !== '') query.append(key, item);
-      });
-      return;
-    }
-
-    if (value !== '' && value !== undefined && value !== null) {
+      value.forEach((item) => item !== '' && query.append(key, item));
+    } else if (value !== '' && value !== undefined && value !== null) {
       query.set(key, String(value));
     }
   });
-
   const serialized = query.toString();
   return serialized ? `?${serialized}` : '';
 }
 
 const RETRYABLE_STATUS = new Set([502, 503, 504]);
-
 const wait = (milliseconds: number) =>
   new Promise<void>((resolve) => window.setTimeout(resolve, milliseconds));
 
-async function request<T>(
-  path: string,
-  init?: RequestInit,
-  maxAttempts = 4,
-): Promise<T> {
+async function request<T>(path: string, init?: RequestInit, maxAttempts = 4): Promise<T> {
   let lastError: Error | null = null;
-
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
-      const response = await fetch(`${API_URL}${path}`, {
-        cache: 'no-store',
-        ...init,
-      });
-
+      const response = await fetch(`${API_URL}${path}`, { cache: 'no-store', ...init });
       const text = await response.text();
       let body: unknown;
-
-      try {
-        body = text ? JSON.parse(text) : null;
-      } catch {
-        body = text;
-      }
-
+      try { body = text ? JSON.parse(text) : null; } catch { body = text; }
       if (response.ok) return body as T;
 
       const payload = body as {
         mensaje?: string;
-        detail?:
-          | string
-          | {
-              mensaje?: string;
-              error?: string;
-              funcion?: string;
-              request_id?: string;
-            };
+        detail?: string | { mensaje?: string; error?: string; funcion?: string };
       };
-
-      const message =
-        typeof payload?.detail === 'string'
-          ? payload.detail
-          : payload?.detail?.mensaje ||
-            payload?.detail?.error ||
-            payload?.mensaje ||
-            `Error HTTP ${response.status}`;
-
-      const functionName =
-        typeof payload?.detail === 'object'
-          ? payload.detail?.funcion
-          : undefined;
-
-      lastError = new Error(
-        functionName ? `${message} (${functionName})` : message,
-      );
-
-      if (!RETRYABLE_STATUS.has(response.status) || attempt >= maxAttempts) {
-        throw lastError;
-      }
+      const message = typeof payload?.detail === 'string'
+        ? payload.detail
+        : payload?.detail?.mensaje || payload?.detail?.error || payload?.mensaje || `Error HTTP ${response.status}`;
+      const functionName = typeof payload?.detail === 'object' ? payload.detail?.funcion : undefined;
+      lastError = new Error(functionName ? `${message} (${functionName})` : message);
+      if (!RETRYABLE_STATUS.has(response.status) || attempt >= maxAttempts) throw lastError;
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
       if (attempt >= maxAttempts) throw lastError;
     }
-
     await wait(600 * 2 ** (attempt - 1));
   }
-
   throw lastError || new Error('No se pudo completar la consulta.');
 }
 
@@ -221,85 +166,47 @@ function filterQuery(filters: TrackeoFilters): string {
 
 export const api = {
   url: API_URL,
-
   health: () => request<{ ok: boolean; version: string }>('/health'),
-
   trackeoResumen: (filters: TrackeoFilters) =>
-    request<{ resumen: TrackeoSummary }>(
-      `/api/metricas-trackeo/resumen${filterQuery(filters)}`,
-    ),
-
+    request<{ resumen: TrackeoSummary }>(`/api/metricas-trackeo/resumen${filterQuery(filters)}`),
   trackeoUniversos: (filters: TrackeoFilters) =>
-    request<{ universos: TrackeoUniversos }>(
-      `/api/metricas-trackeo/universos${filterQuery(filters)}`,
-    ),
-
+    request<{ universos: TrackeoUniversos }>(`/api/metricas-trackeo/universos${filterQuery(filters)}`),
   trackeoPrestadores: async (filters: TrackeoFilters) => {
-    const response = await request<{
-      cantidad_prestadores: number;
-      prestadores: PrestadorMetric[];
-    }>(`/api/metricas-trackeo/prestadores${filterQuery(filters)}`);
-
+    const response = await request<{ cantidad_prestadores: number; prestadores: PrestadorMetric[] }>(
+      `/api/metricas-trackeo/prestadores${filterQuery(filters)}`,
+    );
     return {
       ...response,
-      prestadores: response.prestadores.map((prestador) => ({
-        ...prestador,
-        servicios: prestador.servicios ?? prestador.total_general ?? 0,
-        cumplimiento_demora:
-          prestador.cumplimiento_demora ??
-          prestador.cumplimiento_demora_porcentaje ??
-          0,
+      prestadores: response.prestadores.map((item) => ({
+        ...item,
+        servicios: item.servicios ?? item.total_general ?? 0,
+        cumplimiento_demora: item.cumplimiento_demora ?? item.cumplimiento_demora_porcentaje ?? 0,
       })),
     };
   },
-
-  trackeoCampanas: (
-    fechaDesde: string,
-    fechaHasta: string,
-    prestadorIds: string[] = [],
-  ) =>
-    request<{
-      cantidad_campanas: number;
-      total_servicios: number;
-      campanas: CampanaMetric[];
-    }>(
+  trackeoCampanas: (fechaDesde: string, fechaHasta: string, prestadorIds: string[] = []) =>
+    request<{ cantidad_campanas: number; total_servicios: number; campanas: CampanaMetric[] }>(
       `/api/metricas-trackeo/campanas${qs({
         fecha_desde: fechaDesde,
         fecha_hasta: fechaHasta,
         prestador_id: prestadorIds,
       })}`,
     ),
-
-  trackeoListaPrestadores: (
-    fechaDesde: string,
-    fechaHasta: string,
-    campanas: string[] = [],
-  ) =>
-    request<{
-      cantidad_prestadores: number;
-      prestadores: PrestadorOption[];
-    }>(
+  trackeoListaPrestadores: (fechaDesde: string, fechaHasta: string, campanas: string[] = []) =>
+    request<{ cantidad_prestadores: number; prestadores: PrestadorOption[] }>(
       `/api/metricas-trackeo/lista-prestadores${qs({
         fecha_desde: fechaDesde,
         fecha_hasta: fechaHasta,
         campana: campanas,
       })}`,
     ),
-
   ingest: async (file: File, uploadedBy = 'dashboard') => {
     const body = new FormData();
     body.append('file', file, file.name);
     body.append('uploaded_by', uploadedBy);
-
-    return request<IngestResponse>('/ingestar', {
-      method: 'POST',
-      body,
-    });
+    return request<IngestResponse>('/ingestar', { method: 'POST', body });
   },
-
-  ingestStatus: (reportId: string) =>
-    request<IngestStatus>(`/ingestar/estado/${reportId}`),
+  ingestStatus: (reportId: string) => request<IngestStatus>(`/ingestar/estado/${reportId}`),
 };
 
 export { API_URL };
-
