@@ -12,12 +12,52 @@ export type TrackeoSummary = {
 export type TrackeoUniversos = { fecha_desde:string; fecha_hasta:string; servicios_cargados:number; servicios_vehiculares:number; servicios_evaluables:number; servicios_cancelados:number; servicios_no_finalizados:number; servicios_no_vehiculares:number; servicios_tipo_no_catalogado:number; servicios_estado_no_catalogado:number; universo_excel_historico:number };
 export type PrestadorOption = { prestador_id:string; prestador:string; servicios?:number };
 export type PrestadorMetric = PrestadorOption & {
-  total_general?:number; enviador_no?:number; enviador_si?:number; uso_enviador?:number; asigna_movil?:number;
-  no_asigna_movil_cantidad?:number; no_asigna_movil_porcentaje?:number; efectividad_enviador?:number;
-  servicios_programados?:number; programados_porcentaje?:number; servicios_cumplidos?:number; servicios_no_cumplidos?:number;
-  cumplimiento_demora?:number; cumplimiento_demora_porcentaje?:number; menos_60_cantidad?:number; entre_61_90_cantidad?:number;
-  entre_91_120_cantidad?:number; entre_121_180_cantidad?:number; mas_181_cantidad?:number; na_cantidad?:number;
-};
+  total_general?: number;
+
+  enviador_no?: number;
+  enviador_si?: number;
+  uso_enviador?: number;
+
+  asigna_movil?: number;
+  no_asigna_movil_cantidad?: number;
+  no_asigna_movil_porcentaje?: number;
+  efectividad_enviador?: number;
+
+  servicios_programados?: number;
+  programados_porcentaje?: number;
+
+  /*
+   * Nombres originales devueltos por Supabase.
+   */
+  cumplimiento_demora_cantidad?: number;
+  no_cumplimiento_demora_cantidad?: number;
+  cumplimiento_demora_porcentaje?: number;
+
+  /*
+   * Nombres normalizados utilizados por App.tsx.
+   */
+  servicios_cumplidos?: number;
+* servicios_no_cumplidos?: number;
+* cumplimiento_demora?: number;
+
+  *enos_60_cantidad?: number;
+  menos*60_porcentaje?: number;
+
+  entre_6*_90_cantidad?: number;
+  entre_61_*0_porcentaje?: number;
+
+  entre_91*120_cantidad?: number;
+  entre_91_*20_porcentaje?: number;
+
+  entre_1*1_180_cantidad?: number;
+  entre_1*1_180_porcentaje?: number;
+
+  mas_*81_cantidad?: number;
+  mas_181_po*centaje?: number;
+
+  na_cantidad?:*number;
+  na_porcentaje?: number;
+*;
 export type CampanaMetric = { campana:string; campana_normalizada?:string; servicios:number };
 export type IngestResponse = { status:'pendiente'|'procesando'|'duplicado'; report_id?:string; report_id_existente?:string; existente?:string; mensaje?:string; request_id?:string };
 export type IngestStatus = { id:string; file_name:string|null; tipo_reporte:string|null; status:'pendiente'|'procesando'|'procesado'|'error'|'reintentar'|'cancelado'; etapa:string|null; error_msg:string|null; filas_totales:number|null; filas_procesadas:number; periodo_desde:string|null; periodo_hasta:string|null; intentos:number; heartbeat_at:string|null; iniciado_at:string|null; finalizado_at:string|null };
