@@ -38,6 +38,7 @@ import './App.css';
 
 type Page = 'metrics' | 'providers' | 'upload';
 type Tone = 'blue' | 'green' | 'amber' | 'slate';
+type ProviderView = 'adoption' | 'programming' | 'compliance' | 'ranges';
 type SelectOption = { value: string; label: string };
 
 const DEFAULT_FILTERS: TrackeoFilters = {
@@ -276,6 +277,7 @@ function MultiSelect({
 
 function App() {
   const [page, setPage] = useState<Page>('metrics');
+  const [providerView, setProviderView] = useState<ProviderView>('adoption');
   const [draft, setDraft] = useState<TrackeoFilters>(DEFAULT_FILTERS);
   const [filters, setFilters] = useState<TrackeoFilters>(DEFAULT_FILTERS);
   const [summary, setSummary] = useState<TrackeoSummary | null>(null);
@@ -648,33 +650,69 @@ function App() {
             <div className="panel-title">
               <Users />
               <div>
-                <h2>Prestadores</h2>
-                <p>{nf(providers.length)} prestadores filtrados.</p>
+                <h2>Análisis completo por prestador</h2>
+                <p>{nf(providers.length)} prestadores filtrados. Los porcentajes conservan los denominadores del Excel.</p>
               </div>
             </div>
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Prestador</th>
-                    <th>Servicios</th>
-                    <th>Uso enviador</th>
-                    <th>Asigna móvil</th>
-                    <th>Cumplimiento</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {providers.map((provider) => (
-                    <tr key={provider.prestador_id}>
-                      <td>{provider.prestador}</td>
-                      <td>{nf(provider.servicios)}</td>
-                      <td>{pct(provider.uso_enviador)}</td>
-                      <td>{nf(provider.asigna_movil)}</td>
-                      <td>{pct(provider.cumplimiento_demora)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+
+            <div className="analytics-tabs" role="tablist" aria-label="Vista analítica">
+              {([
+                ['adoption', 'Adopción'],
+                ['programming', 'Programación'],
+                ['compliance', 'Cumplimiento'],
+                ['ranges', 'Rangos de demora'],
+              ] as Array<[ProviderView, string]>).map(([value, label]) => (
+                <button
+                  type="button"
+                  key={value}
+                  className={providerView === value ? 'active' : ''}
+                  onClick={() => setProviderView(value)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            <div className="table-wrap provider-table-wrap">
+              {providerView === 'adoption' && (
+                <table>
+                  <thead><tr><th>Prestador</th><th>Total</th><th>Sin enviador</th><th>Con enviador</th><th>% uso</th><th>Asigna móvil</th><th>No asigna</th><th>% no asigna</th><th>Efectividad</th></tr></thead>
+                  <tbody>{providers.map((p) => (
+                    <tr key={p.prestador_id}><td className="provider-name">{p.prestador}</td><td>{nf(p.total_general ?? p.servicios)}</td><td>{nf(p.enviador_no)}</td><td>{nf(p.enviador_si)}</td><td>{pct(p.uso_enviador)}</td><td>{nf(p.asigna_movil)}</td><td>{nf(p.no_asigna_movil_cantidad)}</td><td>{pct(p.no_asigna_movil_porcentaje)}</td><td>{pct(p.efectividad_enviador)}</td></tr>
+                  ))}</tbody>
+                </table>
+              )}
+
+              {providerView === 'programming' && (
+                <table>
+                  <thead><tr><th>Prestador</th><th>Con enviador</th><th>Programados</th><th>% programados</th><th>No programados</th></tr></thead>
+                  <tbody>{providers.map((p) => {
+                    const noProgramados = p.enviador_si == null || p.servicios_programados == null ? null : Math.max(0, p.enviador_si - p.servicios_programados);
+                    return <tr key={p.prestador_id}><td className="provider-name">{p.prestador}</td><td>{nf(p.enviador_si)}</td><td>{nf(p.servicios_programados)}</td><td>{pct(p.programados_porcentaje)}</td><td>{nf(noProgramados)}</td></tr>;
+                  })}</tbody>
+                </table>
+              )}
+
+              {providerView === 'compliance' && (
+                <table>
+                  <thead><tr><th>Prestador</th><th>Evaluados</th><th>Cumple</th><th>No cumple</th><th>% cumplimiento</th></tr></thead>
+                  <tbody>{providers.map((p) => {
+                    const evaluados = p.servicios_cumplidos == null || p.servicios_no_cumplidos == null ? p.enviador_si : p.servicios_cumplidos + p.servicios_no_cumplidos;
+                    return <tr key={p.prestador_id}><td className="provider-name">{p.prestador}</td><td>{nf(evaluados)}</td><td>{nf(p.servicios_cumplidos)}</td><td>{nf(p.servicios_no_cumplidos)}</td><td>{pct(p.cumplimiento_demora)}</td></tr>;
+                  })}</tbody>
+                </table>
+              )}
+
+              {providerView === 'ranges' && (
+                <table>
+                  <thead><tr><th>Prestador</th><th>Menos de 60</th><th>61 a 90</th><th>91 a 120</th><th>121 a 180</th><th>Más de 181</th><th>N/A</th><th>Total</th></tr></thead>
+                  <tbody>{providers.map((p) => {
+                    const values = [p.menos_60_cantidad, p.entre_61_90_cantidad, p.entre_91_120_cantidad, p.entre_121_180_cantidad, p.mas_181_cantidad, p.na_cantidad];
+                    const total = values.some((v) => v != null) ? values.reduce<number>((sum, v) => sum + Number(v ?? 0), 0) : null;
+                    return <tr key={p.prestador_id}><td className="provider-name">{p.prestador}</td><td>{nf(p.menos_60_cantidad)}</td><td>{nf(p.entre_61_90_cantidad)}</td><td>{nf(p.entre_91_120_cantidad)}</td><td>{nf(p.entre_121_180_cantidad)}</td><td>{nf(p.mas_181_cantidad)}</td><td>{nf(p.na_cantidad)}</td><td><strong>{nf(total)}</strong></td></tr>;
+                  })}</tbody>
+                </table>
+              )}
             </div>
           </section>
         )}
@@ -743,7 +781,7 @@ function App() {
         .multi-select-menu{position:absolute;z-index:1000;top:75px;left:0;width:100%;min-width:300px;max-height:390px;overflow:hidden;border:1px solid #cbd8e8;border-radius:13px;background:#fff;box-shadow:0 18px 45px rgba(15,35,65,.18)}.multi-select-search-row{height:54px;padding:8px 11px;border-bottom:1px solid #e5edf6;display:flex;align-items:center;gap:8px}.multi-select-search-row>svg{color:#64748b;flex:0 0 auto}.multi-select-search{min-width:0;flex:1;height:37px;border:0;outline:0;background:transparent;color:#10203b;font:inherit}.icon-button{border:0;background:transparent;color:#64748b;padding:4px;display:grid;place-items:center;cursor:pointer}.multi-select-actions{display:flex;gap:8px;padding:9px 11px;border-bottom:1px solid #e5edf6;background:#f8fbff}.multi-select-actions button,.multi-select-footer button{border:0;border-radius:8px;background:#e9f1ff;color:#1f56c8;padding:7px 10px;font-size:12px;font-weight:700;cursor:pointer}.multi-select-actions button:disabled{opacity:.45;cursor:not-allowed}
         .multi-select-options{max-height:230px;overflow-y:auto;padding:6px;display:grid;grid-template-columns:minmax(0,1fr);gap:2px;scrollbar-width:thin}.multi-select-option{width:100%;min-height:44px;padding:9px 10px;border-radius:8px;display:grid;grid-template-columns:18px minmax(0,1fr);align-items:center;column-gap:10px;color:#253852;font-size:13px;font-weight:500;line-height:20px;cursor:pointer;user-select:none}.multi-select-option:hover{background:#f0f5fc}.multi-select-option.selected{background:#eaf2ff;color:#174ea6}.multi-select-option input[type='checkbox']{appearance:auto;-webkit-appearance:checkbox;width:17px;height:17px;margin:0;padding:0;display:block;align-self:center;justify-self:center;accent-color:#2663eb;cursor:pointer;transform:none}.multi-select-option span{min-width:0;margin:0;padding:0;display:block;align-self:center;line-height:20px;overflow-wrap:anywhere}.multi-select-empty{padding:24px 14px;color:#7b8da5;font-size:13px;text-align:center}.multi-select-footer{min-height:45px;padding:8px 11px;border-top:1px solid #e5edf6;background:#f8fbff;display:flex;align-items:center;justify-content:space-between;gap:12px}.multi-select-footer span{color:#64748b;font-size:12px}
         .filter-actions{display:flex;justify-content:flex-end;gap:12px;margin-top:18px}button.primary,button.secondary{border:0;border-radius:11px;padding:13px 19px;font-weight:800;display:inline-flex;gap:8px;align-items:center;cursor:pointer}button.primary{background:#2663eb;color:#fff}button.secondary{background:#edf2f7;color:#32445d}button:disabled{opacity:.55;cursor:not-allowed}
-        .section-heading{margin-top:30px}.metric-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;margin-top:14px}.metric-card{background:#fff;border:1px solid #dce6f2;border-radius:17px;padding:23px;display:flex;gap:17px;min-height:150px}.metric-card-icon{width:54px;height:54px;border-radius:14px;display:grid;place-items:center;background:#eaf2ff;color:#2563eb;flex:0 0 auto}.metric-card-content{min-width:0;flex:1}.metric-label,.metric-caption{overflow-wrap:anywhere}.metric-value{white-space:nowrap}.tone-green{border-color:#83e4bd}.tone-green .metric-card-icon{background:#e6fbf3;color:#009c68}.tone-amber{border-color:#f7ca58}.tone-amber .metric-card-icon{background:#fff7dd;color:#c66b00}.tone-slate .metric-card-icon{background:#edf1f6;color:#516176}.metric-label{font-weight:800;color:#5b6f8a}.metric-value{font-size:34px;font-weight:900;color:#06142e;margin-top:7px}.metric-caption{color:#667891;margin-top:5px}.distribution{display:grid;gap:14px;margin-top:22px}.bar-row{display:grid;grid-template-columns:140px 1fr 180px;gap:15px;align-items:center}.bar-row>div{height:14px;background:#e9eff7;border-radius:20px;overflow:hidden}.bar-row i{display:block;height:100%;background:#18b982;border-radius:20px}.table-wrap{overflow:auto;margin-top:18px}table{border-collapse:collapse;width:100%}th,td{text-align:left;padding:13px;border-bottom:1px solid #e6edf5}th{color:#53667e;background:#f8fafc}.upload-panel{max-width:850px}.upload-box{margin-top:22px;border:2px dashed #9eb5d1;border-radius:16px;padding:44px;display:grid;place-items:center;gap:9px;cursor:pointer;background:#f8fbff}.upload-box input{display:none}.upload-button{margin-top:18px}.status-box{margin-top:18px;background:#eef5ff;border-radius:12px;padding:16px;display:grid;gap:5px}.alert{margin-top:20px;background:#fff0f0;color:#a80000;padding:14px;border-radius:12px;display:flex;gap:10px}.spin{animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
+        .section-heading{margin-top:30px}.metric-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;margin-top:14px}.metric-card{background:#fff;border:1px solid #dce6f2;border-radius:17px;padding:23px;display:flex;gap:17px;min-height:150px}.metric-card-icon{width:54px;height:54px;border-radius:14px;display:grid;place-items:center;background:#eaf2ff;color:#2563eb;flex:0 0 auto}.metric-card-content{min-width:0;flex:1}.metric-label,.metric-caption{overflow-wrap:anywhere}.metric-value{white-space:nowrap}.tone-green{border-color:#83e4bd}.tone-green .metric-card-icon{background:#e6fbf3;color:#009c68}.tone-amber{border-color:#f7ca58}.tone-amber .metric-card-icon{background:#fff7dd;color:#c66b00}.tone-slate .metric-card-icon{background:#edf1f6;color:#516176}.metric-label{font-weight:800;color:#5b6f8a}.metric-value{font-size:34px;font-weight:900;color:#06142e;margin-top:7px}.metric-caption{color:#667891;margin-top:5px}.distribution{display:grid;gap:14px;margin-top:22px}.bar-row{display:grid;grid-template-columns:140px 1fr 180px;gap:15px;align-items:center}.bar-row>div{height:14px;background:#e9eff7;border-radius:20px;overflow:hidden}.bar-row i{display:block;height:100%;background:#18b982;border-radius:20px}.analytics-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-top:20px}.analytics-tabs button{border:1px solid #cbd8e8;background:#f8fbff;color:#53667e;border-radius:10px;padding:9px 13px;font-weight:800;cursor:pointer}.analytics-tabs button.active{border-color:#2663eb;background:#eaf2ff;color:#174ea6}.provider-table-wrap{max-height:620px}.provider-table-wrap thead{position:sticky;top:0;z-index:2}.provider-name{min-width:320px;font-weight:700;color:#253852}.table-wrap{overflow:auto;margin-top:18px}table{border-collapse:collapse;width:100%;white-space:nowrap}th,td{text-align:left;padding:13px;border-bottom:1px solid #e6edf5}th{color:#53667e;background:#f8fafc}.upload-panel{max-width:850px}.upload-box{margin-top:22px;border:2px dashed #9eb5d1;border-radius:16px;padding:44px;display:grid;place-items:center;gap:9px;cursor:pointer;background:#f8fbff}.upload-box input{display:none}.upload-button{margin-top:18px}.status-box{margin-top:18px;background:#eef5ff;border-radius:12px;padding:16px;display:grid;gap:5px}.alert{margin-top:20px;background:#fff0f0;color:#a80000;padding:14px;border-radius:12px;display:flex;gap:10px}.spin{animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
         @media(min-width:821px) and (max-width:1279px){.app-shell{grid-template-columns:220px minmax(0,1fr)}.sidebar{padding:24px 14px}.main-content{padding:28px 24px;max-width:none}.filters-grid,.metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.bar-row{grid-template-columns:120px minmax(160px,1fr) 145px}}
         @media(min-width:601px) and (max-width:820px){.app-shell{display:block}.sidebar{position:static;height:auto;padding:18px 22px}.sidebar nav{grid-template-columns:repeat(3,minmax(0,1fr))}.backend-badge{margin-top:14px;width:fit-content}.main-content{padding:26px 22px}.filters-grid,.metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.multi-select-menu{min-width:100%}}
         @media(max-width:600px){.app-shell{display:block}.sidebar{position:static;height:auto;padding:16px}.sidebar nav,.filters-grid,.metric-grid{grid-template-columns:1fr}.backend-badge{margin-top:14px}.main-content{padding:22px 14px}.panel{padding:18px}.filter-actions{display:grid}.filter-actions button{justify-content:center}.bar-row{grid-template-columns:1fr}.multi-select-menu{min-width:100%;max-width:calc(100vw - 28px)}.multi-select-actions{flex-wrap:wrap}}
