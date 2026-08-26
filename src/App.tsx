@@ -257,7 +257,7 @@ function App() {
   const downloadCsv = (rows: Record<string, unknown>[], filename: string) => {
     if (!rows.length) return;
     const columns = Object.keys(rows[0]);
-    const escape = (value: unknown) => `"${String(value ?? '').replaceAll('"','""')}"`;
+    const escape = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
     const csv = '\ufeff' + [columns.join(';'), ...rows.map((row) => columns.map((c) => escape(row[c])).join(';'))].join('\n');
     const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
     const anchor = document.createElement('a'); anchor.href = url; anchor.download = filename; anchor.click(); URL.revokeObjectURL(url);
