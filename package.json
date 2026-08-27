@@ -9,4 +9,15 @@
     "react": "latest", "react-dom": "latest", "lucide-react": "latest", "recharts": "^2.15.4"
   },
   "devDependencies": { "@types/react": "latest", "@types/react-dom": "latest" }
+  {
+  "scripts": {
+    "dev": "vite",
+    "build": "npm run diagnose",
+    "typecheck": "tsc -b --pretty false --verbose",
+    "vite:build": "vite build --debug",
+    "diagnose": "node scripts/diagnose-build.mjs",
+    "preview": "vite preview"
+  }
+}
+
 }
