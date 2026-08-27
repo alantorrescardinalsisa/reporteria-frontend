@@ -1,0 +1,22 @@
+html {
+  min-width: 320px;
+  min-height: 100%;
+  background: #f3f7fc;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
