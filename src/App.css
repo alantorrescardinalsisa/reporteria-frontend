@@ -1,1042 +1,560 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
-import {
-  AlertCircle,
-  BarChart3,
-  CheckCircle2,
-  ChevronDown,
-  Clock3,
-  Database,
-  Download,
-  Filter,
-  ListChecks,
-  RefreshCw,
-  Search,
-  Server,
-  Table2,
-  TrendingUp,
-  Truck,
-  Upload,
-  Users,
-  X,
-} from "lucide-react";
-import {
-  api,
-  type CampanaMetric,
-  type CampanaPrestadorMetric,
-  type DataQuality,
-  type EstadoOption,
-  type IngestStatus,
-  type MetricaTrackeo,
-  type PrestadorMetric,
-  type PrestadorOption,
-  type TrackeoFilters,
-  type TrackeoService,
-  type TrackeoSummary,
-  type TrackeoUniversos,
-  type TrendPoint,
-} from "./api";
-import "./App.css";
-
-type Page = "metrics" | "providers" | "cross" | "upload";
-type Option = { value: string; label: string };
-type Drill = {
-  title: string;
-  metric: MetricaTrackeo;
-  rows: TrackeoService[];
-  total: number;
-  page: number;
-  pages: number;
-  pageSize: number;
-  loading: boolean;
-  exporting: boolean;
-  error: string | null;
-};
-const DEFAULT: TrackeoFilters = {
-  fecha_desde: "2026-08-01",
-  fecha_hasta: "2026-08-24",
-  campanas: [],
-  prestador_ids: [],
-  estados: [],
-};
-const nf = (v?: number | null) =>
-  v == null ? "—" : new Intl.NumberFormat("es-AR").format(v);
-const pct = (v?: number | null) =>
-  v == null
-    ? "—"
-    : `${new Intl.NumberFormat("es-AR", { maximumFractionDigits: 1 }).format(v * 100)} %`;
-const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
-function initial(): TrackeoFilters {
-  const p = new URLSearchParams(location.search);
-  return {
-    fecha_desde: p.get("desde") || DEFAULT.fecha_desde,
-    fecha_hasta: p.get("hasta") || DEFAULT.fecha_hasta,
-    campanas: p.getAll("campana"),
-    prestador_ids: p.getAll("prestador_id"),
-    estados: p.getAll("estado"),
-  };
+:root {
+  font-family: Inter, system-ui;
+  color: #10223b;
+  background: #f3f7fc;
 }
-
-function MultiSelect({
-  label,
-  values,
-  options,
-  placeholder,
-  onChange,
-}: {
-  label: string;
-  values: string[];
-  options: Option[];
-  placeholder: string;
-  onChange: (v: string[]) => void;
-}) {
-  const [open, setOpen] = useState(false),
-    [term, setTerm] = useState("");
-  const ref = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    const h = (e: MouseEvent) =>
-      ref.current && !ref.current.contains(e.target as Node) && setOpen(false);
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, []);
-  const list = options.filter((o) =>
-    o.label.toLowerCase().includes(term.toLowerCase()),
-  );
-  const title =
-    values.length === 0
-      ? placeholder
-      : values.length === 1
-        ? options.find((o) => o.value === values[0])?.label || values[0]
-        : `${values.length} seleccionados`;
-  return (
-    <div className="multi" ref={ref}>
-      <span>{label}</span>
-      <button type="button" onClick={() => setOpen(!open)}>
-        {title}
-        <ChevronDown size={16} />
-      </button>
-      {open && (
-        <div className="menu">
-          <div className="search">
-            <Search size={15} />
-            <input
-              value={term}
-              onChange={(e) => setTerm(e.target.value)}
-              placeholder="Buscar…"
-            />
-          </div>
-          <div className="menu-actions">
-            <button onClick={() => onChange(list.map((x) => x.value))}>
-              Seleccionar visibles
-            </button>
-            <button onClick={() => onChange([])}>Limpiar</button>
-          </div>
-          <div className="options">
-            {list.map((o) => (
-              <label key={o.value}>
-                <input
-                  type="checkbox"
-                  checked={values.includes(o.value)}
-                  onChange={() =>
-                    onChange(
-                      values.includes(o.value)
-                        ? values.filter((x) => x !== o.value)
-                        : [...values, o.value],
-                    )
-                  }
-                />
-                {o.label}
-              </label>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
+* {
+  box-sizing: border-box;
 }
-function Card({
-  icon,
-  title,
-  value,
-  detail,
-  onClick,
-  tone = "blue",
-}: {
-  icon: ReactNode;
-  title: string;
-  value: string;
-  detail: string;
-  onClick?: () => void;
-  tone?: string;
-}) {
-  return (
-    <article
-      className={`card ${tone} ${onClick ? "clickable" : ""}`}
-      onClick={onClick}
-    >
-      <div className="icon">{icon}</div>
-      <div>
-        <span>{title}</span>
-        <strong>{value}</strong>
-        <small>{detail}</small>
-        {onClick && <b>Ver servicios</b>}
-      </div>
-    </article>
-  );
+body {
+  margin: 0;
 }
-function Trend({ data }: { data: TrendPoint[] }) {
-  if (!data.length) return <div className="empty">Sin datos</div>;
-  const W = 900,
-    H = 260,
-    P = 35,
-    x = (i: number) => P + (i * (W - 2 * P)) / Math.max(1, data.length - 1),
-    y = (v: number) => H - P - v * (H - 2 * P),
-    points = (k: keyof TrendPoint) =>
-      data.map((d, i) => `${x(i)},${y(Number(d[k] || 0))}`).join(" ");
-  return (
-    <svg className="chart" viewBox={`0 0 ${W} ${H}`}>
-      {[0, 0.25, 0.5, 0.75, 1].map((v) => (
-        <g key={v}>
-          <line x1={P} x2={W - P} y1={y(v)} y2={y(v)} />
-          <text x="2" y={y(v) + 4}>
-            {v * 100}%
-          </text>
-        </g>
-      ))}
-      <polyline className="line green" points={points("cumplimiento_demora")} />
-      <polyline className="line cyan" points={points("efectividad_enviador")} />
-      <polyline className="line purple" points={points("uso_enviador")} />
-      {data.map((d, i) => (
-        <text
-          className="date"
-          key={d.fecha}
-          x={x(i)}
-          y={H - 7}
-          textAnchor="middle"
-        >
-          {d.fecha.slice(5)}
-        </text>
-      ))}
-    </svg>
-  );
+button,
+input {
+  font: inherit;
 }
-function csv(rows: Record<string, unknown>[], name: string) {
-  if (!rows.length) return;
-  const cols = Object.keys(rows[0]),
-    esc = (x: unknown) => `"${String(x ?? "").replace(/"/g, '""')}"`,
-    data =
-      "\ufeff" +
-      [
-        cols.join(";"),
-        ...rows.map((r) => cols.map((c) => esc(r[c])).join(";")),
-      ].join("\n"),
-    url = URL.createObjectURL(new Blob([data], { type: "text/csv" })),
-    a = document.createElement("a");
-  a.href = url;
-  a.download = name;
-  a.click();
-  URL.revokeObjectURL(url);
+.shell {
+  display: grid;
+  grid-template-columns: 250px 1fr;
+  min-height: 100vh;
 }
-
-export default function App() {
-  const seed = useMemo(initial, []),
-    [page, setPage] = useState<Page>("metrics"),
-    [draft, setDraft] = useState(seed),
-    [filters, setFilters] = useState(seed),
-    [summary, setSummary] = useState<TrackeoSummary | null>(null),
-    [universes, setUniverses] = useState<TrackeoUniversos | null>(null),
-    [providers, setProviders] = useState<PrestadorMetric[]>([]),
-    [campaigns, setCampaigns] = useState<CampanaMetric[]>([]),
-    [providerOptions, setProviderOptions] = useState<PrestadorOption[]>([]),
-    [states, setStates] = useState<EstadoOption[]>([]),
-    [trend, setTrend] = useState<TrendPoint[]>([]),
-    [quality, setQuality] = useState<DataQuality | null>(null),
-    [cross, setCross] = useState<CampanaPrestadorMetric[]>([]),
-    [loading, setLoading] = useState(false),
-    [error, setError] = useState<string | null>(null),
-    [backend, setBackend] = useState({ ok: false, version: "" }),
-    [drill, setDrill] = useState<Drill | null>(null),
-    [file, setFile] = useState<File | null>(null),
-    [uploading, setUploading] = useState(false),
-    [uploadStatus, setUploadStatus] = useState<IngestStatus | null>(null),
-    [uploadMessage, setUploadMessage] = useState(""),
-    [providerSearch, setProviderSearch] = useState("");
-  const load = useCallback(async (f: TrackeoFilters) => {
-    setLoading(true);
-    setError(null);
-    const r = await Promise.allSettled([
-      api.trackeoResumen(f),
-      api.trackeoUniversos(f),
-      api.trackeoPrestadores(f),
-      api.trackeoCampanas(f),
-      api.trackeoListaPrestadores(f),
-      api.trackeoEstados(f),
-      api.trackeoTendencia(f),
-      api.trackeoCalidadDatos(f),
-      api.trackeoCampanaPrestador(f),
-    ]);
-    const errs: string[] = [];
-    const take = <T,>(i: number, fn: (x: T) => void) =>
-      r[i].status === "fulfilled"
-        ? fn((r[i] as PromiseFulfilledResult<T>).value)
-        : errs.push(String((r[i] as PromiseRejectedResult).reason));
-    take<{ resumen: TrackeoSummary }>(0, (x) => setSummary(x.resumen));
-    take<{ universos: TrackeoUniversos }>(1, (x) => setUniverses(x.universos));
-    take<{ prestadores: PrestadorMetric[] }>(2, (x) =>
-      setProviders(x.prestadores),
-    );
-    take<{ campanas: CampanaMetric[] }>(3, (x) => setCampaigns(x.campanas));
-    take<{ prestadores: PrestadorOption[] }>(4, (x) =>
-      setProviderOptions(x.prestadores),
-    );
-    take<{ estados: EstadoOption[] }>(5, (x) => setStates(x.estados));
-    take<{ tendencia: TrendPoint[] }>(6, (x) => setTrend(x.tendencia));
-    take<{ calidad: DataQuality }>(7, (x) => setQuality(x.calidad));
-    take<{ resultados: CampanaPrestadorMetric[] }>(8, (x) =>
-      setCross(x.resultados),
-    );
-    if (errs.length) setError(errs.join(" | "));
-    setLoading(false);
-  }, []);
-  useEffect(() => {
-    load(filters);
-  }, [filters, load]);
-  useEffect(() => {
-    const run = () =>
-      api
-        .health()
-        .then((x) => setBackend({ ok: x.ok, version: x.version }))
-        .catch(() => setBackend({ ok: false, version: "" }));
-    run();
-    const t = setInterval(run, 30000);
-    return () => clearInterval(t);
-  }, []);
-  useEffect(() => {
-    const p = new URLSearchParams({
-      desde: filters.fecha_desde,
-      hasta: filters.fecha_hasta,
-      page,
-    });
-    filters.campanas.forEach((x) => p.append("campana", x));
-    filters.prestador_ids.forEach((x) => p.append("prestador_id", x));
-    filters.estados.forEach((x) => p.append("estado", x));
-    history.replaceState(null, "", `?${p}`);
-  }, [filters, page]);
-  const campOpts = campaigns.map((x) => ({
-      value: x.campana,
-      label: `${x.campana} (${nf(x.servicios)})`,
-    })),
-    provOpts = providerOptions.map((x) => ({
-      value: x.prestador_id,
-      label: x.prestador,
-    })),
-    stateOpts = states.map((x) => ({
-      value: x.estado_normalizado,
-      label: `${x.estado} (${nf(x.cantidad)})`,
-    }));
-  async function open(
-    metric: MetricaTrackeo,
-    title: string,
-    p = 1,
-    size = 100,
-  ) {
-    setDrill((d) => ({
-      title,
-      metric,
-      rows: d?.metric === metric ? d.rows : [],
-      total: d?.metric === metric ? d.total : 0,
-      page: p,
-      pages: d?.pages || 0,
-      pageSize: size,
-      loading: true,
-      exporting: false,
-      error: null,
-    }));
-    try {
-      const x = await api.trackeoServiciosPaginados(filters, metric, p, size);
-      setDrill({
-        title,
-        metric,
-        rows: x.servicios,
-        total: x.cantidad_total,
-        page: x.pagina,
-        pages: x.total_paginas,
-        pageSize: x.tamano_pagina,
-        loading: false,
-        exporting: false,
-        error: null,
-      });
-    } catch (e) {
-      setDrill((d) => (d ? { ...d, loading: false, error: String(e) } : null));
-    }
+aside {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  background: linear-gradient(#123b6d, #072b4c);
+  color: white;
+  padding: 28px 18px;
+  display: flex;
+  flex-direction: column;
+}
+.brand {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 0 10px 28px;
+}
+.brand > svg {
+  padding: 9px;
+  width: 42px;
+  height: 42px;
+  background: #1874ed;
+  border-radius: 11px;
+}
+.brand b,
+.brand span {
+  display: block;
+}
+.brand b {
+  font-size: 21px;
+}
+.brand span {
+  font-size: 12px;
+  color: #70cdf8;
+}
+nav {
+  display: grid;
+  gap: 8px;
+}
+nav button {
+  border: 0;
+  background: transparent;
+  color: #d2dfed;
+  border-radius: 10px;
+  padding: 13px 10px;
+  text-align: left;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  cursor: pointer;
+}
+nav button svg {
+  width: 18px;
+}
+nav button.active,
+nav button:hover {
+  background: #1c5895;
+  color: white;
+}
+.backend {
+  margin-top: auto;
+  border: 1px solid #326189;
+  border-radius: 12px;
+  padding: 13px;
+  display: flex;
+  gap: 9px;
+}
+.backend span,
+.backend b {
+  display: block;
+  font-size: 12px;
+}
+.ok {
+  color: #42dda0;
+}
+.bad {
+  color: #ff9696;
+}
+main {
+  min-width: 0;
+  max-width: 1600px;
+  width: 100%;
+  margin: auto;
+  padding: 25px 32px 50px;
+}
+.panel {
+  background: white;
+  border: 1px solid #d7e3ef;
+  border-radius: 17px;
+  padding: 20px;
+  box-shadow: 0 10px 28px #1d456d12;
+}
+.panel > header,
+.block > header,
+.page-panel > header,
+.upload > header {
+  display: flex;
+  gap: 11px;
+  align-items: flex-start;
+}
+.panel h2,
+.title h1 {
+  margin: 0;
+}
+.panel p,
+.title p {
+  margin: 5px 0;
+  color: #6b7e94;
+}
+.filter-grid {
+  display: grid;
+  grid-template-columns: 135px 135px minmax(170px, 1fr) minmax(190px, 1fr) minmax(
+      210px,
+      1fr
+    ) auto auto;
+  gap: 10px;
+  align-items: end;
+  margin-top: 17px;
+}
+.filter-grid label,
+.multi {
+  display: grid;
+  gap: 5px;
+  position: relative;
+}
+.filter-grid span,
+.multi > span {
+  font-size: 12px;
+  font-weight: 800;
+}
+.filter-grid input,
+.multi > button,
+.filter-grid > button {
+  height: 42px;
+  border: 1px solid #cad8e7;
+  border-radius: 9px;
+  background: white;
+  padding: 0 10px;
+}
+.multi > button {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.menu {
+  position: absolute;
+  z-index: 30;
+  top: 65px;
+  width: max(100%, 320px);
+  right: 0;
+  background: white;
+  border: 1px solid #cbd8e5;
+  border-radius: 11px;
+  box-shadow: 0 18px 40px #163a612e;
+  overflow: hidden;
+}
+.search {
+  height: 42px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border: 1px solid #cad8e7;
+  border-radius: 9px;
+  background: white;
+}
+.menu .search {
+  border: 0;
+  border-bottom: 1px solid #e1e8f0;
+  border-radius: 0;
+}
+.search input {
+  border: 0;
+  outline: 0;
+  min-width: 0;
+  flex: 1;
+}
+.menu-actions {
+  display: flex;
+  gap: 7px;
+  padding: 7px;
+  background: #f5f8fc;
+}
+.menu-actions button,
+.toolbar button,
+.modal button {
+  border: 0;
+  border-radius: 7px;
+  background: #e6effb;
+  color: #1457a9;
+  padding: 7px 9px;
+  font-weight: 700;
+}
+.options {
+  max-height: 270px;
+  overflow: auto;
+  padding: 6px;
+}
+.options label {
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 7px;
+}
+.options label:hover {
+  background: #eaf2ff;
+}
+.primary,
+.secondary {
+  border: 0 !important;
+  font-weight: 800;
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  justify-content: center;
+}
+.primary {
+  background: #2777e4 !important;
+  color: white;
+}
+.secondary {
+  background: #e9eff6 !important;
+  color: #40556d;
+}
+.title {
+  margin: 30px 0 22px;
+}
+.title h1 {
+  font-size: 31px;
+}
+.cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  margin: 12px 0 25px;
+}
+.card {
+  display: flex;
+  gap: 13px;
+  min-height: 142px;
+  background: white;
+  border: 1px solid #dae5ef;
+  border-radius: 15px;
+  padding: 18px;
+  box-shadow: 0 9px 22px #1d446b10;
+}
+.card .icon {
+  width: 47px;
+  height: 47px;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  background: #e4f3ff;
+  color: #1485bf;
+}
+.card.green .icon {
+  background: #e1faef;
+  color: #08a36a;
+}
+.card.red .icon {
+  background: #ffe7e9;
+  color: #d24553;
+}
+.card.amber .icon {
+  background: #fff2d2;
+  color: #bd8513;
+}
+.card.purple .icon {
+  background: #efe4ff;
+  color: #8538c9;
+}
+.card span,
+.card strong,
+.card small,
+.card b {
+  display: block;
+}
+.card span {
+  font-weight: 800;
+  color: #50657c;
+}
+.card strong {
+  font-size: 30px;
+  margin: 5px 0;
+}
+.card small {
+  color: #6b7d91;
+}
+.card b {
+  font-size: 12px;
+  color: #1766d5;
+  margin-top: 8px;
+}
+.clickable {
+  cursor: pointer;
+}
+.clickable:hover {
+  border-color: #5d9bea;
+}
+.block {
+  margin-top: 20px;
+}
+.chart {
+  width: 100%;
+  min-width: 700px;
+}
+.chart line {
+  stroke: #dce5ef;
+}
+.chart text {
+  fill: #74869a;
+  font-size: 10px;
+}
+.chart .line {
+  fill: none;
+  stroke-width: 4;
+}
+.green {
+  stroke: #1ab97b;
+}
+.cyan {
+  stroke: #2488d5;
+}
+.purple {
+  stroke: #8950df;
+}
+.ranges {
+  display: grid;
+  gap: 9px;
+  margin-top: 16px;
+}
+.ranges button {
+  display: grid;
+  grid-template-columns: 120px 1fr 150px;
+  gap: 10px;
+  align-items: center;
+  border: 0;
+  background: transparent;
+  padding: 7px;
+  text-align: left;
+}
+.ranges button:hover {
+  background: #f3f7fc;
+}
+.ranges i,
+.quality i {
+  height: 11px;
+  background: #e1e9f2;
+  border-radius: 10px;
+  overflow: hidden;
+}
+.ranges i b {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #12b77b, #63d6ad);
+}
+.quality {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-top: 15px;
+}
+.quality article {
+  border: 1px solid #e1e9f1;
+  border-radius: 11px;
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+}
+.quality span {
+  display: flex;
+  justify-content: space-between;
+}
+.quality i b {
+  display: block;
+  height: 100%;
+  background: #287ee5;
+}
+.quality small {
+  color: #687b90;
+}
+.alert {
+  padding: 12px;
+  background: #fff0f1;
+  color: #982b37;
+  border-radius: 10px;
+  margin: 14px 0;
+  display: flex;
+  gap: 8px;
+}
+.page-panel,
+.upload {
+  margin-top: 20px;
+}
+.toolbar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin: 15px 0;
+}
+.toolbar .search {
+  margin-right: auto;
+}
+.toolbar input {
+  min-width: 260px;
+}
+.toolbar button {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.table {
+  overflow: auto;
+}
+.table table {
+  border-collapse: collapse;
+  width: 100%;
+  white-space: nowrap;
+}
+.table th,
+.table td {
+  padding: 11px;
+  border-bottom: 1px solid #e4ebf2;
+  text-align: left;
+}
+.table th {
+  font-size: 12px;
+  color: #50647a;
+  background: #f5f8fc;
+}
+.drop {
+  margin-top: 20px;
+  min-height: 260px;
+  border: 2px dashed #2d6aaa;
+  border-radius: 15px;
+  background: #eef6ff;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 9px;
+}
+.drop input {
+  display: none;
+}
+.upload-button {
+  width: 100%;
+  height: 44px;
+  border-radius: 9px;
+  margin-top: 13px;
+}
+.status {
+  display: grid;
+  gap: 4px;
+  background: #eaf3ff;
+  padding: 13px;
+  border-radius: 9px;
+  margin-top: 12px;
+}
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: #07192b99;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+.modal {
+  background: white;
+  border-radius: 16px;
+  width: min(1300px, 97vw);
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.modal > header {
+  display: flex;
+  justify-content: space-between;
+  padding: 18px;
+  border-bottom: 1px solid #e3eaf2;
+}
+.modal > header > div:last-child {
+  display: flex;
+  gap: 7px;
+}
+.modal-table {
+  flex: 1;
+}
+.modal footer {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  padding: 12px;
+}
+.spin {
+  animation: spin 1s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
   }
-  async function exportAll() {
-    if (!drill) return;
-    setDrill({ ...drill, exporting: true });
-    try {
-      const rows: TrackeoService[] = [];
-      for (let p = 1; p <= Math.ceil(drill.total / 500); p++) {
-        rows.push(
-          ...(
-            await api.trackeoServiciosPaginados(filters, drill.metric, p, 500)
-          ).servicios,
-        );
-        await sleep(250);
-      }
-      csv(
-        rows as unknown as Record<string, unknown>[],
-        `detalle-${drill.metric}.csv`,
-      );
-      setDrill((d) => (d ? { ...d, exporting: false } : null));
-    } catch (e) {
-      setDrill((d) =>
-        d ? { ...d, exporting: false, error: String(e) } : null,
-      );
-    }
+}
+@media (max-width: 1350px) {
+  .filter-grid {
+    grid-template-columns: repeat(3, 1fr);
   }
-  async function upload() {
-    if (!file) return;
-    setUploading(true);
-    setUploadMessage("Subiendo…");
-    try {
-      const x = await api.ingest(file);
-      if (x.status === "duplicado") {
-        setUploadMessage(x.mensaje || "Archivo duplicado");
-        return;
-      }
-      if (!x.report_id) throw Error("No se recibió report_id");
-      for (let i = 0; i < 600; i++) {
-        const s = await api.ingestStatus(x.report_id);
-        setUploadStatus(s);
-        setUploadMessage(
-          `${s.etapa || s.status}: ${nf(s.filas_procesadas)} filas`,
-        );
-        if (s.status === "procesado") {
-          await load(filters);
-          setFile(null);
-          return;
-        }
-        if (["error", "cancelado"].includes(s.status))
-          throw Error(s.error_msg || s.status);
-        await sleep(3000);
-      }
-    } catch (e) {
-      setUploadMessage(String(e));
-    } finally {
-      setUploading(false);
-    }
+  .cards {
+    grid-template-columns: repeat(2, 1fr);
   }
-  const qualityRows: [string, number][] = quality
-    ? [
-        ["Tipo de servicio", quality.tipo_servicio_completo],
-        ["Estado", quality.estado_completo],
-        ["Campaña", quality.campana_completa],
-        ["Prestador", quality.prestador_completo],
-        ["Despachador", quality.despachador_completo],
-        ["Coordenadas", quality.coordenadas_disponibles],
-        ["Móvil registrado", quality.movil_registrado],
-        ["Demora prometida", quality.demora_prometida_completa],
-        ["Demora real", quality.demora_real_completa],
-      ]
-    : [];
-  const displayedProviders = providers.filter((x) =>
-    x.prestador.toLowerCase().includes(providerSearch.toLowerCase()),
-  );
-  const ranges: [
-    string,
-    number | undefined,
-    number | undefined,
-    MetricaTrackeo,
-  ][] = [
-    [
-      "Menos de 60",
-      summary?.menos_60_cantidad,
-      summary?.menos_60_porcentaje,
-      "MENOS_60",
-    ],
-    [
-      "61 a 90",
-      summary?.entre_61_90_cantidad,
-      summary?.entre_61_90_porcentaje,
-      "ENTRE_61_90",
-    ],
-    [
-      "91 a 120",
-      summary?.entre_91_120_cantidad,
-      summary?.entre_91_120_porcentaje,
-      "ENTRE_91_120",
-    ],
-    [
-      "121 a 180",
-      summary?.entre_121_180_cantidad,
-      summary?.entre_121_180_porcentaje,
-      "ENTRE_121_180",
-    ],
-    [
-      "Más de 181",
-      summary?.mas_181_cantidad,
-      summary?.mas_181_porcentaje,
-      "MAS_181",
-    ],
-    ["N/A", summary?.na_cantidad, summary?.na_porcentaje, "NA"],
-  ];
-  return (
-    <div className="shell">
-      <aside>
-        <div className="brand">
-          <Database />
-          <div>
-            <b>Reportería</b>
-            <span>Prestadores</span>
-          </div>
-        </div>
-        <nav>
-          <button
-            className={page === "metrics" ? "active" : ""}
-            onClick={() => setPage("metrics")}
-          >
-            <BarChart3 />
-            Métricas de Trackeo
-          </button>
-          <button
-            className={page === "providers" ? "active" : ""}
-            onClick={() => setPage("providers")}
-          >
-            <Users />
-            Detalle por prestador
-          </button>
-          <button
-            className={page === "cross" ? "active" : ""}
-            onClick={() => setPage("cross")}
-          >
-            <Table2 />
-            Campaña × prestador
-          </button>
-          <button
-            className={page === "upload" ? "active" : ""}
-            onClick={() => setPage("upload")}
-          >
-            <Upload />
-            Cargar reportes
-          </button>
-        </nav>
-        <div className="backend">
-          <Server />
-          <span>
-            Backend v{backend.version}
-            <b className={backend.ok ? "ok" : "bad"}>
-              {backend.ok ? "Conectado" : "Sin conexión"}
-            </b>
-          </span>
-        </div>
-      </aside>
-      <main>
-        {page !== "upload" && (
-          <section className="panel filters">
-            <header>
-              <Filter />
-              <div>
-                <h2>Filtros globales</h2>
-                <p>
-                  Estado manual. Sin selección se incluyen todos los estados.
-                </p>
-              </div>
-            </header>
-            <div className="filter-grid">
-              <label>
-                <span>Desde</span>
-                <input
-                  type="date"
-                  value={draft.fecha_desde}
-                  onChange={(e) =>
-                    setDraft({ ...draft, fecha_desde: e.target.value })
-                  }
-                />
-              </label>
-              <label>
-                <span>Hasta</span>
-                <input
-                  type="date"
-                  value={draft.fecha_hasta}
-                  onChange={(e) =>
-                    setDraft({ ...draft, fecha_hasta: e.target.value })
-                  }
-                />
-              </label>
-              <MultiSelect
-                label="Campañas"
-                values={draft.campanas}
-                options={campOpts}
-                placeholder="Todas las campañas"
-                onChange={(campanas) => setDraft({ ...draft, campanas })}
-              />
-              <MultiSelect
-                label="Prestadores"
-                values={draft.prestador_ids}
-                options={provOpts}
-                placeholder="Todos los prestadores"
-                onChange={(prestador_ids) =>
-                  setDraft({ ...draft, prestador_ids })
-                }
-              />
-              <MultiSelect
-                label="Estados"
-                values={draft.estados}
-                options={stateOpts}
-                placeholder="Todos los estados"
-                onChange={(estados) => setDraft({ ...draft, estados })}
-              />
-              <button
-                className="secondary"
-                onClick={() => {
-                  setDraft(DEFAULT);
-                  setFilters(DEFAULT);
-                }}
-              >
-                Restablecer
-              </button>
-              <button
-                className="primary"
-                onClick={() => setFilters({ ...draft })}
-              >
-                {loading && <RefreshCw className="spin" />}Aplicar filtros
-              </button>
-            </div>
-          </section>
-        )}
-        {error && (
-          <div className="alert">
-            <AlertCircle />
-            {error}
-          </div>
-        )}
-        {page === "metrics" && (
-          <>
-            <div className="title">
-              <h1>Métricas de Trackeo</h1>
-              <p>Modelo auditable con Estado manual y filtros reproducibles.</p>
-            </div>
-            <h2>Universos analíticos</h2>
-            <section className="cards">
-              <Card
-                icon={<Database />}
-                title="Servicios en el periodo"
-                value={nf(universes?.servicios_cargados)}
-                detail="Total visible para las fechas"
-              />
-              <Card
-                icon={<Truck />}
-                title="Servicios vehiculares"
-                value={nf(universes?.servicios_vehiculares)}
-                detail="Tipos operativos seleccionados"
-              />
-              <Card
-                icon={<CheckCircle2 />}
-                title="Servicios evaluables"
-                value={nf(universes?.servicios_evaluables)}
-                detail="Base seleccionada para KPI"
-                tone="green"
-              />
-              <Card
-                icon={<AlertCircle />}
-                title="Vehiculares cancelados"
-                value={nf(universes?.servicios_cancelados)}
-                detail="Estados cancelados"
-                tone="red"
-              />
-              <Card
-                icon={<Clock3 />}
-                title="Vehiculares no finalizados"
-                value={nf(universes?.servicios_no_finalizados)}
-                detail="Pendientes o en curso"
-                tone="amber"
-              />
-              <Card
-                icon={<ListChecks />}
-                title="Universo seleccionado"
-                value={nf(summary?.servicios_consultados)}
-                detail={
-                  filters.estados.length
-                    ? filters.estados.join(", ")
-                    : "Todos los estados"
-                }
-              />
-            </section>
-            <h2>Indicadores operativos</h2>
-            <section className="cards">
-              <Card
-                icon={<Database />}
-                title="Servicios seleccionados"
-                value={nf(summary?.servicios_consultados)}
-                detail={`${nf(summary?.enviador_si)} con enviador · ${nf(summary?.enviador_no)} sin enviador`}
-              />
-              <Card
-                icon={<TrendingUp />}
-                title="Uso del enviador"
-                value={pct(summary?.uso_enviador)}
-                detail={`${nf(summary?.enviador_si)} servicios`}
-                onClick={() => open("ENVIADOR_SI", "Servicios con enviador")}
-              />
-              <Card
-                icon={<Truck />}
-                title="Asigna móvil"
-                value={nf(summary?.asigna_movil)}
-                detail={`${pct(summary?.efectividad_enviador)} efectividad`}
-                tone="purple"
-                onClick={() => open("ASIGNA_MOVIL", "Asigna móvil")}
-              />
-              <Card
-                icon={<AlertCircle />}
-                title="No asigna móvil"
-                value={nf(summary?.no_asigna_movil_cantidad)}
-                detail={pct(summary?.no_asigna_movil_porcentaje)}
-                tone="red"
-                onClick={() => open("NO_ASIGNA_MOVIL", "No asigna móvil")}
-              />
-              <Card
-                icon={<ListChecks />}
-                title="Servicios programados"
-                value={nf(summary?.servicios_programados)}
-                detail={pct(summary?.programados_porcentaje)}
-                onClick={() => open("PROGRAMADOS", "Programados")}
-              />
-              <Card
-                icon={<CheckCircle2 />}
-                title="Cumplimiento de demora"
-                value={
-                  (summary?.servicios_evaluados_demora ?? 0) > 0
-                    ? pct(summary?.cumplimiento_demora)
-                    : "N/A"
-                }
-                detail={`${nf(summary?.servicios_cumplidos)} cumplen · ${nf(summary?.servicios_no_cumplidos)} no cumplen`}
-                tone="green"
-                onClick={() => open("CUMPLE_DEMORA", "Cumple demora")}
-              />
-            </section>
-            <section className="panel block">
-              <header>
-                <TrendingUp />
-                <div>
-                  <h2>Tendencia diaria</h2>
-                  <p>Uso, efectividad y cumplimiento.</p>
-                </div>
-              </header>
-              <Trend data={trend} />
-            </section>
-            <section className="panel block">
-              <header>
-                <BarChart3 />
-                <div>
-                  <h2>Distribución de servicios cumplidos</h2>
-                  <p>
-                    Sobre {nf(summary?.servicios_cumplidos)} servicios
-                    cumplidos.
-                  </p>
-                </div>
-              </header>
-              <div className="ranges">
-                {ranges.map(([label, count, r, m]) => (
-                  <button key={m} onClick={() => open(m, label)}>
-                    <span>{label}</span>
-                    <i>
-                      <b
-                        style={{ width: `${Math.min(100, (r || 0) * 100)}%` }}
-                      />
-                    </i>
-                    <strong>
-                      {nf(count)} · {pct(r)}
-                    </strong>
-                  </button>
-                ))}
-              </div>
-            </section>
-            <section className="panel block">
-              <header>
-                <Database />
-                <div>
-                  <h2>Calidad de información</h2>
-                  <p>Completitud sobre el universo filtrado.</p>
-                </div>
-              </header>
-              <div className="quality">
-                {qualityRows.map(([label, value]) => (
-                  <article key={label}>
-                    <span>
-                      {label}
-                      <b>{pct(quality?.total ? value / quality.total : 0)}</b>
-                    </span>
-                    <i>
-                      <b
-                        style={{
-                          width: `${quality?.total ? (value / quality.total) * 100 : 0}%`,
-                        }}
-                      />
-                    </i>
-                    <small>
-                      {nf(value)} de {nf(quality?.total)}
-                    </small>
-                  </article>
-                ))}
-              </div>
-            </section>
-          </>
-        )}
-        {page === "providers" && (
-          <section className="panel page-panel">
-            <header>
-              <Users />
-              <div>
-                <h2>Detalle por prestador</h2>
-                <p>{nf(displayedProviders.length)} prestadores</p>
-              </div>
-            </header>
-            <div className="toolbar">
-              <div className="search">
-                <Search />
-                <input
-                  placeholder="Buscar prestador…"
-                  value={providerSearch}
-                  onChange={(e) => setProviderSearch(e.target.value)}
-                />
-              </div>
-              <button
-                onClick={() =>
-                  csv(
-                    displayedProviders as unknown as Record<string, unknown>[],
-                    "prestadores.csv",
-                  )
-                }
-              >
-                <Download />
-                Exportar
-              </button>
-            </div>
-            <div className="table">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Prestador</th>
-                    <th>Total</th>
-                    <th>Con enviador</th>
-                    <th>Uso</th>
-                    <th>Asigna</th>
-                    <th>Efectividad</th>
-                    <th>Programados</th>
-                    <th>Cumple</th>
-                    <th>No cumple</th>
-                    <th>Cumplimiento</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {displayedProviders.map((x) => (
-                    <tr key={x.prestador_id}>
-                      <td>{x.prestador}</td>
-                      <td>{nf(x.total_general)}</td>
-                      <td>{nf(x.enviador_si)}</td>
-                      <td>{pct(x.uso_enviador)}</td>
-                      <td>{nf(x.asigna_movil)}</td>
-                      <td>{pct(x.efectividad_enviador)}</td>
-                      <td>{nf(x.servicios_programados)}</td>
-                      <td>{nf(x.servicios_cumplidos)}</td>
-                      <td>{nf(x.servicios_no_cumplidos)}</td>
-                      <td>{pct(x.cumplimiento_demora)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        )}
-        {page === "cross" && (
-          <section className="panel page-panel">
-            <header>
-              <Table2 />
-              <div>
-                <h2>Campaña × prestador</h2>
-                <p>{nf(cross.length)} combinaciones</p>
-              </div>
-            </header>
-            <div className="toolbar">
-              <button
-                onClick={() =>
-                  csv(
-                    cross as unknown as Record<string, unknown>[],
-                    "campana-prestador.csv",
-                  )
-                }
-              >
-                <Download />
-                Exportar
-              </button>
-            </div>
-            <div className="table">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Campaña</th>
-                    <th>Prestador</th>
-                    <th>Total</th>
-                    <th>Con enviador</th>
-                    <th>Efectividad</th>
-                    <th>Cumple</th>
-                    <th>No cumple</th>
-                    <th>Cumplimiento</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {cross.map((x, i) => (
-                    <tr key={`${x.campana}-${x.prestador_id}-${i}`}>
-                      <td>{x.campana}</td>
-                      <td>{x.prestador}</td>
-                      <td>{nf(x.total_general)}</td>
-                      <td>{nf(x.enviador_si)}</td>
-                      <td>{pct(x.efectividad_enviador)}</td>
-                      <td>{nf(x.servicios_cumplidos)}</td>
-                      <td>{nf(x.servicios_no_cumplidos)}</td>
-                      <td>{pct(x.cumplimiento_demora)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        )}
-        {page === "upload" && (
-          <section className="panel upload">
-            <header>
-              <Upload />
-              <div>
-                <h2>Cargar reportes</h2>
-                <p>Archivos .xlsx o .xlsm</p>
-              </div>
-            </header>
-            <label className="drop">
-              <input
-                type="file"
-                accept=".xlsx,.xlsm"
-                onChange={(e) => setFile(e.target.files?.[0] || null)}
-              />
-              <Upload size={42} />
-              <b>{file?.name || "Seleccionar archivo Excel"}</b>
-              <span>
-                {file
-                  ? `${(file.size / 1024 / 1024).toFixed(2)} MB`
-                  : "Haz clic para seleccionar"}
-              </span>
-            </label>
-            <button
-              className="primary upload-button"
-              disabled={!file || uploading}
-              onClick={upload}
-            >
-              {uploading && <RefreshCw className="spin" />}Procesar reporte
-            </button>
-            {uploadMessage && (
-              <div className="status">
-                <b>{uploadMessage}</b>
-                {uploadStatus && (
-                  <span>
-                    Estado: {uploadStatus.status} · Filas:{" "}
-                    {nf(uploadStatus.filas_procesadas)}
-                  </span>
-                )}
-              </div>
-            )}
-          </section>
-        )}
-      </main>
-      {drill && (
-        <div className="backdrop" onMouseDown={() => setDrill(null)}>
-          <section className="modal" onMouseDown={(e) => e.stopPropagation()}>
-            <header>
-              <div>
-                <h2>{drill.title}</h2>
-                <p>
-                  {nf(drill.total)} servicios · página {drill.page} de{" "}
-                  {drill.pages || 1}
-                </p>
-              </div>
-              <div>
-                <button
-                  onClick={() =>
-                    csv(
-                      drill.rows as unknown as Record<string, unknown>[],
-                      `pagina-${drill.metric}.csv`,
-                    )
-                  }
-                >
-                  <Download />
-                  Página
-                </button>
-                <button onClick={exportAll}>
-                  {drill.exporting ? (
-                    <RefreshCw className="spin" />
-                  ) : (
-                    <Download />
-                  )}
-                  Todo
-                </button>
-                <button onClick={() => setDrill(null)}>
-                  <X />
-                </button>
-              </div>
-            </header>
-            {drill.error && <div className="alert">{drill.error}</div>}
-            <div className="table modal-table">
-              <table>
-                <thead>
-                  <tr>
-                    <th>ID</th>
-                    <th>Fecha</th>
-                    <th>Estado</th>
-                    <th>Tipo</th>
-                    <th>Prestador</th>
-                    <th>Campaña</th>
-                    <th>Prometida</th>
-                    <th>Real</th>
-                    <th>Rango</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {drill.rows.map((x) => (
-                    <tr key={x.servicio_row_id}>
-                      <td>{x.id_servicio_prestado}</td>
-                      <td>{x.fecha}</td>
-                      <td>{x.estado}</td>
-                      <td>{x.tipo_de_servicio}</td>
-                      <td>{x.prestador}</td>
-                      <td>{x.campana}</td>
-                      <td>{x.demora_prometida}</td>
-                      <td>{x.demora_real}</td>
-                      <td>{x.rango_demora_real}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <footer>
-              <button
-                disabled={drill.page <= 1}
-                onClick={() => open(drill.metric, drill.title, drill.page - 1)}
-              >
-                Anterior
-              </button>
-              <button
-                disabled={drill.page >= drill.pages}
-                onClick={() => open(drill.metric, drill.title, drill.page + 1)}
-              >
-                Siguiente
-              </button>
-            </footer>
-          </section>
-        </div>
-      )}
-    </div>
-  );
+}
+@media (max-width: 760px) {
+  .shell {
+    display: block;
+  }
+  aside {
+    position: static;
+    height: auto;
+  }
+  .backend {
+    margin-top: 15px;
+  }
+  main {
+    padding: 15px 10px;
+  }
+  .filter-grid,
+  .cards,
+  .quality {
+    grid-template-columns: 1fr;
+  }
+  .menu {
+    width: 100%;
+    right: auto;
+    left: 0;
+  }
+  .ranges button {
+    grid-template-columns: 1fr;
+  }
 }
