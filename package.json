@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "check:source": "node scripts/check-source-files.mjs",
+    "build": "npm run check:source && tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"
   },
