@@ -36,6 +36,7 @@ import {
   type MetricaTrackeo,
   type PrestadorMetric,
   type PrestadorOption,
+  type TipoOption,
   type TrackeoFilters,
   type TrackeoService,
   type TrackeoSummary,
@@ -64,6 +65,7 @@ const DEFAULT: TrackeoFilters = {
   campanas: [],
   prestador_ids: [],
   estados: [],
+  tipos: [],
 };
 const nf = (v?: number | null) =>
   v == null ? "—" : new Intl.NumberFormat("es-AR").format(v);
@@ -80,6 +82,7 @@ function initial(): TrackeoFilters {
     campanas: p.getAll("campana"),
     prestador_ids: p.getAll("prestador_id"),
     estados: p.getAll("estado"),
+    tipos: p.getAll("tipo"),
   };
 }
 
@@ -255,6 +258,7 @@ export default function App() {
     [campaigns, setCampaigns] = useState<CampanaMetric[]>([]),
     [providerOptions, setProviderOptions] = useState<PrestadorOption[]>([]),
     [states, setStates] = useState<EstadoOption[]>([]),
+    [types, setTypes] = useState<TipoOption[]>([]),
     [trend, setTrend] = useState<TrendPoint[]>([]),
     [quality, setQuality] = useState<DataQuality | null>(null),
     [cross, setCross] = useState<CampanaPrestadorMetric[]>([]),
@@ -280,6 +284,7 @@ export default function App() {
       api.trackeoTendencia(f),
       api.trackeoCalidadDatos(f),
       api.trackeoCampanaPrestador(f),
+      api.trackeoTiposServicio(f),
     ]);
     const errs: string[] = [];
     const take = <T,>(i: number, fn: (x: T) => void) =>
@@ -301,6 +306,7 @@ export default function App() {
     take<{ resultados: CampanaPrestadorMetric[] }>(8, (x) =>
       setCross(x.resultados),
     );
+    take<{ tipos: TipoOption[] }>(9, (x) => setTypes(x.tipos));
     if (errs.length) setError(errs.join(" | "));
     setLoading(false);
   }, []);
@@ -326,6 +332,7 @@ export default function App() {
     filters.campanas.forEach((x) => p.append("campana", x));
     filters.prestador_ids.forEach((x) => p.append("prestador_id", x));
     filters.estados.forEach((x) => p.append("estado", x));
+    filters.tipos.forEach((x) => p.append("tipo", x));
     history.replaceState(null, "", `?${p}`);
   }, [filters, page]);
   const campOpts = campaigns.map((x) => ({
@@ -339,6 +346,10 @@ export default function App() {
     stateOpts = states.map((x) => ({
       value: x.estado_normalizado,
       label: `${x.estado} (${nf(x.cantidad)})`,
+    })),
+    typeOpts = types.map((x) => ({
+      value: x.tipo_normalizado,
+      label: `${x.tipo_de_servicio} (${nf(x.cantidad)})`,
     }));
   async function open(
     metric: MetricaTrackeo,
@@ -544,7 +555,9 @@ export default function App() {
               <div>
                 <h2>Filtros globales</h2>
                 <p>
-                  Estado manual. Sin selección se incluyen todos los estados.
+                  Estado y Tipo de servicio 100% manuales. Sin selección se
+                  incluyen todos los valores, igual que sin filtrar esa
+                  columna en Excel.
                 </p>
               </div>
             </header>
@@ -591,6 +604,13 @@ export default function App() {
                 options={stateOpts}
                 placeholder="Todos los estados"
                 onChange={(estados) => setDraft({ ...draft, estados })}
+              />
+              <MultiSelect
+                label="Tipo de servicio"
+                values={draft.tipos}
+                options={typeOpts}
+                placeholder="Todos los tipos"
+                onChange={(tipos) => setDraft({ ...draft, tipos })}
               />
               <button
                 className="secondary"
@@ -661,11 +681,14 @@ export default function App() {
                 icon={<ListChecks />}
                 title="Universo seleccionado"
                 value={nf(summary?.servicios_consultados)}
-                detail={
+                detail={[
                   filters.estados.length
-                    ? filters.estados.join(", ")
-                    : "Todos los estados"
-                }
+                    ? `Estado: ${filters.estados.join(", ")}`
+                    : "Todos los estados",
+                  filters.tipos.length
+                    ? `Tipo: ${filters.tipos.join(", ")}`
+                    : "Todos los tipos",
+                ].join(" · ")}
               />
             </section>
             <h2>Indicadores operativos</h2>

@@ -8,11 +8,18 @@ export type TrackeoFilters = {
   campanas: string[];
   prestador_ids: string[];
   estados: string[];
+  tipos: string[];
 };
 export type EstadoOption = {
   estado: string;
   estado_normalizado: string;
   cantidad: number;
+};
+export type TipoOption = {
+  tipo_de_servicio: string;
+  tipo_normalizado: string;
+  cantidad: number;
+  pertenece_universo_operativo_historico: boolean;
 };
 export type CampanaMetric = {
   campana: string;
@@ -30,15 +37,29 @@ export type TrackeoSummary = {
   enviador_si: number;
   uso_enviador: number;
   asigna_movil: number;
+  asigna_movil_porcentaje?: number;
   efectividad_enviador: number;
   no_asigna_movil_cantidad: number;
   no_asigna_movil_porcentaje: number;
+  // Campos auxiliares de auditoria (definicion anterior, mas estricta:
+  // ConEnvioOK=SI Y AsignoMovil=SI/!=SI). No se muestran en las tarjetas
+  // principales, solo disponibles para diagnostico si se necesitan.
+  asigna_movil_con_envio_ok?: number;
+  no_asigna_movil_con_envio_ok?: number;
   servicios_programados: number;
   programados_porcentaje: number;
   servicios_evaluados_demora?: number;
   servicios_cumplidos: number;
   servicios_no_cumplidos: number;
   cumplimiento_demora: number;
+  // Campos auxiliares de auditoria: definicion anterior de cumplimiento
+  // (campo SQL `cumple_demora_prometida_15` de fn_consolidar_trackeo,
+  // condicionado a ConEnvioOK=SI). No se muestran en la tarjeta
+  // principal, solo disponibles para diagnostico si se necesitan.
+  servicios_evaluados_demora_sql?: number;
+  servicios_cumplidos_sql?: number;
+  servicios_no_cumplidos_sql?: number;
+  cumplimiento_demora_sql?: number;
   menos_60_cantidad: number;
   menos_60_porcentaje: number;
   entre_61_90_cantidad: number;
@@ -117,7 +138,13 @@ export type TrackeoService = {
   es_programado?: boolean | null;
   demora_prometida?: number | null;
   demora_real?: number | null;
+  // Formula literal confirmada por el usuario (DemoraReal <=
+  // DemoraPrometida + 15), usada por la tarjeta "Cumplimiento de
+  // demora" desde v4.9.0.
   cumple_demora_prometida_15?: boolean | null;
+  // Auxiliar de auditoria: valor anterior calculado por SQL en
+  // Supabase (fn_consolidar_trackeo), puede no coincidir con el de arriba.
+  cumple_demora_prometida_15_sql?: boolean | null;
   rango_demora_real?: string | null;
 };
 export type MetricaTrackeo =
@@ -125,9 +152,14 @@ export type MetricaTrackeo =
   | "ENVIADOR_NO"
   | "ASIGNA_MOVIL"
   | "NO_ASIGNA_MOVIL"
+  | "ASIGNA_MOVIL_CON_ENVIO_OK"
+  | "NO_ASIGNA_MOVIL_CON_ENVIO_OK"
   | "PROGRAMADOS"
+  | "PROGRAMADOS_ASIGNADOS"
   | "CUMPLE_DEMORA"
   | "NO_CUMPLE_DEMORA"
+  | "CUMPLE_DEMORA_SQL"
+  | "NO_CUMPLE_DEMORA_SQL"
   | "MENOS_60"
   | "ENTRE_61_90"
   | "ENTRE_91_120"
@@ -172,6 +204,7 @@ function fp(f: TrackeoFilters) {
     campana: f.campanas,
     prestador_id: f.prestador_ids,
     estado: f.estados,
+    tipo: f.tipos,
   };
 }
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -212,6 +245,7 @@ export const api = {
           fecha_hasta: f.fecha_hasta,
           prestador_id: f.prestador_ids,
           estado: f.estados,
+          tipo: f.tipos,
         }),
     ),
   trackeoListaPrestadores: (f: TrackeoFilters) =>
@@ -222,6 +256,7 @@ export const api = {
           fecha_hasta: f.fecha_hasta,
           campana: f.campanas,
           estado: f.estados,
+          tipo: f.tipos,
         }),
     ),
   trackeoEstados: (f: TrackeoFilters) =>
@@ -236,6 +271,22 @@ export const api = {
           fecha_hasta: f.fecha_hasta,
           campana: f.campanas,
           prestador_id: f.prestador_ids,
+          tipo: f.tipos,
+        }),
+    ),
+  trackeoTiposServicio: (f: TrackeoFilters) =>
+    request<{
+      cantidad_tipos: number;
+      total_servicios: number;
+      tipos: TipoOption[];
+    }>(
+      "/api/metricas-trackeo/tipos-servicio" +
+        qs({
+          fecha_desde: f.fecha_desde,
+          fecha_hasta: f.fecha_hasta,
+          campana: f.campanas,
+          prestador_id: f.prestador_ids,
+          estado: f.estados,
         }),
     ),
   trackeoTendencia: (f: TrackeoFilters) =>
