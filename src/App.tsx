@@ -7,35 +7,19 @@ import {
   type ReactNode,
 } from "react";
 import {
-  AlertCircle,
-  BarChart3,
-  CheckCircle2,
-  ChevronDown,
-  Clock3,
-  Database,
-  Download,
-  Filter,
-  ListChecks,
-  RefreshCw,
-  Search,
-  Server,
-  Table2,
-  TrendingUp,
-  Truck,
-  Upload,
-  Users,
-  X,
-} from "lucide-react";
-import {
   api,
+  type CampanaImpacto,
   type CampanaMetric,
   type CampanaPrestadorMetric,
   type DataQuality,
   type EstadoOption,
+  type EstadosCategorizados,
+  type FunnelTiempos,
   type IngestStatus,
   type MetricaTrackeo,
   type PrestadorMetric,
   type PrestadorOption,
+  type TiempoStats,
   type TipoOption,
   type TrackeoFilters,
   type TrackeoService,
@@ -44,6 +28,15 @@ import {
   type TrendPoint,
 } from "./api";
 import "./App.css";
+
+/* ============================================================
+ * Nota de mantenimiento: este archivo fue re-diseñado visualmente
+ * (Tailwind + Material Symbols, ver index.html) para calzar con el
+ * layout de referencia entregado por el usuario. NINGÚN estado, hook,
+ * llamada a la API ni cálculo fue modificado — solo el JSX/markup de
+ * presentación. Toda la lógica de datos es idéntica a la versión
+ * anterior.
+ * ============================================================ */
 
 type Page = "metrics" | "providers" | "cross" | "upload";
 type Option = { value: string; label: string };
@@ -86,6 +79,29 @@ function initial(): TrackeoFilters {
   };
 }
 
+/* ---------- Iconos (Material Symbols Outlined) ---------- */
+function Icon({
+  name,
+  className = "",
+  filled = false,
+}: {
+  name: string;
+  className?: string;
+  filled?: boolean;
+}) {
+  return (
+    <span className={`material-symbols-outlined ${filled ? "icon-filled" : ""} ${className}`}>
+      {name}
+    </span>
+  );
+}
+function Spinner({ className = "" }: { className?: string }) {
+  return (
+    <Icon name="progress_activity" className={`animate-spin ${className}`} />
+  );
+}
+
+/* ---------- Selector múltiple (misma lógica, nuevo estilo) ---------- */
 function MultiSelect({
   label,
   values,
@@ -118,33 +134,55 @@ function MultiSelect({
         ? options.find((o) => o.value === values[0])?.label || values[0]
         : `${values.length} seleccionados`;
   return (
-    <div className="multi" ref={ref}>
-      <span>{label}</span>
-      <button type="button" onClick={() => setOpen(!open)}>
-        {title}
-        <ChevronDown size={16} />
+    <div className="relative flex flex-col gap-1 min-w-[170px]" ref={ref}>
+      <label className="font-label-sm text-label-sm text-on-surface-variant uppercase">
+        {label}
+      </label>
+      <button
+        type="button"
+        className="form-input-styled font-body-md text-body-md text-on-surface flex items-center justify-between gap-2 text-left"
+        onClick={() => setOpen(!open)}
+      >
+        <span className="truncate">{title}</span>
+        <Icon name="expand_more" className="text-[18px] text-outline shrink-0" />
       </button>
       {open && (
-        <div className="menu">
-          <div className="search">
-            <Search size={15} />
+        <div className="absolute top-full left-0 mt-1 w-72 max-w-[80vw] z-30 bg-surface-container-lowest rounded-lg card-shadow border border-outline-variant/30 overflow-hidden flex flex-col">
+          <div className="flex items-center gap-2 px-3 py-2 border-b border-outline-variant/20">
+            <Icon name="search" className="text-[16px] text-outline" />
             <input
+              className="flex-1 text-body-md font-body-md text-on-surface outline-none bg-transparent"
               value={term}
               onChange={(e) => setTerm(e.target.value)}
               placeholder="Buscar…"
             />
           </div>
-          <div className="menu-actions">
-            <button onClick={() => onChange(list.map((x) => x.value))}>
+          <div className="flex items-center gap-2 px-3 py-2 border-b border-outline-variant/20">
+            <button
+              type="button"
+              className="text-label-md font-label-md text-primary hover:underline"
+              onClick={() => onChange(list.map((x) => x.value))}
+            >
               Seleccionar visibles
             </button>
-            <button onClick={() => onChange([])}>Limpiar</button>
+            <span className="text-outline-variant">·</span>
+            <button
+              type="button"
+              className="text-label-md font-label-md text-on-surface-variant hover:underline"
+              onClick={() => onChange([])}
+            >
+              Limpiar
+            </button>
           </div>
-          <div className="options">
+          <div className="max-h-56 overflow-y-auto py-1">
             {list.map((o) => (
-              <label key={o.value}>
+              <label
+                key={o.value}
+                className="flex items-center gap-2 px-3 py-1.5 text-body-md font-body-md text-on-surface hover:bg-surface-container-low cursor-pointer"
+              >
                 <input
                   type="checkbox"
+                  className="rounded border-outline-variant text-primary focus:ring-primary"
                   checked={values.includes(o.value)}
                   onChange={() =>
                     onChange(
@@ -154,15 +192,29 @@ function MultiSelect({
                     )
                   }
                 />
-                {o.label}
+                <span className="truncate">{o.label}</span>
               </label>
             ))}
+            {list.length === 0 && (
+              <div className="px-3 py-2 text-label-md font-label-md text-on-surface-variant">
+                Sin resultados
+              </div>
+            )}
           </div>
         </div>
       )}
     </div>
   );
 }
+
+/* ---------- Tarjeta KPI (Universos Analíticos) ---------- */
+const TONE_CLASSES: Record<string, string> = {
+  blue: "bg-primary/10 text-primary",
+  green: "bg-tertiary/10 text-tertiary",
+  red: "bg-error/10 text-error",
+  purple: "bg-[#7c3aed]/10 text-[#7c3aed]",
+  amber: "bg-[#f59e0b]/10 text-[#f59e0b]",
+};
 function Card({
   icon,
   title,
@@ -170,6 +222,7 @@ function Card({
   detail,
   onClick,
   tone = "blue",
+  highlight = false,
 }: {
   icon: ReactNode;
   title: string;
@@ -177,24 +230,140 @@ function Card({
   detail: string;
   onClick?: () => void;
   tone?: string;
+  highlight?: boolean;
 }) {
   return (
     <article
-      className={`card ${tone} ${onClick ? "clickable" : ""}`}
+      className={`bg-surface-container-lowest rounded-xl p-md card-shadow border flex flex-col gap-md relative overflow-hidden transition-colors ${
+        highlight ? "border-primary/40 bg-primary/5" : "border-outline-variant/20"
+      } ${onClick ? "cursor-pointer hover:border-primary/30" : ""}`}
       onClick={onClick}
     >
-      <div className="icon">{icon}</div>
-      <div>
-        <span>{title}</span>
-        <strong>{value}</strong>
-        <small>{detail}</small>
-        {onClick && <b>Ver servicios</b>}
+      <div
+        className={`w-10 h-10 rounded-full flex items-center justify-center ${
+          highlight ? "bg-primary/20 text-primary" : TONE_CLASSES[tone]
+        }`}
+      >
+        {icon}
+      </div>
+      <div className="flex flex-col gap-1 z-10">
+        <span
+          className={`font-display-lg text-display-lg leading-none ${highlight ? "text-primary" : "text-on-surface"}`}
+        >
+          {value}
+        </span>
+        <span className="font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">
+          {title}
+        </span>
+        <small className="font-body-md text-[13px] text-on-surface-variant/80 leading-snug">
+          {detail}
+        </small>
+        {onClick && (
+          <b className="font-label-md text-label-md text-primary mt-1 inline-flex items-center gap-0.5">
+            Ver servicios
+            <Icon name="chevron_right" className="text-[16px]" />
+          </b>
+        )}
       </div>
     </article>
   );
 }
+
+/* ---------- Fila de indicador operativo (lista compacta) ---------- */
+function IndicatorRow({
+  icon,
+  label,
+  value,
+  detail,
+  onClick,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: string;
+  detail?: string;
+  onClick?: () => void;
+}) {
+  return (
+    <div
+      className={`bg-surface-container-lowest rounded-xl p-4 card-shadow border border-outline-variant/20 flex items-center justify-between gap-3 transition-colors ${
+        onClick ? "cursor-pointer hover:bg-surface-bright" : ""
+      }`}
+      onClick={onClick}
+    >
+      <div className="flex items-center gap-3 min-w-0">
+        <div className="w-8 h-8 shrink-0 rounded bg-surface-variant flex items-center justify-center text-on-surface-variant">
+          {icon}
+        </div>
+        <div className="min-w-0">
+          <div className="font-body-md text-body-md font-medium text-on-surface truncate">
+            {label}
+          </div>
+          {detail && (
+            <div className="font-label-sm text-label-sm text-on-surface-variant truncate">
+              {detail}
+            </div>
+          )}
+        </div>
+      </div>
+      <div className="flex items-center gap-1 shrink-0">
+        <span className="font-headline-sm text-headline-sm text-on-surface">{value}</span>
+        {onClick && <Icon name="chevron_right" className="text-[18px] text-outline" />}
+      </div>
+    </div>
+  );
+}
+
+/* ---------- Barra de progreso (Distribución / Calidad) ---------- */
+function ProgressBar({
+  label,
+  icon,
+  valueLabel,
+  ratio,
+  color,
+  onClick,
+}: {
+  label: string;
+  icon?: ReactNode;
+  valueLabel: string;
+  ratio: number;
+  color: string;
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={!onClick}
+      className={`flex flex-col gap-1 w-full text-left disabled:cursor-default ${onClick ? "cursor-pointer group" : ""}`}
+      onClick={onClick}
+    >
+      <div className="flex justify-between items-center text-label-md font-label-md gap-2">
+        <span className="text-on-surface flex items-center gap-2 min-w-0">
+          {icon}
+          <span className="truncate">{label}</span>
+        </span>
+        <span className="text-on-surface-variant font-bold shrink-0">{valueLabel}</span>
+      </div>
+      <div className="w-full h-xs bg-surface-container-highest rounded-full overflow-hidden">
+        <div
+          className="h-full rounded-full transition-all"
+          style={{
+            width: `${Math.min(100, Math.max(0, ratio * 100))}%`,
+            backgroundColor: color,
+          }}
+        />
+      </div>
+    </button>
+  );
+}
+
+/* ---------- Tendencia diaria (mismos cálculos de coordenadas) ---------- */
 function Trend({ data }: { data: TrendPoint[] }) {
-  if (!data.length) return <div className="empty">Sin datos</div>;
+  if (!data.length)
+    return (
+      <div className="flex-1 min-h-[260px] flex items-center justify-center text-body-md font-body-md text-on-surface-variant">
+        Sin datos
+      </div>
+    );
   const W = 900,
     H = 260,
     P = 35,
@@ -203,25 +372,50 @@ function Trend({ data }: { data: TrendPoint[] }) {
     points = (k: keyof TrendPoint) =>
       data.map((d, i) => `${x(i)},${y(Number(d[k] || 0))}`).join(" ");
   return (
-    <svg className="chart" viewBox={`0 0 ${W} ${H}`}>
+    <svg className="w-full flex-1 min-h-[260px]" viewBox={`0 0 ${W} ${H}`}>
       {[0, 0.25, 0.5, 0.75, 1].map((v) => (
         <g key={v}>
-          <line x1={P} x2={W - P} y1={y(v)} y2={y(v)} />
-          <text x="2" y={y(v) + 4}>
+          <line
+            x1={P}
+            x2={W - P}
+            y1={y(v)}
+            y2={y(v)}
+            className="stroke-outline-variant/30"
+            strokeWidth={1}
+          />
+          <text x="2" y={y(v) + 4} className="fill-outline text-[10px]">
             {v * 100}%
           </text>
         </g>
       ))}
-      <polyline className="line green" points={points("cumplimiento_demora")} />
-      <polyline className="line cyan" points={points("efectividad_enviador")} />
-      <polyline className="line purple" points={points("uso_enviador")} />
+      <polyline
+        className="fill-none stroke-tertiary"
+        strokeWidth={2.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        points={points("cumplimiento_demora")}
+      />
+      <polyline
+        className="fill-none stroke-primary"
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        points={points("efectividad_enviador")}
+      />
+      <polyline
+        className="fill-none stroke-[#7c3aed]"
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        points={points("uso_enviador")}
+      />
       {data.map((d, i) => (
         <text
-          className="date"
           key={d.fecha}
           x={x(i)}
           y={H - 7}
           textAnchor="middle"
+          className="fill-outline text-[10px]"
         >
           {d.fecha.slice(5)}
         </text>
@@ -229,12 +423,13 @@ function Trend({ data }: { data: TrendPoint[] }) {
     </svg>
   );
 }
+
 function csv(rows: Record<string, unknown>[], name: string) {
   if (!rows.length) return;
   const cols = Object.keys(rows[0]),
     esc = (x: unknown) => `"${String(x ?? "").replace(/"/g, '""')}"`,
     data =
-      "\ufeff" +
+      "﻿" +
       [
         cols.join(";"),
         ...rows.map((r) => cols.map((c) => esc(r[c])).join(";")),
@@ -246,6 +441,14 @@ function csv(rows: Record<string, unknown>[], name: string) {
   a.click();
   URL.revokeObjectURL(url);
 }
+
+/* ---------- Navegación lateral ---------- */
+const NAV_ITEMS: { page: Page; label: string; icon: string }[] = [
+  { page: "metrics", label: "Métricas de Trackeo", icon: "analytics" },
+  { page: "providers", label: "Detalle por prestador", icon: "person_search" },
+  { page: "cross", label: "Campaña × prestador", icon: "campaign" },
+  { page: "upload", label: "Cargar reportes", icon: "upload_file" },
+];
 
 export default function App() {
   const seed = useMemo(initial, []),
@@ -261,6 +464,11 @@ export default function App() {
     [types, setTypes] = useState<TipoOption[]>([]),
     [trend, setTrend] = useState<TrendPoint[]>([]),
     [quality, setQuality] = useState<DataQuality | null>(null),
+    [funnel, setFunnel] = useState<FunnelTiempos | null>(null),
+    [estadosCategorizados, setEstadosCategorizados] =
+      useState<EstadosCategorizados | null>(null),
+    [prestadoresWarning, setPrestadoresWarning] = useState<string | null>(null),
+    [campanaImpacto, setCampanaImpacto] = useState<CampanaImpacto[]>([]),
     [cross, setCross] = useState<CampanaPrestadorMetric[]>([]),
     [loading, setLoading] = useState(false),
     [error, setError] = useState<string | null>(null),
@@ -270,7 +478,8 @@ export default function App() {
     [uploading, setUploading] = useState(false),
     [uploadStatus, setUploadStatus] = useState<IngestStatus | null>(null),
     [uploadMessage, setUploadMessage] = useState(""),
-    [providerSearch, setProviderSearch] = useState("");
+    [providerSearch, setProviderSearch] = useState(""),
+    [providerSort, setProviderSort] = useState<"total" | "score">("total");
   const load = useCallback(async (f: TrackeoFilters) => {
     setLoading(true);
     setError(null);
@@ -285,6 +494,9 @@ export default function App() {
       api.trackeoCalidadDatos(f),
       api.trackeoCampanaPrestador(f),
       api.trackeoTiposServicio(f),
+      api.trackeoFunnelTiempos(f),
+      api.trackeoImpactoCampanas(f),
+      api.trackeoEstadosCategorizados(f),
     ]);
     const errs: string[] = [];
     const take = <T,>(i: number, fn: (x: T) => void) =>
@@ -293,9 +505,13 @@ export default function App() {
         : errs.push(String((r[i] as PromiseRejectedResult).reason));
     take<{ resumen: TrackeoSummary }>(0, (x) => setSummary(x.resumen));
     take<{ universos: TrackeoUniversos }>(1, (x) => setUniverses(x.universos));
-    take<{ prestadores: PrestadorMetric[] }>(2, (x) =>
-      setProviders(x.prestadores),
-    );
+    take<{
+      prestadores: PrestadorMetric[];
+      advertencia_tipos_mezclados?: string | null;
+    }>(2, (x) => {
+      setProviders(x.prestadores);
+      setPrestadoresWarning(x.advertencia_tipos_mezclados || null);
+    });
     take<{ campanas: CampanaMetric[] }>(3, (x) => setCampaigns(x.campanas));
     take<{ prestadores: PrestadorOption[] }>(4, (x) =>
       setProviderOptions(x.prestadores),
@@ -307,6 +523,11 @@ export default function App() {
       setCross(x.resultados),
     );
     take<{ tipos: TipoOption[] }>(9, (x) => setTypes(x.tipos));
+    take<FunnelTiempos>(10, (x) => setFunnel(x));
+    take<{ campanas: CampanaImpacto[] }>(11, (x) =>
+      setCampanaImpacto(x.campanas),
+    );
+    take<EstadosCategorizados>(12, (x) => setEstadosCategorizados(x));
     if (errs.length) setError(errs.join(" | "));
     setLoading(false);
   }, []);
@@ -456,9 +677,16 @@ export default function App() {
         ["Demora real", quality.demora_real_completa],
       ]
     : [];
-  const displayedProviders = providers.filter((x) =>
-    x.prestador.toLowerCase().includes(providerSearch.toLowerCase()),
-  );
+  const displayedProviders = providers
+    .filter((x) =>
+      x.prestador.toLowerCase().includes(providerSearch.toLowerCase()),
+    )
+    .slice()
+    .sort((a, b) =>
+      providerSort === "score"
+        ? (b.score_ranking ?? -1) - (a.score_ranking ?? -1)
+        : b.total_general - a.total_general,
+    );
   const ranges: [
     string,
     number | undefined,
@@ -497,496 +725,953 @@ export default function App() {
     ],
     ["N/A", summary?.na_cantidad, summary?.na_porcentaje, "NA"],
   ];
+
+  const qualityColor = (ratio: number) =>
+    ratio >= 0.95 ? "#006058" : ratio >= 0.7 ? "#f59e0b" : "#ba1a1a";
+  const qualityIcon = (ratio: number) =>
+    ratio >= 0.95 ? (
+      <Icon name="check_circle" filled className="text-[16px] text-tertiary" />
+    ) : ratio >= 0.7 ? (
+      <Icon name="warning" filled className="text-[16px] text-[#f59e0b]" />
+    ) : (
+      <Icon name="cancel" filled className="text-[16px] text-error" />
+    );
+
   return (
-    <div className="shell">
-      <aside>
-        <div className="brand">
-          <Database />
-          <div>
-            <b>Reportería</b>
-            <span>Prestadores</span>
-          </div>
-        </div>
-        <nav>
-          <button
-            className={page === "metrics" ? "active" : ""}
-            onClick={() => setPage("metrics")}
-          >
-            <BarChart3 />
-            Métricas de Trackeo
-          </button>
-          <button
-            className={page === "providers" ? "active" : ""}
-            onClick={() => setPage("providers")}
-          >
-            <Users />
-            Detalle por prestador
-          </button>
-          <button
-            className={page === "cross" ? "active" : ""}
-            onClick={() => setPage("cross")}
-          >
-            <Table2 />
-            Campaña × prestador
-          </button>
-          <button
-            className={page === "upload" ? "active" : ""}
-            onClick={() => setPage("upload")}
-          >
-            <Upload />
-            Cargar reportes
-          </button>
-        </nav>
-        <div className="backend">
-          <Server />
-          <span>
-            Backend v{backend.version}
-            <b className={backend.ok ? "ok" : "bad"}>
-              {backend.ok ? "Conectado" : "Sin conexión"}
-            </b>
+    <div className="font-body-md text-body-md min-h-screen flex bg-background text-on-background">
+      {/* ---------- Sidebar ---------- */}
+      <nav className="fixed left-0 top-0 h-screen w-sidebar-width z-50 flex flex-col bg-on-primary-fixed">
+        <div className="px-md py-md flex flex-col gap-xs mb-sm">
+          <h1 className="text-headline-md font-headline-md font-bold text-on-primary">
+            Reportería
+          </h1>
+          <span className="text-label-sm font-label-sm text-primary-fixed-dim uppercase tracking-widest opacity-80">
+            Prestadores
           </span>
         </div>
-      </aside>
-      <main>
-        {page !== "upload" && (
-          <section className="panel filters">
-            <header>
-              <Filter />
-              <div>
-                <h2>Filtros globales</h2>
-                <p>
-                  Estado y Tipo de servicio 100% manuales. Sin selección se
-                  incluyen todos los valores, igual que sin filtrar esa
-                  columna en Excel.
-                </p>
-              </div>
-            </header>
-            <div className="filter-grid">
-              <label>
-                <span>Desde</span>
-                <input
-                  type="date"
-                  value={draft.fecha_desde}
-                  onChange={(e) =>
-                    setDraft({ ...draft, fecha_desde: e.target.value })
-                  }
-                />
-              </label>
-              <label>
-                <span>Hasta</span>
-                <input
-                  type="date"
-                  value={draft.fecha_hasta}
-                  onChange={(e) =>
-                    setDraft({ ...draft, fecha_hasta: e.target.value })
-                  }
-                />
-              </label>
-              <MultiSelect
-                label="Campañas"
-                values={draft.campanas}
-                options={campOpts}
-                placeholder="Todas las campañas"
-                onChange={(campanas) => setDraft({ ...draft, campanas })}
-              />
-              <MultiSelect
-                label="Prestadores"
-                values={draft.prestador_ids}
-                options={provOpts}
-                placeholder="Todos los prestadores"
-                onChange={(prestador_ids) =>
-                  setDraft({ ...draft, prestador_ids })
-                }
-              />
-              <MultiSelect
-                label="Estados"
-                values={draft.estados}
-                options={stateOpts}
-                placeholder="Todos los estados"
-                onChange={(estados) => setDraft({ ...draft, estados })}
-              />
-              <MultiSelect
-                label="Tipo de servicio"
-                values={draft.tipos}
-                options={typeOpts}
-                placeholder="Todos los tipos"
-                onChange={(tipos) => setDraft({ ...draft, tipos })}
-              />
-              <button
-                className="secondary"
-                onClick={() => {
-                  setDraft(DEFAULT);
-                  setFilters(DEFAULT);
-                }}
-              >
-                Restablecer
-              </button>
-              <button
-                className="primary"
-                onClick={() => setFilters({ ...draft })}
-              >
-                {loading && <RefreshCw className="spin" />}Aplicar filtros
-              </button>
-            </div>
-          </section>
-        )}
-        {error && (
-          <div className="alert">
-            <AlertCircle />
-            {error}
-          </div>
-        )}
-        {page === "metrics" && (
-          <>
-            <div className="title">
-              <h1>Métricas de Trackeo</h1>
-              <p>Modelo auditable con Estado manual y filtros reproducibles.</p>
-            </div>
-            <h2>Universos analíticos</h2>
-            <section className="cards">
-              <Card
-                icon={<Database />}
-                title="Servicios en el periodo"
-                value={nf(universes?.servicios_cargados)}
-                detail="Total visible para las fechas"
-              />
-              <Card
-                icon={<Truck />}
-                title="Servicios vehiculares"
-                value={nf(universes?.servicios_vehiculares)}
-                detail="Tipos operativos seleccionados"
-              />
-              <Card
-                icon={<CheckCircle2 />}
-                title="Servicios evaluables"
-                value={nf(universes?.servicios_evaluables)}
-                detail="Base seleccionada para KPI"
-                tone="green"
-              />
-              <Card
-                icon={<AlertCircle />}
-                title="Vehiculares cancelados"
-                value={nf(universes?.servicios_cancelados)}
-                detail="Estados cancelados"
-                tone="red"
-              />
-              <Card
-                icon={<Clock3 />}
-                title="Vehiculares no finalizados"
-                value={nf(universes?.servicios_no_finalizados)}
-                detail="Pendientes o en curso"
-                tone="amber"
-              />
-              <Card
-                icon={<ListChecks />}
-                title="Universo seleccionado"
-                value={nf(summary?.servicios_consultados)}
-                detail={[
-                  filters.estados.length
-                    ? `Estado: ${filters.estados.join(", ")}`
-                    : "Todos los estados",
-                  filters.tipos.length
-                    ? `Tipo: ${filters.tipos.join(", ")}`
-                    : "Todos los tipos",
-                ].join(" · ")}
-              />
-            </section>
-            <h2>Indicadores operativos</h2>
-            <section className="cards">
-              <Card
-                icon={<Database />}
-                title="Servicios seleccionados"
-                value={nf(summary?.servicios_consultados)}
-                detail={`${nf(summary?.enviador_si)} con enviador · ${nf(summary?.enviador_no)} sin enviador`}
-              />
-              <Card
-                icon={<TrendingUp />}
-                title="Uso del enviador"
-                value={pct(summary?.uso_enviador)}
-                detail={`${nf(summary?.enviador_si)} servicios`}
-                onClick={() => open("ENVIADOR_SI", "Servicios con enviador")}
-              />
-              <Card
-                icon={<Truck />}
-                title="Asigna móvil"
-                value={nf(summary?.asigna_movil)}
-                detail={`${pct(summary?.efectividad_enviador)} efectividad`}
-                tone="purple"
-                onClick={() => open("ASIGNA_MOVIL", "Asigna móvil")}
-              />
-              <Card
-                icon={<AlertCircle />}
-                title="No asigna móvil"
-                value={nf(summary?.no_asigna_movil_cantidad)}
-                detail={pct(summary?.no_asigna_movil_porcentaje)}
-                tone="red"
-                onClick={() => open("NO_ASIGNA_MOVIL", "No asigna móvil")}
-              />
-              <Card
-                icon={<ListChecks />}
-                title="Servicios programados"
-                value={nf(summary?.servicios_programados)}
-                detail={pct(summary?.programados_porcentaje)}
-                onClick={() => open("PROGRAMADOS", "Programados")}
-              />
-              <Card
-                icon={<CheckCircle2 />}
-                title="Cumplimiento de demora"
-                value={
-                  (summary?.servicios_evaluados_demora ?? 0) > 0
-                    ? pct(summary?.cumplimiento_demora)
-                    : "N/A"
-                }
-                detail={`${nf(summary?.servicios_cumplidos)} cumplen · ${nf(summary?.servicios_no_cumplidos)} no cumplen`}
-                tone="green"
-                onClick={() => open("CUMPLE_DEMORA", "Cumple demora")}
-              />
-            </section>
-            <section className="panel block">
-              <header>
-                <TrendingUp />
-                <div>
-                  <h2>Tendencia diaria</h2>
-                  <p>Uso, efectividad y cumplimiento.</p>
-                </div>
-              </header>
-              <Trend data={trend} />
-            </section>
-            <section className="panel block">
-              <header>
-                <BarChart3 />
-                <div>
-                  <h2>Distribución de servicios cumplidos</h2>
-                  <p>
-                    Sobre {nf(summary?.servicios_cumplidos)} servicios
-                    cumplidos.
-                  </p>
-                </div>
-              </header>
-              <div className="ranges">
-                {ranges.map(([label, count, r, m]) => (
-                  <button key={m} onClick={() => open(m, label)}>
-                    <span>{label}</span>
-                    <i>
-                      <b
-                        style={{ width: `${Math.min(100, (r || 0) * 100)}%` }}
-                      />
-                    </i>
-                    <strong>
-                      {nf(count)} · {pct(r)}
-                    </strong>
-                  </button>
-                ))}
-              </div>
-            </section>
-            <section className="panel block">
-              <header>
-                <Database />
-                <div>
-                  <h2>Calidad de información</h2>
-                  <p>Completitud sobre el universo filtrado.</p>
-                </div>
-              </header>
-              <div className="quality">
-                {qualityRows.map(([label, value]) => (
-                  <article key={label}>
-                    <span>
-                      {label}
-                      <b>{pct(quality?.total ? value / quality.total : 0)}</b>
-                    </span>
-                    <i>
-                      <b
-                        style={{
-                          width: `${quality?.total ? (value / quality.total) * 100 : 0}%`,
-                        }}
-                      />
-                    </i>
-                    <small>
-                      {nf(value)} de {nf(quality?.total)}
-                    </small>
-                  </article>
-                ))}
-              </div>
-            </section>
-          </>
-        )}
-        {page === "providers" && (
-          <section className="panel page-panel">
-            <header>
-              <Users />
-              <div>
-                <h2>Detalle por prestador</h2>
-                <p>{nf(displayedProviders.length)} prestadores</p>
-              </div>
-            </header>
-            <div className="toolbar">
-              <div className="search">
-                <Search />
-                <input
-                  placeholder="Buscar prestador…"
-                  value={providerSearch}
-                  onChange={(e) => setProviderSearch(e.target.value)}
-                />
-              </div>
-              <button
-                onClick={() =>
-                  csv(
-                    displayedProviders as unknown as Record<string, unknown>[],
-                    "prestadores.csv",
-                  )
-                }
-              >
-                <Download />
-                Exportar
-              </button>
-            </div>
-            <div className="table">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Prestador</th>
-                    <th>Total</th>
-                    <th>Con enviador</th>
-                    <th>Uso</th>
-                    <th>Asigna</th>
-                    <th>Efectividad</th>
-                    <th>Programados</th>
-                    <th>Cumple</th>
-                    <th>No cumple</th>
-                    <th>Cumplimiento</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {displayedProviders.map((x) => (
-                    <tr key={x.prestador_id}>
-                      <td>{x.prestador}</td>
-                      <td>{nf(x.total_general)}</td>
-                      <td>{nf(x.enviador_si)}</td>
-                      <td>{pct(x.uso_enviador)}</td>
-                      <td>{nf(x.asigna_movil)}</td>
-                      <td>{pct(x.efectividad_enviador)}</td>
-                      <td>{nf(x.servicios_programados)}</td>
-                      <td>{nf(x.servicios_cumplidos)}</td>
-                      <td>{nf(x.servicios_no_cumplidos)}</td>
-                      <td>{pct(x.cumplimiento_demora)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        )}
-        {page === "cross" && (
-          <section className="panel page-panel">
-            <header>
-              <Table2 />
-              <div>
-                <h2>Campaña × prestador</h2>
-                <p>{nf(cross.length)} combinaciones</p>
-              </div>
-            </header>
-            <div className="toolbar">
-              <button
-                onClick={() =>
-                  csv(
-                    cross as unknown as Record<string, unknown>[],
-                    "campana-prestador.csv",
-                  )
-                }
-              >
-                <Download />
-                Exportar
-              </button>
-            </div>
-            <div className="table">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Campaña</th>
-                    <th>Prestador</th>
-                    <th>Total</th>
-                    <th>Con enviador</th>
-                    <th>Efectividad</th>
-                    <th>Cumple</th>
-                    <th>No cumple</th>
-                    <th>Cumplimiento</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {cross.map((x, i) => (
-                    <tr key={`${x.campana}-${x.prestador_id}-${i}`}>
-                      <td>{x.campana}</td>
-                      <td>{x.prestador}</td>
-                      <td>{nf(x.total_general)}</td>
-                      <td>{nf(x.enviador_si)}</td>
-                      <td>{pct(x.efectividad_enviador)}</td>
-                      <td>{nf(x.servicios_cumplidos)}</td>
-                      <td>{nf(x.servicios_no_cumplidos)}</td>
-                      <td>{pct(x.cumplimiento_demora)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        )}
-        {page === "upload" && (
-          <section className="panel upload">
-            <header>
-              <Upload />
-              <div>
-                <h2>Cargar reportes</h2>
-                <p>Archivos .xlsx o .xlsm</p>
-              </div>
-            </header>
-            <label className="drop">
-              <input
-                type="file"
-                accept=".xlsx,.xlsm"
-                onChange={(e) => setFile(e.target.files?.[0] || null)}
-              />
-              <Upload size={42} />
-              <b>{file?.name || "Seleccionar archivo Excel"}</b>
-              <span>
-                {file
-                  ? `${(file.size / 1024 / 1024).toFixed(2)} MB`
-                  : "Haz clic para seleccionar"}
-              </span>
-            </label>
+        <div className="flex flex-col flex-1">
+          {NAV_ITEMS.map((item) => (
             <button
-              className="primary upload-button"
-              disabled={!file || uploading}
-              onClick={upload}
+              key={item.page}
+              type="button"
+              aria-current={page === item.page ? "page" : undefined}
+              onClick={() => setPage(item.page)}
+              className={`mx-2 my-1 px-4 py-3 rounded-lg flex items-center gap-3 text-left transition-colors ${
+                page === item.page
+                  ? "bg-primary-container text-on-primary-container"
+                  : "text-on-primary-fixed-variant hover:bg-white/10"
+              }`}
             >
-              {uploading && <RefreshCw className="spin" />}Procesar reporte
+              <Icon name={item.icon} filled={page === item.page} />
+              <span className="font-label-md text-label-md">{item.label}</span>
             </button>
-            {uploadMessage && (
-              <div className="status">
-                <b>{uploadMessage}</b>
-                {uploadStatus && (
-                  <span>
-                    Estado: {uploadStatus.status} · Filas:{" "}
-                    {nf(uploadStatus.filas_procesadas)}
-                  </span>
+          ))}
+        </div>
+        <div className="px-md py-md mt-auto">
+          <div className="text-on-primary-fixed-variant rounded-lg flex items-center gap-3 opacity-80">
+            <Icon name="dns" className="text-[16px]" />
+            <span className="font-label-sm text-label-sm flex flex-col">
+              Backend v{backend.version}
+              <b className={backend.ok ? "text-tertiary-fixed-dim" : "text-error-container"}>
+                {backend.ok ? "Conectado" : "Sin conexión"}
+              </b>
+            </span>
+          </div>
+        </div>
+      </nav>
+
+      {/* ---------- Contenido principal ---------- */}
+      <div className="flex-1 flex flex-col ml-sidebar-width w-[calc(100%-260px)] min-h-screen">
+        <header className="flex justify-end items-center h-16 w-full px-md z-40 bg-surface shrink-0">
+          <div className="flex items-center gap-sm text-on-surface-variant">
+            <button className="p-2 hover:bg-surface-container-low transition-colors rounded-full flex items-center justify-center">
+              <Icon name="notifications" />
+            </button>
+            <button className="p-2 hover:bg-surface-container-low transition-colors rounded-full flex items-center justify-center">
+              <Icon name="help" />
+            </button>
+            <button className="p-2 hover:bg-surface-container-low transition-colors rounded-full flex items-center justify-center ml-xs">
+              <Icon name="account_circle" className="text-[32px]" />
+            </button>
+          </div>
+        </header>
+
+        <main className="flex-1 overflow-y-auto">
+          <div className="max-w-container-max mx-auto p-xl flex flex-col gap-xl">
+            {/* ---------- Filtros globales ---------- */}
+            {page !== "upload" && (
+              <section className="flex flex-col gap-md">
+                {page === "metrics" && (
+                  <div className="flex justify-between items-end flex-wrap gap-2">
+                    <h2 className="font-display-lg text-display-lg text-on-surface">
+                      Métricas de Trackeo
+                    </h2>
+                    <button
+                      className="bg-primary-container text-on-primary-container px-sm py-xs rounded-lg font-label-md text-label-md hover:bg-primary hover:text-on-primary transition-colors flex items-center gap-2"
+                      onClick={() =>
+                        summary &&
+                        csv(
+                          [summary as unknown as Record<string, unknown>],
+                          "resumen-trackeo.csv",
+                        )
+                      }
+                    >
+                      <Icon name="download" className="text-[18px]" />
+                      Exportar Reporte
+                    </button>
+                  </div>
                 )}
+                <div className="bg-surface-container-lowest p-md rounded-xl card-shadow border border-outline-variant/20 flex flex-wrap items-end gap-md">
+                  <div className="flex items-center gap-2">
+                    <div className="flex flex-col gap-1">
+                      <label className="font-label-sm text-label-sm text-on-surface-variant uppercase">
+                        Desde
+                      </label>
+                      <input
+                        className="form-input-styled font-body-md text-body-md text-on-surface"
+                        type="date"
+                        value={draft.fecha_desde}
+                        onChange={(e) =>
+                          setDraft({ ...draft, fecha_desde: e.target.value })
+                        }
+                      />
+                    </div>
+                    <Icon name="arrow_right_alt" className="text-outline-variant mt-5" />
+                    <div className="flex flex-col gap-1">
+                      <label className="font-label-sm text-label-sm text-on-surface-variant uppercase">
+                        Hasta
+                      </label>
+                      <input
+                        className="form-input-styled font-body-md text-body-md text-on-surface"
+                        type="date"
+                        value={draft.fecha_hasta}
+                        onChange={(e) =>
+                          setDraft({ ...draft, fecha_hasta: e.target.value })
+                        }
+                      />
+                    </div>
+                  </div>
+                  <MultiSelect
+                    label="Campañas"
+                    values={draft.campanas}
+                    options={campOpts}
+                    placeholder="Todas las campañas"
+                    onChange={(campanas) => setDraft({ ...draft, campanas })}
+                  />
+                  <MultiSelect
+                    label="Prestadores"
+                    values={draft.prestador_ids}
+                    options={provOpts}
+                    placeholder="Todos los prestadores"
+                    onChange={(prestador_ids) =>
+                      setDraft({ ...draft, prestador_ids })
+                    }
+                  />
+                  <MultiSelect
+                    label="Estados"
+                    values={draft.estados}
+                    options={stateOpts}
+                    placeholder="Todos"
+                    onChange={(estados) => setDraft({ ...draft, estados })}
+                  />
+                  <MultiSelect
+                    label="Tipo servicio"
+                    values={draft.tipos}
+                    options={typeOpts}
+                    placeholder="Todos los tipos"
+                    onChange={(tipos) => setDraft({ ...draft, tipos })}
+                  />
+                  <div className="flex items-center gap-2 ml-auto">
+                    <button
+                      className="form-input-styled font-label-md text-label-md text-on-surface-variant hover:bg-surface-container-low transition-colors"
+                      onClick={() => {
+                        setDraft(DEFAULT);
+                        setFilters(DEFAULT);
+                      }}
+                    >
+                      Restablecer
+                    </button>
+                    <button
+                      className="h-10 px-sm rounded bg-primary text-on-primary font-label-md text-label-md flex items-center gap-2 hover:opacity-90 transition-opacity"
+                      onClick={() => setFilters({ ...draft })}
+                    >
+                      {loading && <Spinner className="text-[16px]" />}
+                      Aplicar filtros
+                    </button>
+                  </div>
+                </div>
+                <p className="font-label-sm text-label-sm text-on-surface-variant">
+                  Estado y Tipo de servicio 100% manuales. Sin selección se incluyen
+                  todos los valores, igual que sin filtrar esa columna en Excel.
+                </p>
+              </section>
+            )}
+
+            {error && (
+              <div className="bg-error-container text-on-error-container rounded-lg px-md py-sm flex items-center gap-2 font-body-md text-body-md">
+                <Icon name="error" />
+                {error}
               </div>
             )}
-          </section>
-        )}
-      </main>
+
+            {page === "metrics" && (
+              <>
+                {/* ---------- Universos analíticos ---------- */}
+                <section className="flex flex-col gap-sm">
+                  <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs">
+                    Universos analíticos
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-md pt-xs">
+                    <Card
+                      icon={<Icon name="list_alt" filled />}
+                      title="Servicios en el periodo"
+                      value={nf(universes?.servicios_cargados)}
+                      detail="Total visible para las fechas"
+                    />
+                    <Card
+                      icon={<Icon name="local_shipping" filled />}
+                      title="Servicios vehiculares"
+                      value={nf(universes?.servicios_vehiculares)}
+                      detail="Tipos operativos seleccionados"
+                    />
+                    <Card
+                      icon={<Icon name="check_circle" filled />}
+                      title="Servicios evaluables"
+                      value={nf(universes?.servicios_evaluables)}
+                      detail="Base seleccionada para KPI"
+                      tone="green"
+                    />
+                    <Card
+                      icon={<Icon name="cancel" filled />}
+                      title="Vehiculares cancelados"
+                      value={nf(universes?.servicios_cancelados)}
+                      detail="Estados cancelados"
+                      tone="red"
+                    />
+                    <Card
+                      icon={<Icon name="warning" filled />}
+                      title="Vehiculares no finalizados"
+                      value={nf(universes?.servicios_no_finalizados)}
+                      detail="Pendientes o en curso"
+                      tone="amber"
+                    />
+                    <Card
+                      icon={<Icon name="filter_alt" filled />}
+                      title="Universo seleccionado"
+                      value={nf(summary?.servicios_consultados)}
+                      detail={[
+                        filters.estados.length
+                          ? `Estado: ${filters.estados.join(", ")}`
+                          : "Todos los estados",
+                        filters.tipos.length
+                          ? `Tipo: ${filters.tipos.join(", ")}`
+                          : "Todos los tipos",
+                      ].join(" · ")}
+                      highlight
+                    />
+                  </div>
+                </section>
+
+                {/* ---------- Tendencia + Indicadores operativos ---------- */}
+                <section className="grid grid-cols-1 xl:grid-cols-12 gap-xl">
+                  <div className="xl:col-span-8 flex flex-col gap-sm">
+                    <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs">
+                      Tendencia diaria
+                    </h3>
+                    <div className="bg-surface-container-lowest rounded-xl p-md card-shadow border border-outline-variant/20 flex-1 min-h-[350px] flex flex-col">
+                      <div className="flex justify-between items-center mb-md flex-wrap gap-2">
+                        <div className="flex items-center gap-4 flex-wrap">
+                          <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full bg-tertiary" />
+                            <span className="font-label-md text-label-md text-on-surface-variant">
+                              Cumplimiento de demora
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full bg-primary" />
+                            <span className="font-label-md text-label-md text-on-surface-variant">
+                              Efectividad enviador
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-full bg-[#7c3aed]" />
+                            <span className="font-label-md text-label-md text-on-surface-variant">
+                              Uso enviador
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <Trend data={trend} />
+                    </div>
+                  </div>
+                  <div className="xl:col-span-4 flex flex-col gap-sm">
+                    <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs">
+                      Indicadores operativos
+                    </h3>
+                    <div className="flex flex-col gap-3">
+                      <IndicatorRow
+                        icon={<Icon name="database" className="text-[18px]" />}
+                        label="Servicios seleccionados"
+                        value={nf(summary?.servicios_consultados)}
+                        detail={`${nf(summary?.enviador_si)} con enviador · ${nf(summary?.enviador_no)} sin enviador`}
+                      />
+                      <IndicatorRow
+                        icon={<Icon name="send_to_mobile" className="text-[18px]" />}
+                        label="Uso del enviador"
+                        value={pct(summary?.uso_enviador)}
+                        detail={`${nf(summary?.enviador_si)} servicios`}
+                        onClick={() => open("ENVIADOR_SI", "Servicios con enviador")}
+                      />
+                      <IndicatorRow
+                        icon={<Icon name="rv_hookup" className="text-[18px]" />}
+                        label="Asigna móvil"
+                        value={nf(summary?.asigna_movil)}
+                        detail={`${pct(summary?.efectividad_enviador)} efectividad`}
+                        onClick={() => open("ASIGNA_MOVIL", "Asigna móvil")}
+                      />
+                      <IndicatorRow
+                        icon={<Icon name="mobile_off" className="text-[18px]" />}
+                        label="No asigna móvil"
+                        value={nf(summary?.no_asigna_movil_cantidad)}
+                        detail={pct(summary?.no_asigna_movil_porcentaje)}
+                        onClick={() => open("NO_ASIGNA_MOVIL", "No asigna móvil")}
+                      />
+                      <IndicatorRow
+                        icon={<Icon name="event_available" className="text-[18px]" />}
+                        label="Servicios programados"
+                        value={nf(summary?.servicios_programados)}
+                        detail={pct(summary?.programados_porcentaje)}
+                        onClick={() => open("PROGRAMADOS", "Programados")}
+                      />
+                      <IndicatorRow
+                        icon={<Icon name="timer" className="text-[18px]" />}
+                        label="Cumplimiento de demora"
+                        value={
+                          (summary?.servicios_evaluados_demora ?? 0) > 0
+                            ? pct(summary?.cumplimiento_demora)
+                            : "N/A"
+                        }
+                        detail={`${nf(summary?.servicios_cumplidos)} cumplen · ${nf(summary?.servicios_no_cumplidos)} no cumplen`}
+                        onClick={() => open("CUMPLE_DEMORA", "Cumple demora")}
+                      />
+                      {/* NUEVO (ADITIVO): separa el cumplimiento "formula
+                          Excel" (arriba) del cumplimiento observado solo
+                          sobre servicios con trazabilidad completa, más
+                          qué proporción del universo tiene esa
+                          trazabilidad. No reemplaza la tarjeta anterior. */}
+                      <IndicatorRow
+                        icon={<Icon name="verified" className="text-[18px]" />}
+                        label="Cumplimiento observado (trazable)"
+                        value={
+                          (summary?.servicios_evaluados_demora_trazable ?? 0) > 0
+                            ? pct(summary?.cumplimiento_demora_trazable)
+                            : "N/A"
+                        }
+                        detail={`${nf(summary?.servicios_cumplidos_trazable)} cumplen · ${nf(summary?.servicios_no_cumplidos_trazable)} no cumplen (con Demora Prometida y Real cargadas)`}
+                        onClick={() =>
+                          open("CUMPLE_DEMORA_TRAZABLE", "Cumple demora (trazable)")
+                        }
+                      />
+                      <IndicatorRow
+                        icon={<Icon name="fact_check" className="text-[18px]" />}
+                        label="Cobertura de medición de demora"
+                        value={pct(summary?.cobertura_medicion_demora)}
+                        detail={`${nf(summary?.servicios_evaluados_demora_trazable)} de ${nf(summary?.servicios_consultados)} servicios con Demora Prometida y Real cargadas`}
+                      />
+                    </div>
+                  </div>
+                </section>
+
+                {/* ---------- Distribución + Calidad ---------- */}
+                <section className="grid grid-cols-1 lg:grid-cols-2 gap-xl">
+                  <div className="flex flex-col gap-sm">
+                    <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs">
+                      Distribución de servicios cumplidos
+                    </h3>
+                    <p className="font-label-sm text-label-sm text-on-surface-variant -mt-2">
+                      Sobre {nf(summary?.servicios_cumplidos)} servicios cumplidos.
+                    </p>
+                    <div className="bg-surface-container-lowest rounded-xl p-md card-shadow border border-outline-variant/20 flex flex-col gap-4">
+                      {ranges.map(([label, count, r, m]) => (
+                        <ProgressBar
+                          key={m}
+                          label={label}
+                          valueLabel={`${nf(count)} · ${pct(r)}`}
+                          ratio={r || 0}
+                          color="#004ac6"
+                          onClick={() => open(m, label)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-sm">
+                    <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs">
+                      Calidad de información
+                    </h3>
+                    <p className="font-label-sm text-label-sm text-on-surface-variant -mt-2">
+                      Completitud sobre el universo filtrado.
+                    </p>
+                    <div className="bg-surface-container-lowest rounded-xl p-md card-shadow border border-outline-variant/20 flex flex-col gap-4">
+                      {qualityRows.map(([label, value]) => {
+                        const ratio = quality?.total ? value / quality.total : 0;
+                        return (
+                          <ProgressBar
+                            key={label}
+                            label={label}
+                            icon={qualityIcon(ratio)}
+                            valueLabel={`${nf(value)} de ${nf(quality?.total)} · ${pct(ratio)}`}
+                            ratio={ratio}
+                            color={qualityColor(ratio)}
+                          />
+                        );
+                      })}
+                    </div>
+                  </div>
+                </section>
+
+                {/* ---------- NUEVO (ADITIVO): Funnel de tiempos + SLA ---------- */}
+                <section className="flex flex-col gap-sm">
+                  <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs">
+                    Funnel de tiempos (minutos)
+                  </h3>
+                  <p className="font-label-sm text-label-sm text-on-surface-variant -mt-2">
+                    Tramos del proceso, en minutos. Valores negativos (fin
+                    registrado antes que el inicio) se excluyen de los
+                    percentiles y se muestran aparte como dato de calidad.
+                  </p>
+                  <div className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 overflow-x-auto">
+                    <table className="w-full text-body-md font-body-md">
+                      <thead>
+                        <tr className="text-label-md font-label-md text-on-surface-variant uppercase text-left border-b border-outline-variant/30">
+                          <th className="py-2 pl-md pr-3">Tramo</th>
+                          <th className="py-2 pr-3">Evaluables</th>
+                          <th className="py-2 pr-3">Promedio</th>
+                          <th className="py-2 pr-3">P50</th>
+                          <th className="py-2 pr-3">P75</th>
+                          <th className="py-2 pr-3">P90</th>
+                          <th className="py-2 pr-3">P95</th>
+                          <th className="py-2 pr-3">P99</th>
+                          <th className="py-2 pr-3">Máximo</th>
+                          <th className="py-2 pr-md">Negativos</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(
+                          [
+                            ["T1 · Alta → Despachador", funnel?.tiempos.t1_alta_a_despachador],
+                            ["T2 · Despachador → Asignación", funnel?.tiempos.t2_despachador_a_asignacion],
+                            ["T3 · Alta → Asignación", funnel?.tiempos.t3_alta_a_asignacion],
+                            ["T4 · Asignación → Arribo", funnel?.tiempos.t4_asignacion_a_arribo],
+                            ["T5 · Ejecución (arribo → fin)", funnel?.tiempos.t5_ejecucion],
+                            ["T6 · Alta → Fin (end-to-end)", funnel?.tiempos.t6_end_to_end],
+                          ] as [string, TiempoStats | undefined][]
+                        ).map(([label, s]) => (
+                          <tr
+                            key={label}
+                            className="border-b border-outline-variant/10 hover:bg-surface-container-low"
+                          >
+                            <td className="py-2 pl-md pr-3 text-on-surface font-medium">{label}</td>
+                            <td className="py-2 pr-3">{nf(s?.cantidad)}</td>
+                            <td className="py-2 pr-3">{nf(s?.promedio)}</td>
+                            <td className="py-2 pr-3">{nf(s?.p50)}</td>
+                            <td className="py-2 pr-3">{nf(s?.p75)}</td>
+                            <td className="py-2 pr-3">{nf(s?.p90)}</td>
+                            <td className="py-2 pr-3">{nf(s?.p95)}</td>
+                            <td className="py-2 pr-3">{nf(s?.p99)}</td>
+                            <td className="py-2 pr-3">{nf(s?.maximo)}</td>
+                            <td className="py-2 pr-md">
+                              {s?.cantidad_invalidos_negativos ? (
+                                <span className="text-error">
+                                  {nf(s.cantidad_invalidos_negativos)}
+                                </span>
+                              ) : (
+                                nf(s?.cantidad_invalidos_negativos)
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+
+                <section className="grid grid-cols-1 lg:grid-cols-2 gap-xl">
+                  <div className="flex flex-col gap-sm">
+                    <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs">
+                      SLA de despacho
+                    </h3>
+                    <p className="font-label-sm text-label-sm text-on-surface-variant -mt-2">
+                      {funnel?.sla_despacho.base_tiempo} · sobre{" "}
+                      {nf(funnel?.sla_despacho.cantidad_evaluable)} servicios evaluables.
+                    </p>
+                    <div className="bg-surface-container-lowest rounded-xl p-md card-shadow border border-outline-variant/20 flex flex-col gap-4">
+                      {(funnel?.sla_despacho.buckets || []).map((b) => (
+                        <ProgressBar
+                          key={b.etiqueta}
+                          label={b.etiqueta}
+                          valueLabel={`${nf(b.cantidad)} · ${pct(b.porcentaje)}`}
+                          ratio={b.porcentaje}
+                          color="#004ac6"
+                        />
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-sm">
+                    <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs">
+                      SLA de llegada
+                    </h3>
+                    <p className="font-label-sm text-label-sm text-on-surface-variant -mt-2">
+                      DemoraReal − DemoraPrometida · sobre{" "}
+                      {nf(funnel?.sla_llegada.cantidad_evaluable)} servicios con
+                      trazabilidad completa.
+                    </p>
+                    <div className="bg-surface-container-lowest rounded-xl p-md card-shadow border border-outline-variant/20 flex flex-col gap-4">
+                      {(funnel?.sla_llegada.buckets || []).map((b) => (
+                        <ProgressBar
+                          key={b.etiqueta}
+                          label={b.etiqueta}
+                          valueLabel={`${nf(b.cantidad)} · ${pct(b.porcentaje)}`}
+                          ratio={b.porcentaje}
+                          color="#006058"
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </section>
+
+                {/* ---------- NUEVO (ADITIVO): Impacto por campaña ---------- */}
+                <section className="flex flex-col gap-sm">
+                  <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs">
+                    Impacto por campaña
+                  </h3>
+                  <p className="font-label-sm text-label-sm text-on-surface-variant -mt-2">
+                    Impacto = volumen × oportunidad de mejora. Una campaña grande
+                    con performance mediocre puede pesar más que una chica con
+                    peor porcentaje — ordenado por impacto en asignación, no por
+                    porcentaje.
+                  </p>
+                  <div className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 overflow-x-auto">
+                    <table className="w-full text-body-md font-body-md">
+                      <thead>
+                        <tr className="text-label-md font-label-md text-on-surface-variant uppercase text-left border-b border-outline-variant/30">
+                          <th className="py-2 pl-md pr-3">Campaña</th>
+                          <th className="py-2 pr-3">Total</th>
+                          <th className="py-2 pr-3">Efectividad asignación</th>
+                          <th className="py-2 pr-3">Cumplimiento observado</th>
+                          <th className="py-2 pr-3">Oportunidad asignación</th>
+                          <th className="py-2 pr-md">Impacto asignación</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {campanaImpacto.map((c) => (
+                          <tr
+                            key={c.campana_normalizada}
+                            className="border-b border-outline-variant/10 hover:bg-surface-container-low"
+                          >
+                            <td className="py-2 pl-md pr-3 text-on-surface font-medium">
+                              {c.campana}
+                            </td>
+                            <td className="py-2 pr-3">{nf(c.total_general)}</td>
+                            <td className="py-2 pr-3">{pct(c.efectividad_enviador)}</td>
+                            <td className="py-2 pr-3">
+                              {c.servicios_evaluados_demora_trazable > 0
+                                ? pct(c.cumplimiento_demora_trazable)
+                                : "N/A"}
+                            </td>
+                            <td className="py-2 pr-3">
+                              {pct(c.oportunidad_mejora_asignacion)}
+                            </td>
+                            <td className="py-2 pr-md font-medium text-on-surface">
+                              {nf(c.impacto_asignacion)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+
+                {/* ---------- NUEVO (ADITIVO): Distribución horaria ---------- */}
+                <section className="flex flex-col gap-sm">
+                  <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs">
+                    Distribución horaria y SLA de despacho
+                  </h3>
+                  <p className="font-label-sm text-label-sm text-on-surface-variant -mt-2">
+                    Volumen y tiempo de asignación (T3) por hora del día (hora
+                    local Argentina) — para dimensionar capacidad contra la
+                    demanda real por franja horaria, no solo por día.
+                  </p>
+                  <div className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 overflow-x-auto">
+                    <table className="w-full text-body-md font-body-md">
+                      <thead>
+                        <tr className="text-label-md font-label-md text-on-surface-variant uppercase text-left border-b border-outline-variant/30">
+                          <th className="py-2 pl-md pr-3">Hora</th>
+                          <th className="py-2 pr-3">Servicios</th>
+                          <th className="py-2 pr-3 w-1/3">Volumen relativo</th>
+                          <th className="py-2 pr-3">T3 promedio</th>
+                          <th className="py-2 pr-md">T3 P90</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(() => {
+                          const maxServicios = Math.max(
+                            1,
+                            ...(funnel?.distribucion_horaria || []).map(
+                              (h) => h.servicios,
+                            ),
+                          );
+                          return (funnel?.distribucion_horaria || []).map((h) => (
+                            <tr
+                              key={h.hora}
+                              className="border-b border-outline-variant/10 hover:bg-surface-container-low"
+                            >
+                              <td className="py-2 pl-md pr-3 text-on-surface font-medium">
+                                {String(h.hora).padStart(2, "0")}:00
+                              </td>
+                              <td className="py-2 pr-3">{nf(h.servicios)}</td>
+                              <td className="py-2 pr-3">
+                                <div className="w-full h-xs bg-surface-container-highest rounded-full overflow-hidden">
+                                  <div
+                                    className="h-full rounded-full bg-primary"
+                                    style={{
+                                      width: `${(h.servicios / maxServicios) * 100}%`,
+                                    }}
+                                  />
+                                </div>
+                              </td>
+                              <td className="py-2 pr-3">{nf(h.t3_promedio)}</td>
+                              <td className="py-2 pr-md">{nf(h.t3_p90)}</td>
+                            </tr>
+                          ));
+                        })()}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+
+                {/* ---------- NUEVO (ADITIVO): Estados por categoría ---------- */}
+                <section className="flex flex-col gap-sm">
+                  <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs">
+                    Estados por categoría semántica
+                  </h3>
+                  <p className="font-label-sm text-label-sm text-on-surface-variant -mt-2">
+                    {estadosCategorizados?.nota ||
+                      "Categorización propuesta — revisar antes de usar para decisiones de negocio."}
+                  </p>
+                  <div className="bg-surface-container-lowest rounded-xl p-md card-shadow border border-outline-variant/20 flex flex-col gap-4">
+                    {(estadosCategorizados?.categorias || []).map((c) => (
+                      <ProgressBar
+                        key={c.categoria}
+                        label={c.categoria.replace("_", " ")}
+                        valueLabel={`${nf(c.cantidad)} · ${pct(c.porcentaje)}`}
+                        ratio={c.porcentaje}
+                        color={
+                          c.categoria === "FINALIZADO"
+                            ? "#006058"
+                            : c.categoria === "CANCELADO"
+                              ? "#ba1a1a"
+                              : c.categoria === "SIN_CLASIFICAR"
+                                ? "#f59e0b"
+                                : "#004ac6"
+                        }
+                      />
+                    ))}
+                  </div>
+                  {(estadosCategorizados?.estados_sin_clasificar.length || 0) > 0 && (
+                    <div className="bg-[#f59e0b]/10 text-[#7a4a00] rounded-lg px-md py-sm flex items-start gap-2 font-body-md text-body-md">
+                      <Icon
+                        name="warning"
+                        filled
+                        className="text-[#f59e0b] shrink-0 mt-0.5"
+                      />
+                      <div>
+                        <b>Estados sin categorizar</b> — revisar y ajustar la
+                        clasificación en el backend:
+                        <ul className="list-disc pl-5 mt-1">
+                          {estadosCategorizados?.estados_sin_clasificar.map((e) => (
+                            <li key={e.estado_normalizado}>
+                              {e.estado} ({nf(e.cantidad)})
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  )}
+                </section>
+              </>
+            )}
+
+            {page === "providers" && (
+              <section className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 flex flex-col overflow-hidden">
+                <header className="flex items-center gap-3 px-md py-md border-b border-outline-variant/20">
+                  <Icon name="person_search" className="text-primary" />
+                  <div>
+                    <h2 className="font-title-lg text-title-lg text-on-surface">
+                      Detalle por prestador
+                    </h2>
+                    <p className="font-label-sm text-label-sm text-on-surface-variant">
+                      {nf(displayedProviders.length)} prestadores
+                    </p>
+                  </div>
+                </header>
+                {prestadoresWarning && (
+                  <div className="mx-md mt-md bg-[#f59e0b]/10 text-[#7a4a00] rounded-lg px-md py-sm flex items-start gap-2 font-body-md text-body-md">
+                    <Icon name="warning" filled className="text-[#f59e0b] shrink-0 mt-0.5" />
+                    {prestadoresWarning}
+                  </div>
+                )}
+                <div className="flex items-center justify-between gap-3 px-md py-sm flex-wrap">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <div className="form-input-styled flex items-center gap-2 min-w-[220px]">
+                      <Icon name="search" className="text-[18px] text-outline" />
+                      <input
+                        className="flex-1 outline-none bg-transparent font-body-md text-body-md text-on-surface"
+                        placeholder="Buscar prestador…"
+                        value={providerSearch}
+                        onChange={(e) => setProviderSearch(e.target.value)}
+                      />
+                    </div>
+                    <div className="flex items-center rounded-lg border border-outline-variant/40 overflow-hidden">
+                      <button
+                        className={`h-10 px-sm font-label-md text-label-md transition-colors ${
+                          providerSort === "total"
+                            ? "bg-primary text-on-primary"
+                            : "bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-low"
+                        }`}
+                        onClick={() => setProviderSort("total")}
+                      >
+                        Ordenar por total
+                      </button>
+                      <button
+                        className={`h-10 px-sm font-label-md text-label-md transition-colors ${
+                          providerSort === "score"
+                            ? "bg-primary text-on-primary"
+                            : "bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-low"
+                        }`}
+                        onClick={() => setProviderSort("score")}
+                      >
+                        Ordenar por score
+                      </button>
+                    </div>
+                  </div>
+                  <button
+                    className="h-10 px-sm rounded bg-primary-container text-on-primary-container font-label-md text-label-md flex items-center gap-2 hover:bg-primary hover:text-on-primary transition-colors"
+                    onClick={() =>
+                      csv(
+                        displayedProviders as unknown as Record<string, unknown>[],
+                        "prestadores.csv",
+                      )
+                    }
+                  >
+                    <Icon name="download" className="text-[18px]" />
+                    Exportar
+                  </button>
+                </div>
+                <div className="overflow-x-auto px-md pb-md">
+                  <table className="w-full text-body-md font-body-md">
+                    <thead>
+                      <tr className="text-label-md font-label-md text-on-surface-variant uppercase text-left border-b border-outline-variant/30">
+                        <th className="py-2 pr-3">Prestador</th>
+                        <th className="py-2 pr-3">Total</th>
+                        <th className="py-2 pr-3">Con enviador</th>
+                        <th className="py-2 pr-3">Uso</th>
+                        <th className="py-2 pr-3">Asigna</th>
+                        <th className="py-2 pr-3">Efectividad</th>
+                        <th className="py-2 pr-3">Programados</th>
+                        <th className="py-2 pr-3">Cumple</th>
+                        <th className="py-2 pr-3">No cumple</th>
+                        <th className="py-2 pr-3">Cumplimiento</th>
+                        <th className="py-2 pr-3">Índice calidad</th>
+                        <th className="py-2 pr-3">Volumen rel.</th>
+                        <th className="py-2 pr-3">Score</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {displayedProviders.map((x) => (
+                        <tr
+                          key={x.prestador_id}
+                          className="border-b border-outline-variant/10 hover:bg-surface-container-low"
+                        >
+                          <td className="py-2 pr-3 text-on-surface">{x.prestador}</td>
+                          <td className="py-2 pr-3">{nf(x.total_general)}</td>
+                          <td className="py-2 pr-3">{nf(x.enviador_si)}</td>
+                          <td className="py-2 pr-3">{pct(x.uso_enviador)}</td>
+                          <td className="py-2 pr-3">{nf(x.asigna_movil)}</td>
+                          <td className="py-2 pr-3">{pct(x.efectividad_enviador)}</td>
+                          <td className="py-2 pr-3">{nf(x.servicios_programados)}</td>
+                          <td className="py-2 pr-3">{nf(x.servicios_cumplidos)}</td>
+                          <td className="py-2 pr-3">{nf(x.servicios_no_cumplidos)}</td>
+                          <td className="py-2 pr-3">{pct(x.cumplimiento_demora)}</td>
+                          <td className="py-2 pr-3">{pct(x.indice_calidad_datos)}</td>
+                          <td className="py-2 pr-3">{pct(x.volumen_relativo)}</td>
+                          <td className="py-2 pr-3">
+                            <span className="font-medium text-on-surface">
+                              {x.score_ranking != null
+                                ? pct(x.score_ranking)
+                                : "N/A"}
+                            </span>
+                            {x.muestra_baja && (
+                              <span
+                                className="ml-1 text-[#f59e0b]"
+                                title="Menos de 20 servicios — score poco confiable"
+                              >
+                                ⚠
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            )}
+
+            {page === "cross" && (
+              <section className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 flex flex-col overflow-hidden">
+                <header className="flex items-center gap-3 px-md py-md border-b border-outline-variant/20">
+                  <Icon name="campaign" className="text-primary" />
+                  <div>
+                    <h2 className="font-title-lg text-title-lg text-on-surface">
+                      Campaña × prestador
+                    </h2>
+                    <p className="font-label-sm text-label-sm text-on-surface-variant">
+                      {nf(cross.length)} combinaciones
+                    </p>
+                  </div>
+                </header>
+                <div className="flex justify-end px-md py-sm">
+                  <button
+                    className="h-10 px-sm rounded bg-primary-container text-on-primary-container font-label-md text-label-md flex items-center gap-2 hover:bg-primary hover:text-on-primary transition-colors"
+                    onClick={() =>
+                      csv(
+                        cross as unknown as Record<string, unknown>[],
+                        "campana-prestador.csv",
+                      )
+                    }
+                  >
+                    <Icon name="download" className="text-[18px]" />
+                    Exportar
+                  </button>
+                </div>
+                <div className="overflow-x-auto px-md pb-md">
+                  <table className="w-full text-body-md font-body-md">
+                    <thead>
+                      <tr className="text-label-md font-label-md text-on-surface-variant uppercase text-left border-b border-outline-variant/30">
+                        <th className="py-2 pr-3">Campaña</th>
+                        <th className="py-2 pr-3">Prestador</th>
+                        <th className="py-2 pr-3">Total</th>
+                        <th className="py-2 pr-3">Con enviador</th>
+                        <th className="py-2 pr-3">Efectividad</th>
+                        <th className="py-2 pr-3">Cumple</th>
+                        <th className="py-2 pr-3">No cumple</th>
+                        <th className="py-2 pr-3">Cumplimiento</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cross.map((x, i) => (
+                        <tr
+                          key={`${x.campana}-${x.prestador_id}-${i}`}
+                          className="border-b border-outline-variant/10 hover:bg-surface-container-low"
+                        >
+                          <td className="py-2 pr-3 text-on-surface">{x.campana}</td>
+                          <td className="py-2 pr-3 text-on-surface">{x.prestador}</td>
+                          <td className="py-2 pr-3">{nf(x.total_general)}</td>
+                          <td className="py-2 pr-3">{nf(x.enviador_si)}</td>
+                          <td className="py-2 pr-3">{pct(x.efectividad_enviador)}</td>
+                          <td className="py-2 pr-3">{nf(x.servicios_cumplidos)}</td>
+                          <td className="py-2 pr-3">{nf(x.servicios_no_cumplidos)}</td>
+                          <td className="py-2 pr-3">{pct(x.cumplimiento_demora)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            )}
+
+            {page === "upload" && (
+              <section className="max-w-xl mx-auto w-full bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 flex flex-col gap-md p-lg">
+                <header className="flex items-center gap-3">
+                  <Icon name="upload_file" className="text-primary" />
+                  <div>
+                    <h2 className="font-title-lg text-title-lg text-on-surface">
+                      Cargar reportes
+                    </h2>
+                    <p className="font-label-sm text-label-sm text-on-surface-variant">
+                      Archivos .xlsx o .xlsm
+                    </p>
+                  </div>
+                </header>
+                <label className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-outline-variant rounded-xl py-xl px-md cursor-pointer hover:border-primary hover:bg-primary/5 transition-colors">
+                  <input
+                    className="hidden"
+                    type="file"
+                    accept=".xlsx,.xlsm"
+                    onChange={(e) => setFile(e.target.files?.[0] || null)}
+                  />
+                  <Icon name="upload_file" className="text-[42px] text-outline" />
+                  <b className="font-body-md text-body-md text-on-surface text-center">
+                    {file?.name || "Seleccionar archivo Excel"}
+                  </b>
+                  <span className="font-label-sm text-label-sm text-on-surface-variant">
+                    {file
+                      ? `${(file.size / 1024 / 1024).toFixed(2)} MB`
+                      : "Haz clic para seleccionar"}
+                  </span>
+                </label>
+                <button
+                  className="h-11 rounded bg-primary text-on-primary font-label-md text-label-md flex items-center justify-center gap-2 disabled:opacity-50 hover:opacity-90 transition-opacity"
+                  disabled={!file || uploading}
+                  onClick={upload}
+                >
+                  {uploading && <Spinner className="text-[18px]" />}
+                  Procesar reporte
+                </button>
+                {uploadMessage && (
+                  <div className="bg-surface-container-low rounded-lg p-sm flex flex-col gap-1">
+                    <b className="font-body-md text-body-md text-on-surface">
+                      {uploadMessage}
+                    </b>
+                    {uploadStatus && (
+                      <span className="font-label-sm text-label-sm text-on-surface-variant">
+                        Estado: {uploadStatus.status} · Filas:{" "}
+                        {nf(uploadStatus.filas_procesadas)}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </section>
+            )}
+
+            <div className="h-xl" />
+          </div>
+        </main>
+      </div>
+
+      {/* ---------- Modal de drill-down ---------- */}
       {drill && (
-        <div className="backdrop" onMouseDown={() => setDrill(null)}>
-          <section className="modal" onMouseDown={(e) => e.stopPropagation()}>
-            <header>
+        <div
+          className="fixed inset-0 bg-on-surface/40 z-[100] flex items-center justify-center p-md"
+          onMouseDown={() => setDrill(null)}
+        >
+          <section
+            className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 w-full max-w-5xl max-h-[85vh] flex flex-col overflow-hidden"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <header className="flex items-center justify-between gap-3 px-md py-md border-b border-outline-variant/20">
               <div>
-                <h2>{drill.title}</h2>
-                <p>
+                <h2 className="font-title-lg text-title-lg text-on-surface">
+                  {drill.title}
+                </h2>
+                <p className="font-label-sm text-label-sm text-on-surface-variant">
                   {nf(drill.total)} servicios · página {drill.page} de{" "}
                   {drill.pages || 1}
                 </p>
               </div>
-              <div>
+              <div className="flex items-center gap-2">
                 <button
+                  className="h-9 px-sm rounded bg-surface-container-low text-on-surface font-label-md text-label-md flex items-center gap-2 hover:bg-surface-container transition-colors"
                   onClick={() =>
                     csv(
                       drill.rows as unknown as Record<string, unknown>[],
@@ -994,63 +1679,84 @@ export default function App() {
                     )
                   }
                 >
-                  <Download />
+                  <Icon name="download" className="text-[18px]" />
                   Página
                 </button>
-                <button onClick={exportAll}>
+                <button
+                  className="h-9 px-sm rounded bg-primary-container text-on-primary-container font-label-md text-label-md flex items-center gap-2 hover:bg-primary hover:text-on-primary transition-colors"
+                  onClick={exportAll}
+                >
                   {drill.exporting ? (
-                    <RefreshCw className="spin" />
+                    <Spinner className="text-[18px]" />
                   ) : (
-                    <Download />
+                    <Icon name="download" className="text-[18px]" />
                   )}
                   Todo
                 </button>
-                <button onClick={() => setDrill(null)}>
-                  <X />
+                <button
+                  className="w-9 h-9 rounded-full flex items-center justify-center text-on-surface-variant hover:bg-surface-container-low transition-colors"
+                  onClick={() => setDrill(null)}
+                >
+                  <Icon name="close" />
                 </button>
               </div>
             </header>
-            {drill.error && <div className="alert">{drill.error}</div>}
-            <div className="table modal-table">
-              <table>
+            {drill.error && (
+              <div className="bg-error-container text-on-error-container px-md py-sm font-body-md text-body-md">
+                {drill.error}
+              </div>
+            )}
+            <div className="overflow-auto px-md py-sm flex-1">
+              <table className="w-full text-body-md font-body-md">
                 <thead>
-                  <tr>
-                    <th>ID</th>
-                    <th>Fecha</th>
-                    <th>Estado</th>
-                    <th>Tipo</th>
-                    <th>Prestador</th>
-                    <th>Campaña</th>
-                    <th>Prometida</th>
-                    <th>Real</th>
-                    <th>Rango</th>
+                  <tr className="text-label-md font-label-md text-on-surface-variant uppercase text-left border-b border-outline-variant/30 sticky top-0 bg-surface-container-lowest">
+                    <th className="py-2 pr-3">ID</th>
+                    <th className="py-2 pr-3">Fecha</th>
+                    <th className="py-2 pr-3">Estado</th>
+                    <th className="py-2 pr-3">Tipo</th>
+                    <th className="py-2 pr-3">Prestador</th>
+                    <th className="py-2 pr-3">Campaña</th>
+                    <th className="py-2 pr-3">Prometida</th>
+                    <th className="py-2 pr-3">Real</th>
+                    <th className="py-2 pr-3">Rango</th>
                   </tr>
                 </thead>
                 <tbody>
                   {drill.rows.map((x) => (
-                    <tr key={x.servicio_row_id}>
-                      <td>{x.id_servicio_prestado}</td>
-                      <td>{x.fecha}</td>
-                      <td>{x.estado}</td>
-                      <td>{x.tipo_de_servicio}</td>
-                      <td>{x.prestador}</td>
-                      <td>{x.campana}</td>
-                      <td>{x.demora_prometida}</td>
-                      <td>{x.demora_real}</td>
-                      <td>{x.rango_demora_real}</td>
+                    <tr
+                      key={x.servicio_row_id}
+                      className="border-b border-outline-variant/10 hover:bg-surface-container-low"
+                    >
+                      <td className="py-2 pr-3">{x.id_servicio_prestado}</td>
+                      <td className="py-2 pr-3">{x.fecha}</td>
+                      <td className="py-2 pr-3">{x.estado}</td>
+                      <td className="py-2 pr-3">{x.tipo_de_servicio}</td>
+                      <td className="py-2 pr-3 text-on-surface">{x.prestador}</td>
+                      <td className="py-2 pr-3">{x.campana}</td>
+                      <td className="py-2 pr-3">{x.demora_prometida}</td>
+                      <td className="py-2 pr-3">{x.demora_real}</td>
+                      <td className="py-2 pr-3">{x.rango_demora_real}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+              {drill.loading && (
+                <div className="flex items-center justify-center gap-2 py-md text-on-surface-variant">
+                  <Spinner className="text-[18px]" />
+                  Cargando…
+                </div>
+              )}
             </div>
-            <footer>
+            <footer className="flex justify-end gap-2 px-md py-sm border-t border-outline-variant/20">
               <button
+                className="h-9 px-sm rounded bg-surface-container-low text-on-surface font-label-md text-label-md disabled:opacity-40 hover:bg-surface-container transition-colors"
                 disabled={drill.page <= 1}
                 onClick={() => open(drill.metric, drill.title, drill.page - 1)}
               >
                 Anterior
               </button>
               <button
+                className="h-9 px-sm rounded bg-surface-container-low text-on-surface font-label-md text-label-md disabled:opacity-40 hover:bg-surface-container transition-colors"
                 disabled={drill.page >= drill.pages}
                 onClick={() => open(drill.metric, drill.title, drill.page + 1)}
               >

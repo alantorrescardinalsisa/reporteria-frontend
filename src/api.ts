@@ -60,6 +60,15 @@ export type TrackeoSummary = {
   servicios_cumplidos_sql?: number;
   servicios_no_cumplidos_sql?: number;
   cumplimiento_demora_sql?: number;
+  // NUEVO v4.13.0 (ADITIVO): "cumplimiento observado" solo sobre
+  // servicios con DemoraPrometida Y DemoraReal cargadas (sin tratar
+  // blancos como 0), y que proporcion del universo filtrado tiene esa
+  // trazabilidad completa. No reemplaza a cumplimiento_demora.
+  servicios_evaluados_demora_trazable?: number;
+  servicios_cumplidos_trazable?: number;
+  servicios_no_cumplidos_trazable?: number;
+  cumplimiento_demora_trazable?: number;
+  cobertura_medicion_demora?: number;
   menos_60_cantidad: number;
   menos_60_porcentaje: number;
   entre_61_90_cantidad: number;
@@ -84,10 +93,39 @@ export type TrackeoUniversos = {
   servicios_estado_no_catalogado: number;
   universo_excel_historico: number;
 };
+// NUEVO v4.15.0 (ADITIVO): score de ranking de prestadores.
+export type ScoreComponentes = {
+  sla: number | null;
+  asignacion: number | null;
+  calidad_datos: number | null;
+  volumen: number | null;
+};
 export type PrestadorMetric = TrackeoSummary & {
   prestador_id: string;
   prestador: string;
   total_general: number;
+  indice_calidad_datos?: number | null;
+  volumen_relativo?: number;
+  score_ranking?: number | null;
+  score_componentes?: ScoreComponentes;
+  score_componentes_evaluados?: string[];
+  muestra_baja?: boolean;
+  cantidad_tipos_servicio?: number;
+};
+// NUEVO v4.15.0 (ADITIVO): impacto por campana (volumen x oportunidad
+// de mejora). Ver /api/metricas-trackeo/impacto-campanas.
+export type CampanaImpacto = {
+  campana: string;
+  campana_normalizada: string;
+  total_general: number;
+  enviador_si: number;
+  efectividad_enviador: number;
+  servicios_evaluados_demora_trazable: number;
+  cumplimiento_demora_trazable: number;
+  oportunidad_mejora_asignacion: number | null;
+  oportunidad_mejora_cumplimiento: number | null;
+  impacto_asignacion: number | null;
+  impacto_cumplimiento: number | null;
 };
 export type TrendPoint = TrackeoSummary & {
   fecha: string;
@@ -145,7 +183,15 @@ export type TrackeoService = {
   // Auxiliar de auditoria: valor anterior calculado por SQL en
   // Supabase (fn_consolidar_trackeo), puede no coincidir con el de arriba.
   cumple_demora_prometida_15_sql?: boolean | null;
+  // NUEVO v4.13.0 (ADITIVO): version "trazable" (null si falta
+  // DemoraPrometida o DemoraReal, en vez de tratarlos como 0).
+  cumple_demora_prometida_15_trazable?: boolean | null;
+  // Valor crudo de la columna RangoDemoraReal del Excel (sin pasar por
+  // normalizar_rango_demora en la vista) — el que usa el desglose
+  // "Distribucion de servicios cumplidos" desde v4.11.0.
   rango_demora_real?: string | null;
+  // Auxiliar de auditoria: version normalizada por SQL en la vista.
+  rango_demora_real_normalizado?: string | null;
 };
 export type MetricaTrackeo =
   | "ENVIADOR_SI"
@@ -160,12 +206,76 @@ export type MetricaTrackeo =
   | "NO_CUMPLE_DEMORA"
   | "CUMPLE_DEMORA_SQL"
   | "NO_CUMPLE_DEMORA_SQL"
+  | "CUMPLE_DEMORA_TRAZABLE"
+  | "NO_CUMPLE_DEMORA_TRAZABLE"
   | "MENOS_60"
   | "ENTRE_61_90"
   | "ENTRE_91_120"
   | "ENTRE_121_180"
   | "MAS_181"
   | "NA";
+// NUEVO v4.14.0 (ADITIVO): funnel de tiempos T1-T6 + SLA de
+// despacho/llegada. Ver /api/metricas-trackeo/funnel-tiempos.
+export type TiempoStats = {
+  cantidad: number;
+  cantidad_invalidos_negativos: number;
+  promedio: number | null;
+  p50: number | null;
+  p75: number | null;
+  p90: number | null;
+  p95: number | null;
+  p99: number | null;
+  maximo: number | null;
+};
+export type SlaBucket = {
+  etiqueta: string;
+  cantidad: number;
+  porcentaje: number;
+};
+export type FunnelTiempos = {
+  universo_total: number;
+  tiempos: {
+    t1_alta_a_despachador: TiempoStats;
+    t2_despachador_a_asignacion: TiempoStats;
+    t3_alta_a_asignacion: TiempoStats;
+    t4_asignacion_a_arribo: TiempoStats;
+    t5_ejecucion: TiempoStats;
+    t6_end_to_end: TiempoStats;
+  };
+  sla_despacho: {
+    base_tiempo: string;
+    cantidad_evaluable: number;
+    buckets: SlaBucket[];
+  };
+  sla_llegada: {
+    cantidad_evaluable: number;
+    buckets: SlaBucket[];
+  };
+  // NUEVO v4.16.0 (ADITIVO): volumen y SLA de despacho por hora del
+  // dia (0-23, hora local Argentina), para dimensionar capacidad
+  // operativa contra la demanda real por franja horaria.
+  distribucion_horaria: {
+    hora: number;
+    servicios: number;
+    t3_promedio: number | null;
+    t3_p90: number | null;
+  }[];
+};
+// NUEVO v4.16.0 (ADITIVO): categorizacion semantica de estados. Ver
+// /api/metricas-trackeo/estados-categorizados.
+export type EstadoCategorizado = {
+  estado_normalizado: string;
+  estado: string;
+  categoria: string;
+  cantidad: number;
+};
+export type EstadosCategorizados = {
+  total_servicios: number;
+  categorias: { categoria: string; cantidad: number; porcentaje: number }[];
+  estados: EstadoCategorizado[];
+  estados_sin_clasificar: EstadoCategorizado[];
+  nota: string;
+};
 export type PaginatedServices = {
   cantidad_total: number;
   pagina: number;
@@ -234,8 +344,14 @@ export const api = {
       "/api/metricas-trackeo/universos" + qs(fp(f)),
     ),
   trackeoPrestadores: (f: TrackeoFilters) =>
-    request<{ cantidad_prestadores: number; prestadores: PrestadorMetric[] }>(
-      "/api/metricas-trackeo/prestadores" + qs(fp(f)),
+    request<{
+      cantidad_prestadores: number;
+      prestadores: PrestadorMetric[];
+      advertencia_tipos_mezclados?: string | null;
+    }>("/api/metricas-trackeo/prestadores" + qs(fp(f))),
+  trackeoImpactoCampanas: (f: TrackeoFilters) =>
+    request<{ cantidad_campanas: number; campanas: CampanaImpacto[] }>(
+      "/api/metricas-trackeo/impacto-campanas" + qs(fp(f)),
     ),
   trackeoCampanas: (f: TrackeoFilters) =>
     request<{ cantidad_campanas: number; campanas: CampanaMetric[] }>(
@@ -296,6 +412,21 @@ export const api = {
   trackeoCalidadDatos: (f: TrackeoFilters) =>
     request<{ calidad: DataQuality }>(
       "/api/metricas-trackeo/calidad-datos" + qs(fp(f)),
+    ),
+  trackeoFunnelTiempos: (f: TrackeoFilters) =>
+    request<FunnelTiempos>(
+      "/api/metricas-trackeo/funnel-tiempos" + qs(fp(f)),
+    ),
+  trackeoEstadosCategorizados: (f: TrackeoFilters) =>
+    request<EstadosCategorizados>(
+      "/api/metricas-trackeo/estados-categorizados" +
+        qs({
+          fecha_desde: f.fecha_desde,
+          fecha_hasta: f.fecha_hasta,
+          campana: f.campanas,
+          prestador_id: f.prestador_ids,
+          tipo: f.tipos,
+        }),
     ),
   trackeoCampanaPrestador: (f: TrackeoFilters) =>
     request<{ cantidad: number; resultados: CampanaPrestadorMetric[] }>(
