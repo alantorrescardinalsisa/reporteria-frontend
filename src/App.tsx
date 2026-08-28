@@ -15,16 +15,21 @@ import {
   type EstadoOption,
   type EstadosCategorizados,
   type FunnelTiempos,
+  type HabilitadoresAsignacion,
   type IngestStatus,
   type MetricaTrackeo,
+  type Outliers,
   type PrestadorMetric,
   type PrestadorOption,
+  type ProgramadosFunnel,
+  type ResumenAsignacion,
   type TiempoStats,
   type TipoOption,
   type TrackeoFilters,
   type TrackeoService,
   type TrackeoSummary,
   type TrackeoUniversos,
+  type Trazabilidad,
   type TrendPoint,
 } from "./api";
 import "./App.css";
@@ -467,6 +472,12 @@ export default function App() {
     [funnel, setFunnel] = useState<FunnelTiempos | null>(null),
     [estadosCategorizados, setEstadosCategorizados] =
       useState<EstadosCategorizados | null>(null),
+    [trazabilidad, setTrazabilidad] = useState<Trazabilidad | null>(null),
+    [habilitadores, setHabilitadores] =
+      useState<HabilitadoresAsignacion | null>(null),
+    [programadosFunnel, setProgramadosFunnel] =
+      useState<ProgramadosFunnel | null>(null),
+    [outliers, setOutliers] = useState<Outliers | null>(null),
     [prestadoresWarning, setPrestadoresWarning] = useState<string | null>(null),
     [campanaImpacto, setCampanaImpacto] = useState<CampanaImpacto[]>([]),
     [cross, setCross] = useState<CampanaPrestadorMetric[]>([]),
@@ -479,7 +490,8 @@ export default function App() {
     [uploadStatus, setUploadStatus] = useState<IngestStatus | null>(null),
     [uploadMessage, setUploadMessage] = useState(""),
     [providerSearch, setProviderSearch] = useState(""),
-    [providerSort, setProviderSort] = useState<"total" | "score">("total");
+    [providerSort, setProviderSort] = useState<"total" | "score">("total"),
+    [outlierTramo, setOutlierTramo] = useState<keyof Outliers>("demora_real");
   const load = useCallback(async (f: TrackeoFilters) => {
     setLoading(true);
     setError(null);
@@ -497,6 +509,9 @@ export default function App() {
       api.trackeoFunnelTiempos(f),
       api.trackeoImpactoCampanas(f),
       api.trackeoEstadosCategorizados(f),
+      api.trackeoHabilitadoresAsignacion(f),
+      api.trackeoProgramadosFunnel(f),
+      api.trackeoOutliers(f),
     ]);
     const errs: string[] = [];
     const take = <T,>(i: number, fn: (x: T) => void) =>
@@ -518,7 +533,10 @@ export default function App() {
     );
     take<{ estados: EstadoOption[] }>(5, (x) => setStates(x.estados));
     take<{ tendencia: TrendPoint[] }>(6, (x) => setTrend(x.tendencia));
-    take<{ calidad: DataQuality }>(7, (x) => setQuality(x.calidad));
+    take<{ calidad: DataQuality; trazabilidad: Trazabilidad }>(7, (x) => {
+      setQuality(x.calidad);
+      setTrazabilidad(x.trazabilidad);
+    });
     take<{ resultados: CampanaPrestadorMetric[] }>(8, (x) =>
       setCross(x.resultados),
     );
@@ -528,6 +546,9 @@ export default function App() {
       setCampanaImpacto(x.campanas),
     );
     take<EstadosCategorizados>(12, (x) => setEstadosCategorizados(x));
+    take<HabilitadoresAsignacion>(13, (x) => setHabilitadores(x));
+    take<ProgramadosFunnel>(14, (x) => setProgramadosFunnel(x));
+    take<Outliers>(15, (x) => setOutliers(x));
     if (errs.length) setError(errs.join(" | "));
     setLoading(false);
   }, []);
@@ -1398,6 +1419,215 @@ export default function App() {
                     </div>
                   )}
                 </section>
+
+                {/* ---------- NUEVO (ADITIVO): Trazabilidad completa ---------- */}
+                <section className="flex flex-col gap-sm">
+                  <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs">
+                    Trazabilidad completa del servicio
+                  </h3>
+                  <p className="font-label-sm text-label-sm text-on-surface-variant -mt-2">
+                    No alcanza con que cada campo esté cargado — esto mide qué
+                    % de servicios tiene TODA la secuencia de eventos completa
+                    (Alta → Despachador → Asignado → Envío OK → Llegó →
+                    Finalizó), necesaria para poder medirlos de punta a punta.
+                  </p>
+                  <div className="bg-surface-container-lowest rounded-xl p-md card-shadow border border-outline-variant/20 flex flex-col gap-4">
+                    <div className="flex items-baseline gap-2">
+                      <span className="font-display-lg text-display-lg text-primary">
+                        {pct(trazabilidad?.porcentaje_trazabilidad_completa)}
+                      </span>
+                      <span className="font-body-md text-body-md text-on-surface-variant">
+                        {nf(trazabilidad?.servicios_trazabilidad_completa)} de{" "}
+                        {nf(trazabilidad?.total)} con secuencia completa
+                      </span>
+                    </div>
+                    <div className="flex flex-col gap-4 pt-2">
+                      {(trazabilidad?.funnel_completitud || []).map((e) => (
+                        <ProgressBar
+                          key={e.etapa}
+                          label={e.etapa}
+                          valueLabel={`${nf(e.cantidad)} · ${pct(e.porcentaje)}`}
+                          ratio={e.porcentaje}
+                          color="#004ac6"
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </section>
+
+                {/* ---------- NUEVO (ADITIVO): Habilitadores de asignación ---------- */}
+                <section className="grid grid-cols-1 lg:grid-cols-2 gap-xl">
+                  <div className="flex flex-col gap-sm">
+                    <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs">
+                      Coordenadas como habilitador de asignación
+                    </h3>
+                    <p className="font-label-sm text-label-sm text-on-surface-variant -mt-2">
+                      Efectividad de asignación (dado que se usó el enviador)
+                      según si el servicio tiene coordenadas cargadas.
+                    </p>
+                    <div className="bg-surface-container-lowest rounded-xl p-md card-shadow border border-outline-variant/20 flex flex-col gap-4">
+                      {(
+                        [
+                          ["Con coordenadas", habilitadores?.coordenadas.con_coordenadas],
+                          ["Sin coordenadas", habilitadores?.coordenadas.sin_coordenadas],
+                          ["Sin dato", habilitadores?.coordenadas.sin_dato],
+                        ] as [string, ResumenAsignacion | undefined][]
+                      ).map(([label, r]) => (
+                        <ProgressBar
+                          key={label}
+                          label={`${label} (${nf(r?.total)} servicios)`}
+                          valueLabel={
+                            r?.enviador_si
+                              ? `${nf(r.asigna_movil)} de ${nf(r.enviador_si)} · ${pct(r.efectividad_enviador)}`
+                              : "N/A"
+                          }
+                          ratio={r?.efectividad_enviador || 0}
+                          color="#004ac6"
+                        />
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-sm">
+                    <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs">
+                      MóvilRegistrado como proxy de asignación
+                    </h3>
+                    <p className="font-label-sm text-label-sm text-on-surface-variant -mt-2">
+                      Sobre servicios con enviador, tasa de conversión a Móvil
+                      Registrado y coincidencia con AsignoMóvil.
+                    </p>
+                    <div className="bg-surface-container-lowest rounded-xl p-md card-shadow border border-outline-variant/20 flex flex-col gap-4">
+                      <ProgressBar
+                        label={`Envío OK → Móvil registrado (${nf(habilitadores?.conversion_envio_a_movil_registrado.enviador_si)} servicios)`}
+                        valueLabel={`${nf(habilitadores?.conversion_envio_a_movil_registrado.movil_registrado_si)} · ${pct(habilitadores?.conversion_envio_a_movil_registrado.tasa_conversion)}`}
+                        ratio={
+                          habilitadores?.conversion_envio_a_movil_registrado
+                            .tasa_conversion || 0
+                        }
+                        color="#006058"
+                      />
+                      <ProgressBar
+                        label="Coincidencia MóvilRegistrado = AsignoMóvil"
+                        valueLabel={pct(
+                          habilitadores?.conversion_envio_a_movil_registrado
+                            .coincidencia_movil_registrado_vs_asigno_movil,
+                        )}
+                        ratio={
+                          habilitadores?.conversion_envio_a_movil_registrado
+                            .coincidencia_movil_registrado_vs_asigno_movil || 0
+                        }
+                        color="#7c3aed"
+                      />
+                    </div>
+                  </div>
+                </section>
+
+                {/* ---------- NUEVO (ADITIVO): Gestión de programados ---------- */}
+                <section className="flex flex-col gap-sm">
+                  <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs">
+                    Gestión completa de servicios programados
+                  </h3>
+                  <p className="font-label-sm text-label-sm text-on-surface-variant -mt-2">
+                    "Servicios programados" mide solo EsProgramado=SI — esto
+                    muestra cuántos de esos efectivamente avanzan hasta
+                    finalizar, y cuántos llegaron dentro del horario
+                    programado (Fecha/HoraProgramada).
+                  </p>
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-md">
+                    <div className="lg:col-span-2 bg-surface-container-lowest rounded-xl p-md card-shadow border border-outline-variant/20 flex flex-col gap-4">
+                      {(programadosFunnel?.funnel || []).map((e) => (
+                        <ProgressBar
+                          key={e.etapa}
+                          label={e.etapa}
+                          valueLabel={`${nf(e.cantidad)} · ${pct(e.porcentaje)}`}
+                          ratio={e.porcentaje}
+                          color="#004ac6"
+                        />
+                      ))}
+                    </div>
+                    <div className="bg-surface-container-lowest rounded-xl p-md card-shadow border border-outline-variant/20 flex flex-col justify-center items-center text-center gap-1">
+                      <span className="font-label-md text-label-md text-on-surface-variant uppercase">
+                        Llegada en horario
+                      </span>
+                      <span className="font-display-lg text-display-lg text-primary">
+                        {programadosFunnel?.llegada_en_horario.porcentaje != null
+                          ? pct(programadosFunnel.llegada_en_horario.porcentaje)
+                          : "N/A"}
+                      </span>
+                      <span className="font-label-sm text-label-sm text-on-surface-variant">
+                        {nf(programadosFunnel?.llegada_en_horario.a_tiempo)} de{" "}
+                        {nf(programadosFunnel?.llegada_en_horario.evaluables)}{" "}
+                        con Fecha/HoraProgramada y llegada cargadas
+                      </span>
+                    </div>
+                  </div>
+                </section>
+
+                {/* ---------- NUEVO (ADITIVO): Outliers / anomalías ---------- */}
+                <section className="flex flex-col gap-sm">
+                  <div className="flex justify-between items-end flex-wrap gap-2 border-b border-outline-variant/30 pb-xs">
+                    <h3 className="font-title-lg text-title-lg text-on-surface">
+                      Outliers por tramo
+                    </h3>
+                    <select
+                      className="form-input-styled font-body-md text-body-md text-on-surface"
+                      value={outlierTramo}
+                      onChange={(e) =>
+                        setOutlierTramo(e.target.value as keyof Outliers)
+                      }
+                    >
+                      <option value="demora_real">Demora real</option>
+                      <option value="t1_alta_a_despachador">T1 · Alta → Despachador</option>
+                      <option value="t2_despachador_a_asignacion">T2 · Despachador → Asignación</option>
+                      <option value="t3_alta_a_asignacion">T3 · Alta → Asignación</option>
+                      <option value="t4_asignacion_a_arribo">T4 · Asignación → Arribo</option>
+                      <option value="t5_ejecucion">T5 · Ejecución</option>
+                      <option value="t6_end_to_end">T6 · Alta → Fin (end-to-end)</option>
+                    </select>
+                  </div>
+                  <p className="font-label-sm text-label-sm text-on-surface-variant">
+                    Top 20 valores más altos del tramo seleccionado, para
+                    auditar caso por caso (P90 de referencia:{" "}
+                    {nf(outliers?.[outlierTramo]?.p90_referencia)} min · marcado
+                    como posible anomalía si supera 3× ese P90).
+                  </p>
+                  <div className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 overflow-x-auto">
+                    <table className="w-full text-body-md font-body-md">
+                      <thead>
+                        <tr className="text-label-md font-label-md text-on-surface-variant uppercase text-left border-b border-outline-variant/30">
+                          <th className="py-2 pl-md pr-3">ID servicio</th>
+                          <th className="py-2 pr-3">Prestador</th>
+                          <th className="py-2 pr-3">Campaña</th>
+                          <th className="py-2 pr-3">Fecha</th>
+                          <th className="py-2 pr-md">Minutos</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(outliers?.[outlierTramo]?.top || []).map((o, i) => (
+                          <tr
+                            key={`${o.id_servicio_prestado}-${i}`}
+                            className="border-b border-outline-variant/10 hover:bg-surface-container-low"
+                          >
+                            <td className="py-2 pl-md pr-3">{o.id_servicio_prestado}</td>
+                            <td className="py-2 pr-3 text-on-surface">{o.prestador}</td>
+                            <td className="py-2 pr-3">{o.campana}</td>
+                            <td className="py-2 pr-3">{o.fecha}</td>
+                            <td className="py-2 pr-md font-medium">
+                              {nf(o.valor_minutos)}
+                              {o.es_anomalia_probable && (
+                                <span
+                                  className="ml-1 text-error"
+                                  title="Supera 3x el P90 del tramo"
+                                >
+                                  ⚠
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
               </>
             )}
 
@@ -1482,6 +1712,7 @@ export default function App() {
                         <th className="py-2 pr-3">No cumple</th>
                         <th className="py-2 pr-3">Cumplimiento</th>
                         <th className="py-2 pr-3">Índice calidad</th>
+                        <th className="py-2 pr-3">Trazabilidad</th>
                         <th className="py-2 pr-3">Volumen rel.</th>
                         <th className="py-2 pr-3">Score</th>
                       </tr>
@@ -1503,6 +1734,9 @@ export default function App() {
                           <td className="py-2 pr-3">{nf(x.servicios_no_cumplidos)}</td>
                           <td className="py-2 pr-3">{pct(x.cumplimiento_demora)}</td>
                           <td className="py-2 pr-3">{pct(x.indice_calidad_datos)}</td>
+                          <td className="py-2 pr-3">
+                            {pct(x.porcentaje_trazabilidad_completa)}
+                          </td>
                           <td className="py-2 pr-3">{pct(x.volumen_relativo)}</td>
                           <td className="py-2 pr-3">
                             <span className="font-medium text-on-surface">

@@ -111,6 +111,8 @@ export type PrestadorMetric = TrackeoSummary & {
   score_componentes_evaluados?: string[];
   muestra_baja?: boolean;
   cantidad_tipos_servicio?: number;
+  // NUEVO v4.17.0 (ADITIVO): informativo, no forma parte del score.
+  porcentaje_trazabilidad_completa?: number;
 };
 // NUEVO v4.15.0 (ADITIVO): impacto por campana (volumen x oportunidad
 // de mejora). Ver /api/metricas-trackeo/impacto-campanas.
@@ -144,6 +146,36 @@ export type DataQuality = {
   movil_registrado: number;
   demora_prometida_completa: number;
   demora_real_completa: number;
+};
+// NUEVO v4.17.0 (ADITIVO): "¿el servicio tiene TODA la secuencia de
+// eventos completa?", no solo si cada campo por separado está lleno.
+export type Trazabilidad = {
+  total: number;
+  funnel_completitud: { etapa: string; cantidad: number; porcentaje: number }[];
+  servicios_trazabilidad_completa: number;
+  porcentaje_trazabilidad_completa: number;
+};
+// NUEVO v4.17.0 (ADITIVO): coordenadas y MovilRegistrado como
+// habilitadores del proceso de asignación.
+export type ResumenAsignacion = {
+  total: number;
+  enviador_si: number;
+  asigna_movil: number;
+  efectividad_enviador: number | null;
+};
+export type HabilitadoresAsignacion = {
+  coordenadas: {
+    con_coordenadas: ResumenAsignacion;
+    sin_coordenadas: ResumenAsignacion;
+    sin_dato: ResumenAsignacion;
+  };
+  conversion_envio_a_movil_registrado: {
+    enviador_si: number;
+    movil_registrado_si: number;
+    tasa_conversion: number | null;
+    asigno_movil_si: number;
+    coincidencia_movil_registrado_vs_asigno_movil: number | null;
+  };
 };
 export type CampanaPrestadorMetric = {
   campana: string;
@@ -275,6 +307,39 @@ export type EstadosCategorizados = {
   estados: EstadoCategorizado[];
   estados_sin_clasificar: EstadoCategorizado[];
   nota: string;
+};
+// NUEVO v4.18.0 (ADITIVO): funnel de gestion completa de programados.
+export type ProgramadosFunnel = {
+  total_programados: number;
+  funnel: { etapa: string; cantidad: number; porcentaje: number }[];
+  llegada_en_horario: {
+    evaluables: number;
+    a_tiempo: number;
+    porcentaje: number | null;
+  };
+};
+// NUEVO v4.18.0 (ADITIVO): outliers por tramo del funnel + demora real.
+export type OutlierItem = {
+  id_servicio_prestado: number | null;
+  prestador: string | null;
+  campana: string | null;
+  fecha: string | null;
+  valor_minutos: number;
+  es_anomalia_probable: boolean;
+};
+export type OutlierTramo = {
+  cantidad_evaluable: number;
+  p90_referencia: number | null;
+  top: OutlierItem[];
+};
+export type Outliers = {
+  t1_alta_a_despachador: OutlierTramo;
+  t2_despachador_a_asignacion: OutlierTramo;
+  t3_alta_a_asignacion: OutlierTramo;
+  t4_asignacion_a_arribo: OutlierTramo;
+  t5_ejecucion: OutlierTramo;
+  t6_end_to_end: OutlierTramo;
+  demora_real: OutlierTramo;
 };
 export type PaginatedServices = {
   cantidad_total: number;
@@ -410,8 +475,12 @@ export const api = {
       "/api/metricas-trackeo/tendencia" + qs(fp(f)),
     ),
   trackeoCalidadDatos: (f: TrackeoFilters) =>
-    request<{ calidad: DataQuality }>(
+    request<{ calidad: DataQuality; trazabilidad: Trazabilidad }>(
       "/api/metricas-trackeo/calidad-datos" + qs(fp(f)),
+    ),
+  trackeoHabilitadoresAsignacion: (f: TrackeoFilters) =>
+    request<HabilitadoresAsignacion>(
+      "/api/metricas-trackeo/habilitadores-asignacion" + qs(fp(f)),
     ),
   trackeoFunnelTiempos: (f: TrackeoFilters) =>
     request<FunnelTiempos>(
@@ -428,6 +497,12 @@ export const api = {
           tipo: f.tipos,
         }),
     ),
+  trackeoProgramadosFunnel: (f: TrackeoFilters) =>
+    request<ProgramadosFunnel>(
+      "/api/metricas-trackeo/programados-funnel" + qs(fp(f)),
+    ),
+  trackeoOutliers: (f: TrackeoFilters) =>
+    request<Outliers>("/api/metricas-trackeo/outliers" + qs(fp(f))),
   trackeoCampanaPrestador: (f: TrackeoFilters) =>
     request<{ cantidad: number; resultados: CampanaPrestadorMetric[] }>(
       "/api/metricas-trackeo/campana-prestador" + qs(fp(f)),
