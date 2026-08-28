@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: reporteria-api
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: bash start_free.sh
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: REPORTS_BUCKET
+        value: reportes
+      - key: MAX_UPLOAD_MB
+        value: "100"
+      - key: WORKER_POLL_SECONDS
+        value: "2"
+      - key: WORKER_HEARTBEAT_EVERY
+        value: "1000"
+      - key: WORKER_STALE_MINUTES
+        value: "10"
