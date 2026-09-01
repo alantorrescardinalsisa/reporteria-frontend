@@ -1838,207 +1838,198 @@ export default function App() {
                   <div className="flex items-start gap-2 bg-primary-container/50 border border-primary/30 rounded-xl px-md py-sm">
                     <Icon name="info" className="text-primary text-[20px] mt-0.5 shrink-0" />
                     <p className="font-body-md text-body-md text-on-surface">
-                      <b>Mockup conceptual — sin modelos de ML reales todavía.</b> Todos
-                      los números de esta pantalla son de ejemplo, para validar cómo se
-                      vería la interfaz antes de construir el motor real. Pensado para el
-                      área de prestadores: evalúa el comportamiento histórico de cada
-                      prestador y proyecta cómo va a rendir, como insumo para negociar
-                      condiciones — no muestra servicios puntuales ni operación en curso.
+                      <b>Ejemplo de cómo se vería esta pantalla — todavía no existe de
+                      verdad.</b> Muestra, prestador por prestador, cómo viene rindiendo y
+                      qué es probable que pase con él en el próximo mes, para ayudar a
+                      decidir con quién hablar y qué proponerle. No muestra viajes ni
+                      pedidos puntuales, solo el comportamiento general de cada prestador.
                     </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-lg gap-y-1 bg-surface-container-low rounded-lg px-md py-2">
+                    <span className="font-label-sm text-label-sm text-on-surface-variant flex items-center gap-1">
+                      <Icon name="event_available" className="text-[16px]" />
+                      Datos actualizados al <b className="text-on-surface">30 de agosto de 2026</b>
+                    </span>
+                    <span className="font-label-sm text-label-sm text-on-surface-variant flex items-center gap-1">
+                      <Icon name="fact_check" className="text-[16px]" />
+                      Qué tan completa está la información: <b className="text-on-surface">Alta</b>
+                    </span>
+                    <span className="font-label-sm text-label-sm text-on-surface-variant flex items-center gap-1">
+                      <Icon name="autorenew" className="text-[16px]" />
+                      Se actualiza <b className="text-on-surface">todas las semanas</b>
+                    </span>
                   </div>
                 </div>
 
-                {/* ---------- Estado predictivo de la cartera ---------- */}
+                {/* ---------- Panorama general ---------- */}
                 <section className="flex flex-col gap-sm">
                   <h3 className="font-title-lg text-title-lg text-on-surface">
-                    Estado predictivo de la cartera de prestadores
+                    Panorama general de los prestadores
                   </h3>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-md">
                     <Card
-                      icon={<Icon name="trending_down" />}
-                      title="Tendencia negativa sostenida"
+                      icon={<Icon name="error" />}
+                      title="Necesitan atención urgente"
                       value="3"
-                      detail="Prestadores con SLA en caída 3 o más semanas consecutivas"
+                      detail="Es muy probable que sigan rindiendo peor en el próximo mes"
                       tone="red"
                     />
                     <Card
                       icon={<Icon name="warning" />}
-                      title="Riesgo de incumplimiento en aumento"
+                      title="Vienen bajando su rendimiento"
                       value="6"
-                      detail="La probabilidad de incumplimiento proyectada supera a la actual"
+                      detail="Empeoraron de forma seguida o rinden peor que prestadores parecidos"
                       tone="amber"
                     />
                     <Card
                       icon={<Icon name="trending_up" />}
-                      title="Mejora sostenida"
-                      value="4"
-                      detail="Prestadores con SLA en ascenso 3 o más semanas consecutivas"
+                      title="Rinden bien o están mejorando"
+                      value="21"
+                      detail="Sin ninguna señal de alerta por ahora"
                       tone="green"
                     />
                   </div>
                 </section>
 
+                {/* ---------- Perfil de prestador ---------- */}
+                <div className="flex flex-col gap-1">
+                  <h3 className="font-title-lg text-title-lg text-on-surface">
+                    Cómo viene rindiendo — Prestador A
+                  </h3>
+                  <p className="font-label-sm text-label-sm text-on-surface-variant">
+                    Con datos de agosto de 2026
+                  </p>
+                </div>
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-lg">
-                  {/* ---------- Prestador con tendencia de deterioro ---------- */}
                   <section className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 flex flex-col gap-sm p-md">
                     <header className="flex items-center gap-3">
-                      <Icon name="trending_down" className="text-error" />
-                      <div>
-                        <h3 className="font-title-lg text-title-lg text-on-surface">
-                          Tendencia de desempeño — Prestador A
-                        </h3>
-                        <p className="font-label-sm text-label-sm text-on-surface-variant">
-                          Cumplimiento de demora, últimas 4 semanas
-                        </p>
-                      </div>
+                      <Icon name="analytics" className="text-primary" />
+                      <h3 className="font-title-lg text-title-lg text-on-surface">
+                        Cómo viene trabajando
+                      </h3>
                     </header>
-                    <div className="grid grid-cols-4 gap-2 py-sm">
+                    <div className="grid grid-cols-3 gap-2">
                       {[
-                        { semana: "Semana 1", sla: 0.91 },
-                        { semana: "Semana 2", sla: 0.89 },
-                        { semana: "Semana 3", sla: 0.82 },
-                        { semana: "Semana 4", sla: 0.71 },
+                        { label: "Cumple los tiempos prometidos", value: 0.89 },
+                        { label: "Consigue un móvil para el servicio", value: 0.94 },
+                        { label: "Carga bien sus datos", value: 0.97 },
                       ].map((s) => (
                         <div
-                          key={s.semana}
-                          className="flex flex-col items-center gap-1 bg-surface-container-low rounded-lg py-sm"
+                          key={s.label}
+                          className="flex flex-col items-center gap-1 bg-surface-container-low rounded-lg py-sm text-center px-1"
                         >
                           <span className="font-headline-sm text-headline-sm text-on-surface">
-                            {pct(s.sla)}
+                            {pct(s.value)}
                           </span>
                           <span className="font-label-sm text-label-sm text-on-surface-variant">
-                            {s.semana}
+                            {s.label}
                           </span>
                         </div>
                       ))}
                     </div>
-                    <div className="bg-error/10 rounded-lg px-sm py-2 flex items-center gap-2">
-                      <Icon name="warning" className="text-error text-[18px] shrink-0" />
+                    <div className="flex items-center gap-2 bg-error/10 rounded-lg px-sm py-2">
+                      <Icon name="trending_down" className="text-error text-[18px] shrink-0" />
                       <span className="font-body-md text-body-md text-on-surface">
-                        Tendencia negativa sostenida: <b>-20 puntos</b> en 4 semanas, antes
-                        de que se vuelva un problema crítico.
+                        Su puntualidad <b>bajó 5 puntos</b> en el último mes
                       </span>
                     </div>
                     <div className="flex flex-col gap-1">
                       <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wide">
-                        Factores que combina el modelo
+                        Por qué está pasando esto
                       </span>
                       {[
-                        "Volumen de servicios de las últimas semanas",
-                        "Mezcla de tipo de servicio y campaña atendida",
-                        "Franjas horarias predominantes",
-                        "Zona de cobertura",
-                      ].map((factor) => (
-                        <div key={factor} className="flex items-start gap-2">
+                        "Bajó su puntualidad en el último mes",
+                        "Sus demoras más largas aumentaron respecto de antes",
+                        "Sus tiempos de respuesta son menos parejos que antes",
+                        "Igual sigue rindiendo mejor que la mayoría de los prestadores parecidos, pero la tendencia reciente preocupa",
+                      ].map((motivo) => (
+                        <div key={motivo} className="flex items-start gap-2">
                           <Icon
                             name="chevron_right"
                             className="text-[16px] text-on-surface-variant mt-0.5 shrink-0"
                           />
                           <span className="font-body-md text-body-md text-on-surface">
-                            {factor}
+                            {motivo}
                           </span>
                         </div>
                       ))}
                     </div>
                   </section>
 
-                  {/* ---------- Score histórico vs. predictivo ---------- */}
                   <section className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 flex flex-col gap-sm p-md">
                     <header className="flex items-center gap-3">
                       <Icon name="insights" className="text-primary" />
-                      <div>
-                        <h3 className="font-title-lg text-title-lg text-on-surface">
-                          Score histórico vs. score predictivo
-                        </h3>
-                        <p className="font-label-sm text-label-sm text-on-surface-variant">
-                          Proyección a 30 días, combinando el score de ranking actual con
-                          la tendencia reciente de cada prestador
-                        </p>
-                      </div>
+                      <h3 className="font-title-lg text-title-lg text-on-surface">
+                        Qué es probable que pase
+                      </h3>
                     </header>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-body-md font-body-md">
-                        <thead>
-                          <tr className="text-label-md font-label-md text-on-surface-variant uppercase text-left border-b border-outline-variant/30">
-                            <th className="py-2 pr-3">Prestador</th>
-                            <th className="py-2 pr-3">Score histórico</th>
-                            <th className="py-2 pr-3">Score predictivo</th>
-                            <th className="py-2 pr-3">Tendencia</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {[
-                            {
-                              prestador: "Prestador A",
-                              historico: 0.88,
-                              predictivo: 0.74,
-                              tendencia: "down",
-                            },
-                            {
-                              prestador: "Prestador B",
-                              historico: 0.82,
-                              predictivo: 0.86,
-                              tendencia: "up",
-                            },
-                            {
-                              prestador: "Prestador C",
-                              historico: 0.9,
-                              predictivo: 0.9,
-                              tendencia: "flat",
-                            },
-                            {
-                              prestador: "Prestador D",
-                              historico: 0.65,
-                              predictivo: 0.68,
-                              tendencia: "up",
-                            },
-                          ].map((p) => (
-                            <tr
-                              key={p.prestador}
-                              className="border-b border-outline-variant/10"
-                            >
-                              <td className="py-2 pr-3 text-on-surface font-medium">
-                                {p.prestador}
-                              </td>
-                              <td className="py-2 pr-3">{pct(p.historico)}</td>
-                              <td className="py-2 pr-3">{pct(p.predictivo)}</td>
-                              <td className="py-2 pr-3">
-                                <Icon
-                                  name={
-                                    p.tendencia === "up"
-                                      ? "trending_up"
-                                      : p.tendencia === "down"
-                                        ? "trending_down"
-                                        : "trending_flat"
-                                  }
-                                  className={`text-[18px] ${
-                                    p.tendencia === "up"
-                                      ? "text-tertiary"
-                                      : p.tendencia === "down"
-                                        ? "text-error"
-                                        : "text-on-surface-variant"
-                                  }`}
-                                />
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="flex flex-col gap-1 bg-surface-container-low rounded-lg p-sm">
+                        <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wide">
+                          Puntualidad esperada el próximo mes
+                        </span>
+                        <span className="font-headline-sm text-headline-sm text-on-surface">
+                          {pct(0.85)}
+                        </span>
+                        <span className="font-label-sm text-label-sm text-on-surface-variant">
+                          Podría variar entre {pct(0.81)} y {pct(0.88)}
+                        </span>
+                      </div>
+                      <div className="flex flex-col gap-1 bg-surface-container-low rounded-lg p-sm">
+                        <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wide">
+                          Riesgo de que siga empeorando
+                        </span>
+                        <span className="font-headline-sm text-headline-sm text-on-surface">
+                          {pct(0.68)}
+                        </span>
+                        <span className="font-label-md text-label-md text-[#b5610a] bg-[#f59e0b]/10 rounded-full px-2 py-0.5 w-fit uppercase tracking-wide">
+                          Riesgo medio
+                        </span>
+                      </div>
+                      <div className="flex flex-col gap-1 bg-surface-container-low rounded-lg p-sm">
+                        <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wide">
+                          Comparado con prestadores parecidos
+                        </span>
+                        <span className="font-headline-sm text-headline-sm text-on-surface">
+                          Mejor que la mayoría
+                        </span>
+                        <span className="font-label-sm text-label-sm text-tertiary">
+                          Rinde mejor que 87 de cada 100 prestadores similares
+                        </span>
+                      </div>
+                      <div className="flex flex-col gap-1 bg-surface-container-low rounded-lg p-sm">
+                        <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wide">
+                          Qué tan segura es esta predicción
+                        </span>
+                        <span className="font-headline-sm text-headline-sm text-on-surface">
+                          Alta
+                        </span>
+                        <span className="font-label-sm text-label-sm text-on-surface-variant">
+                          Hay suficiente historial de este prestador
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 bg-primary-container/50 rounded-lg px-sm py-2">
+                      <Icon name="auto_awesome" className="text-primary text-[18px] shrink-0" />
+                      <span className="font-body-md text-body-md text-on-surface">
+                        Qué hacer: <b>revisar su rendimiento pronto</b>, antes de que el
+                        problema crezca
+                      </span>
                     </div>
                   </section>
                 </div>
 
-                {/* ---------- Ranking predictivo de prestadores ---------- */}
+                {/* ---------- Comparativa entre prestadores ---------- */}
                 <section className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 flex flex-col gap-sm p-md">
                   <header className="flex items-center gap-3">
                     <Icon name="leaderboard" className="text-primary" />
                     <div>
                       <h3 className="font-title-lg text-title-lg text-on-surface">
-                        Ranking predictivo — próximo período
+                        Comparativa entre prestadores
                       </h3>
                       <p className="font-label-sm text-label-sm text-on-surface-variant">
-                        Comportamiento proyectado de cada prestador para los próximos 30
-                        días, a partir de su historial — no de un caso puntual
+                        Cómo viene cada uno, qué se espera de él el próximo mes, y qué
+                        conviene hacer
                       </p>
                     </div>
                   </header>
@@ -2047,69 +2038,72 @@ export default function App() {
                       <thead>
                         <tr className="text-label-md font-label-md text-on-surface-variant uppercase text-left border-b border-outline-variant/30">
                           <th className="py-2 pr-3">Prestador</th>
-                          <th className="py-2 pr-3">P(cumplir SLA)</th>
-                          <th className="py-2 pr-3">P(asignación efectiva)</th>
-                          <th className="py-2 pr-3">Volumen esperado</th>
-                          <th className="py-2 pr-3">Confianza</th>
-                          <th className="py-2 pr-3"></th>
+                          <th className="py-2 pr-3">Puntualidad actual</th>
+                          <th className="py-2 pr-3">Puntualidad esperada (próx. mes)</th>
+                          <th className="py-2 pr-3">Comparado con similares</th>
+                          <th className="py-2 pr-3">Riesgo de que empeore</th>
+                          <th className="py-2 pr-3">Qué conviene hacer</th>
                         </tr>
                       </thead>
                       <tbody>
                         {[
                           {
-                            prestador: "Prestador B",
-                            sla: 0.86,
-                            asignacion: 0.91,
-                            volumen: "≈ 340 servicios",
-                            confianza: "Alta",
-                            recomendado: true,
+                            prestador: "Prestador C",
+                            historico: 0.9,
+                            forecast: 0.9,
+                            comparativa: "Entre los mejores",
+                            nivel: "bajo",
+                            recomendacion: "Candidato a más volumen",
                           },
                           {
-                            prestador: "Prestador C",
-                            sla: 0.9,
-                            asignacion: 0.88,
-                            volumen: "≈ 210 servicios",
-                            confianza: "Alta",
-                            recomendado: true,
+                            prestador: "Prestador B",
+                            historico: 0.82,
+                            forecast: 0.86,
+                            comparativa: "Por encima del promedio",
+                            nivel: "bajo",
+                            recomendacion: "Mantener como está",
                           },
                           {
                             prestador: "Prestador A",
-                            sla: 0.74,
-                            asignacion: 0.7,
-                            volumen: "≈ 180 servicios",
-                            confianza: "Media",
-                            recomendado: false,
+                            historico: 0.89,
+                            forecast: 0.85,
+                            comparativa: "Por encima del promedio",
+                            nivel: "medio",
+                            recomendacion: "Revisar su rendimiento",
                           },
                           {
                             prestador: "Prestador D",
-                            sla: 0.68,
-                            asignacion: 0.61,
-                            volumen: "≈ 95 servicios",
-                            confianza: "Media",
-                            recomendado: false,
+                            historico: 0.65,
+                            forecast: 0.58,
+                            comparativa: "Por debajo del promedio",
+                            nivel: "alto",
+                            recomendacion: "Pedir un plan de mejora",
                           },
                         ].map((p) => (
                           <tr
                             key={p.prestador}
-                            className={`border-b border-outline-variant/10 ${
-                              p.recomendado ? "bg-tertiary/5" : ""
-                            }`}
+                            className="border-b border-outline-variant/10"
                           >
                             <td className="py-2 pr-3 text-on-surface font-medium">
                               {p.prestador}
                             </td>
-                            <td className="py-2 pr-3">{pct(p.sla)}</td>
-                            <td className="py-2 pr-3">{pct(p.asignacion)}</td>
-                            <td className="py-2 pr-3">{p.volumen}</td>
-                            <td className="py-2 pr-3">{p.confianza}</td>
+                            <td className="py-2 pr-3">{pct(p.historico)}</td>
+                            <td className="py-2 pr-3">{pct(p.forecast)}</td>
+                            <td className="py-2 pr-3">{p.comparativa}</td>
                             <td className="py-2 pr-3">
-                              {p.recomendado && (
-                                <span className="font-label-md text-label-md text-tertiary bg-tertiary/10 rounded-full px-3 py-1 inline-flex items-center gap-1">
-                                  <Icon name="check_circle" className="text-[16px]" />
-                                  Buena proyección
-                                </span>
-                              )}
+                              <span
+                                className={`font-label-md text-label-md rounded-full px-2 py-0.5 uppercase tracking-wide ${
+                                  p.nivel === "alto"
+                                    ? "text-error bg-error/10"
+                                    : p.nivel === "medio"
+                                      ? "text-[#b5610a] bg-[#f59e0b]/10"
+                                      : "text-tertiary bg-tertiary/10"
+                                }`}
+                              >
+                                {p.nivel === "alto" ? "Alto" : p.nivel === "medio" ? "Medio" : "Bajo"}
+                              </span>
                             </td>
+                            <td className="py-2 pr-3">{p.recomendacion}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -2118,49 +2112,71 @@ export default function App() {
                 </section>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-lg">
-                  {/* ---------- Alertas ---------- */}
+                  {/* ---------- Avisos importantes ---------- */}
                   <section className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 flex flex-col gap-sm p-md">
                     <header className="flex items-center gap-3">
                       <Icon name="notifications_active" className="text-[#f59e0b]" />
                       <h3 className="font-title-lg text-title-lg text-on-surface">
-                        Alertas
+                        Avisos importantes
                       </h3>
                     </header>
                     <div className="flex flex-col gap-2">
                       {[
-                        "Prestador A: deterioro sostenido de SLA, -20 puntos en 4 semanas",
-                        "Prestador D: por debajo del piso de calidad acordado (70%) durante 3 semanas seguidas",
-                        "Prestador B: mejora sostenida, +12 puntos de SLA en el último mes",
-                      ].map((alerta) => (
+                        {
+                          etiqueta: "Urgente",
+                          texto:
+                            "Prestador D: su comportamiento cambió de forma muy inusual — conviene revisarlo cuanto antes",
+                          tone: "text-error bg-error/10",
+                        },
+                        {
+                          etiqueta: "Urgente",
+                          texto:
+                            "Prestador A: es muy probable que su rendimiento siga bajando en el próximo mes",
+                          tone: "text-error bg-error/10",
+                        },
+                        {
+                          etiqueta: "Atención",
+                          texto:
+                            "Prestador D: bajó su puntualidad en las últimas semanas y rinde peor que prestadores parecidos",
+                          tone: "text-[#b5610a] bg-[#f59e0b]/10",
+                        },
+                        {
+                          etiqueta: "Informativo",
+                          texto: "Prestador C: viene rindiendo bien y de forma estable",
+                          tone: "text-tertiary bg-tertiary/10",
+                        },
+                      ].map((a) => (
                         <div
-                          key={alerta}
-                          className="flex items-start gap-2 bg-[#f59e0b]/10 rounded-lg px-sm py-2"
+                          key={a.texto}
+                          className="flex items-start gap-2 bg-surface-container-low rounded-lg px-sm py-2"
                         >
-                          <Icon
-                            name="warning"
-                            className="text-[#f59e0b] text-[18px] mt-0.5 shrink-0"
-                          />
+                          <span
+                            className={`font-label-md text-label-md rounded px-1.5 py-0.5 uppercase tracking-wide shrink-0 ${a.tone}`}
+                          >
+                            {a.etiqueta}
+                          </span>
                           <span className="font-body-md text-body-md text-on-surface">
-                            {alerta}
+                            {a.texto}
                           </span>
                         </div>
                       ))}
                     </div>
                   </section>
 
-                  {/* ---------- Recomendaciones para negociación ---------- */}
+                  {/* ---------- Qué hacer con cada prestador ---------- */}
                   <section className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 flex flex-col gap-sm p-md">
                     <header className="flex items-center gap-3">
                       <Icon name="auto_awesome" className="text-tertiary" />
                       <h3 className="font-title-lg text-title-lg text-on-surface">
-                        Recomendaciones para negociación
+                        Qué hacer con cada prestador
                       </h3>
                     </header>
                     <div className="flex flex-col gap-2">
                       {[
-                        "Agendar revisión comercial con Prestador A antes de la próxima renovación — tendencia de incumplimiento en aumento",
-                        "Priorizar mayor volumen para Prestador B, con mejora sostenida y alta confianza del modelo",
-                        "Renegociar el SLA prometido con Prestador D: su cumplimiento histórico no sostiene el acuerdo actual",
+                        "Prestador D — Pedir un plan de mejora: es probable que siga rindiendo peor y ya está por debajo de lo acordado",
+                        "Prestador A — Revisar su rendimiento pronto: viene bajando de forma seguida",
+                        "Prestador C — Buen candidato a más volumen: rinde muy bien y de forma estable",
+                        "Prestador B — Mantener como está: sin ninguna señal de alerta",
                       ].map((accion) => (
                         <div
                           key={accion}
