@@ -43,7 +43,7 @@ import "./App.css";
  * anterior.
  * ============================================================ */
 
-type Page = "metrics" | "providers" | "cross" | "upload";
+type Page = "metrics" | "providers" | "cross" | "upload" | "intelligence";
 type Option = { value: string; label: string };
 type Drill = {
   title: string;
@@ -452,6 +452,7 @@ const NAV_ITEMS: { page: Page; label: string; icon: string }[] = [
   { page: "metrics", label: "Métricas de Trackeo", icon: "analytics" },
   { page: "providers", label: "Detalle por prestador", icon: "person_search" },
   { page: "cross", label: "Campaña × prestador", icon: "campaign" },
+  { page: "intelligence", label: "Inteligencia Operativa", icon: "psychology" },
   { page: "upload", label: "Cargar reportes", icon: "upload_file" },
 ];
 
@@ -820,7 +821,7 @@ export default function App() {
         <main className="flex-1 overflow-y-auto">
           <div className="max-w-container-max mx-auto p-xl flex flex-col gap-xl">
             {/* ---------- Filtros globales ---------- */}
-            {page !== "upload" && (
+            {page !== "upload" && page !== "intelligence" && (
               <section className="flex flex-col gap-md">
                 {page === "metrics" && (
                   <div className="flex justify-between items-end flex-wrap gap-2">
@@ -1822,6 +1823,303 @@ export default function App() {
                   </table>
                 </div>
               </section>
+            )}
+
+            {page === "intelligence" && (
+              <div className="flex flex-col gap-lg">
+                {/* ---------- Encabezado + disclaimer de mockup ---------- */}
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-3">
+                    <Icon name="psychology" className="text-primary text-[32px]" filled />
+                    <h2 className="font-display-lg text-display-lg text-on-surface">
+                      Inteligencia Operativa
+                    </h2>
+                  </div>
+                  <div className="flex items-start gap-2 bg-primary-container/50 border border-primary/30 rounded-xl px-md py-sm">
+                    <Icon name="info" className="text-primary text-[20px] mt-0.5 shrink-0" />
+                    <p className="font-body-md text-body-md text-on-surface">
+                      <b>Mockup conceptual — sin modelos de ML reales todavía.</b> Todos
+                      los números de esta pantalla son de ejemplo, para validar cómo se
+                      vería la interfaz antes de construir el motor real (predicción de
+                      SLA, asignación, forecast de demanda y anomalías). Ningún dato acá
+                      viene del backend.
+                    </p>
+                  </div>
+                </div>
+
+                {/* ---------- Riesgos ahora ---------- */}
+                <section className="flex flex-col gap-sm">
+                  <h3 className="font-title-lg text-title-lg text-on-surface">
+                    Riesgos ahora
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-md">
+                    <Card
+                      icon={<Icon name="emergency_home" />}
+                      title="Alto riesgo SLA"
+                      value="8"
+                      detail="Probabilidad de incumplimiento mayor a 75%, estimado por el modelo"
+                      tone="red"
+                    />
+                    <Card
+                      icon={<Icon name="warning" />}
+                      title="Riesgo elevado"
+                      value="14"
+                      detail="Probabilidad de incumplimiento entre 40% y 75%"
+                      tone="amber"
+                    />
+                    <Card
+                      icon={<Icon name="directions_car" />}
+                      title="Sin móvil asignado"
+                      value="23"
+                      detail="Servicios activos todavía sin AsignoMovil = Sí"
+                      tone="blue"
+                    />
+                  </div>
+                </section>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-lg">
+                  {/* ---------- Predicción de SLA (explicabilidad) ---------- */}
+                  <section className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 flex flex-col gap-sm p-md">
+                    <header className="flex items-center gap-3">
+                      <Icon name="speed" className="text-error" />
+                      <div>
+                        <h3 className="font-title-lg text-title-lg text-on-surface">
+                          Predicción de incumplimiento — Servicio #58219
+                        </h3>
+                        <p className="font-label-sm text-label-sm text-on-surface-variant">
+                          Remolque · Campaña X · Prestador P123
+                        </p>
+                      </div>
+                    </header>
+                    <div className="flex items-center gap-md py-sm">
+                      <span className="font-display-lg text-display-lg text-error leading-none">
+                        81%
+                      </span>
+                      <div className="flex flex-col gap-1">
+                        <span className="font-label-md text-label-md text-error bg-error/10 rounded-full px-3 py-1 w-fit uppercase tracking-wide">
+                          Riesgo alto
+                        </span>
+                        <span className="font-label-sm text-label-sm text-on-surface-variant">
+                          Demora estimada: 68 min (prometida: 45 min)
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wide">
+                        Principales factores
+                      </span>
+                      {[
+                        "Demora prometida baja para este tipo de servicio",
+                        "Prestador con caída de SLA en las últimas 2 semanas",
+                        "Franja horaria de alta demanda (15:00-16:00)",
+                        "Móvil todavía no registrado",
+                        "Patrones históricos similares terminaron tarde",
+                      ].map((motivo) => (
+                        <div key={motivo} className="flex items-start gap-2">
+                          <Icon
+                            name="chevron_right"
+                            className="text-[16px] text-on-surface-variant mt-0.5 shrink-0"
+                          />
+                          <span className="font-body-md text-body-md text-on-surface">
+                            {motivo}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+
+                  {/* ---------- Forecast de demanda ---------- */}
+                  <section className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 flex flex-col gap-sm p-md">
+                    <header className="flex items-center gap-3">
+                      <Icon name="query_stats" className="text-primary" />
+                      <div>
+                        <h3 className="font-title-lg text-title-lg text-on-surface">
+                          Demanda esperada — próximas 2 horas
+                        </h3>
+                        <p className="font-label-sm text-label-sm text-on-surface-variant">
+                          09:00 - 11:00, todas las campañas
+                        </p>
+                      </div>
+                    </header>
+                    <div className="grid grid-cols-3 gap-sm py-sm">
+                      <div className="flex flex-col">
+                        <span className="font-display-lg text-display-lg text-on-surface leading-none">
+                          184
+                        </span>
+                        <span className="font-label-sm text-label-sm text-on-surface-variant">
+                          Demanda esperada
+                        </span>
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="font-display-lg text-display-lg text-on-surface leading-none">
+                          161
+                        </span>
+                        <span className="font-label-sm text-label-sm text-on-surface-variant">
+                          Capacidad estimada
+                        </span>
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="font-display-lg text-display-lg text-error leading-none">
+                          -23
+                        </span>
+                        <span className="font-label-sm text-label-sm text-on-surface-variant">
+                          Gap
+                        </span>
+                      </div>
+                    </div>
+                    <div className="bg-error/10 rounded-lg px-sm py-2 flex items-center gap-2">
+                      <Icon name="warning" className="text-error text-[18px] shrink-0" />
+                      <span className="font-body-md text-body-md text-on-surface">
+                        Riesgo operativo <b>medio-alto</b>: la capacidad disponible
+                        probablemente sea insuficiente entre las 11:00 y las 14:00.
+                      </span>
+                    </div>
+                  </section>
+                </div>
+
+                {/* ---------- Ranking predictivo de prestadores ---------- */}
+                <section className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 flex flex-col gap-sm p-md">
+                  <header className="flex items-center gap-3">
+                    <Icon name="leaderboard" className="text-primary" />
+                    <div>
+                      <h3 className="font-title-lg text-title-lg text-on-surface">
+                        Ranking predictivo — Servicio #58219
+                      </h3>
+                      <p className="font-label-sm text-label-sm text-on-surface-variant">
+                        Qué prestador tiene mayor probabilidad de resolver este caso
+                        puntual, no solo el score histórico
+                      </p>
+                    </div>
+                  </header>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-body-md font-body-md">
+                      <thead>
+                        <tr className="text-label-md font-label-md text-on-surface-variant uppercase text-left border-b border-outline-variant/30">
+                          <th className="py-2 pr-3">Prestador</th>
+                          <th className="py-2 pr-3">P(asignar móvil)</th>
+                          <th className="py-2 pr-3">P(cumplir SLA)</th>
+                          <th className="py-2 pr-3">ETA estimada</th>
+                          <th className="py-2 pr-3">Confianza</th>
+                          <th className="py-2 pr-3"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[
+                          {
+                            prestador: "Prestador A",
+                            asignacion: 0.96,
+                            sla: 0.91,
+                            eta: "42 min",
+                            confianza: "Alta",
+                            recomendado: true,
+                          },
+                          {
+                            prestador: "Prestador B",
+                            asignacion: 0.88,
+                            sla: 0.79,
+                            eta: "49 min",
+                            confianza: "Alta",
+                            recomendado: false,
+                          },
+                          {
+                            prestador: "Prestador C",
+                            asignacion: 0.64,
+                            sla: 0.61,
+                            eta: "67 min",
+                            confianza: "Media",
+                            recomendado: false,
+                          },
+                        ].map((p) => (
+                          <tr
+                            key={p.prestador}
+                            className={`border-b border-outline-variant/10 ${
+                              p.recomendado ? "bg-tertiary/5" : ""
+                            }`}
+                          >
+                            <td className="py-2 pr-3 text-on-surface font-medium">
+                              {p.prestador}
+                            </td>
+                            <td className="py-2 pr-3">{pct(p.asignacion)}</td>
+                            <td className="py-2 pr-3">{pct(p.sla)}</td>
+                            <td className="py-2 pr-3">{p.eta}</td>
+                            <td className="py-2 pr-3">{p.confianza}</td>
+                            <td className="py-2 pr-3">
+                              {p.recomendado && (
+                                <span className="font-label-md text-label-md text-tertiary bg-tertiary/10 rounded-full px-3 py-1 inline-flex items-center gap-1">
+                                  <Icon name="check_circle" className="text-[16px]" />
+                                  Recomendado
+                                </span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-lg">
+                  {/* ---------- Alertas ---------- */}
+                  <section className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 flex flex-col gap-sm p-md">
+                    <header className="flex items-center gap-3">
+                      <Icon name="notifications_active" className="text-[#f59e0b]" />
+                      <h3 className="font-title-lg text-title-lg text-on-surface">
+                        Alertas
+                      </h3>
+                    </header>
+                    <div className="flex flex-col gap-2">
+                      {[
+                        "Prestador X deterioró su cumplimiento de SLA un 18% en las últimas 4 semanas",
+                        "Campaña Y tiene una demanda 27% superior a lo esperado para este período",
+                        "Zona Z presenta una demora de despacho anómala respecto de su patrón habitual",
+                      ].map((alerta) => (
+                        <div
+                          key={alerta}
+                          className="flex items-start gap-2 bg-[#f59e0b]/10 rounded-lg px-sm py-2"
+                        >
+                          <Icon
+                            name="warning"
+                            className="text-[#f59e0b] text-[18px] mt-0.5 shrink-0"
+                          />
+                          <span className="font-body-md text-body-md text-on-surface">
+                            {alerta}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+
+                  {/* ---------- Recomendaciones ---------- */}
+                  <section className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 flex flex-col gap-sm p-md">
+                    <header className="flex items-center gap-3">
+                      <Icon name="auto_awesome" className="text-tertiary" />
+                      <h3 className="font-title-lg text-title-lg text-on-surface">
+                        Recomendaciones
+                      </h3>
+                    </header>
+                    <div className="flex flex-col gap-2">
+                      {[
+                        "Reasignar 4 servicios en riesgo alto a prestadores con mejor disponibilidad actual",
+                        "Priorizar a los Prestadores A y B para los próximos ingresos de la campaña X",
+                        "Preparar capacidad adicional para la franja 16:00-18:00",
+                      ].map((accion) => (
+                        <div
+                          key={accion}
+                          className="flex items-start gap-2 bg-tertiary/10 rounded-lg px-sm py-2"
+                        >
+                          <Icon
+                            name="arrow_forward"
+                            className="text-tertiary text-[18px] mt-0.5 shrink-0"
+                          />
+                          <span className="font-body-md text-body-md text-on-surface">
+                            {accion}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                </div>
+              </div>
             )}
 
             {page === "upload" && (
