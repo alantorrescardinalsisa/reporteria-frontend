@@ -107,6 +107,36 @@ function Spinner({ className = "" }: { className?: string }) {
   );
 }
 
+/* ---------- NUEVO (ADITIVO): tooltip de ayuda por indicador ----------
+   Icono "i" que al pasar el mouse muestra una descripcion breve y,
+   si corresponde, como se calcula. Usa un `group`/`group-hover` local
+   (span propio) para no depender de si el elemento que lo contiene
+   (ProgressBar, IndicatorRow, etc.) ya usa `group` para otra cosa. */
+type Tooltip = { leer: string; calculo?: string };
+function InfoTip({ leer, calculo }: Tooltip) {
+  return (
+    <span
+      className="relative inline-flex group shrink-0 normal-case tracking-normal font-normal"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <Icon
+        name="info"
+        className="text-[14px] leading-none text-on-surface-variant/50 hover:text-primary cursor-help transition-colors"
+      />
+      <span className="invisible opacity-0 group-hover:visible group-hover:opacity-100 transition-opacity duration-150 absolute z-50 bottom-full left-1/2 -translate-x-1/2 mb-2 w-64 rounded-lg bg-inverse-surface text-inverse-on-surface p-3 shadow-lg pointer-events-none">
+        <span className="block font-body-md text-[12.5px] leading-snug">
+          {leer}
+        </span>
+        {calculo && (
+          <span className="block font-body-md text-[11px] leading-snug text-inverse-on-surface/75 mt-1.5 pt-1.5 border-t border-inverse-on-surface/20">
+            <b className="font-semibold">Cómo se calcula:</b> {calculo}
+          </span>
+        )}
+      </span>
+    </span>
+  );
+}
+
 /* ---------- Selector múltiple (misma lógica, nuevo estilo) ---------- */
 function MultiSelect({
   label,
@@ -229,6 +259,7 @@ function Card({
   onClick,
   tone = "blue",
   highlight = false,
+  tooltip,
 }: {
   icon: ReactNode;
   title: string;
@@ -237,6 +268,7 @@ function Card({
   onClick?: () => void;
   tone?: string;
   highlight?: boolean;
+  tooltip?: Tooltip;
 }) {
   return (
     <article
@@ -258,8 +290,9 @@ function Card({
         >
           {value}
         </span>
-        <span className="font-label-md text-label-md text-on-surface-variant uppercase tracking-wider">
+        <span className="font-label-md text-label-md text-on-surface-variant uppercase tracking-wider flex items-center gap-1">
           {title}
+          {tooltip && <InfoTip {...tooltip} />}
         </span>
         <small className="font-body-md text-[13px] text-on-surface-variant/80 leading-snug">
           {detail}
@@ -282,12 +315,14 @@ function IndicatorRow({
   value,
   detail,
   onClick,
+  tooltip,
 }: {
   icon: ReactNode;
   label: string;
   value: string;
   detail?: string;
   onClick?: () => void;
+  tooltip?: Tooltip;
 }) {
   return (
     <div
@@ -301,8 +336,9 @@ function IndicatorRow({
           {icon}
         </div>
         <div className="min-w-0">
-          <div className="font-body-md text-body-md font-medium text-on-surface truncate">
-            {label}
+          <div className="font-body-md text-body-md font-medium text-on-surface flex items-center gap-1 min-w-0">
+            <span className="truncate">{label}</span>
+            {tooltip && <InfoTip {...tooltip} />}
           </div>
           {detail && (
             <div className="font-label-sm text-label-sm text-on-surface-variant truncate">
@@ -327,6 +363,7 @@ function ProgressBar({
   ratio,
   color,
   onClick,
+  tooltip,
 }: {
   label: string;
   icon?: ReactNode;
@@ -334,6 +371,7 @@ function ProgressBar({
   ratio: number;
   color: string;
   onClick?: () => void;
+  tooltip?: Tooltip;
 }) {
   return (
     <button
@@ -346,6 +384,7 @@ function ProgressBar({
         <span className="text-on-surface flex items-center gap-2 min-w-0">
           {icon}
           <span className="truncate">{label}</span>
+          {tooltip && <InfoTip {...tooltip} />}
         </span>
         <span className="text-on-surface-variant font-bold shrink-0">{valueLabel}</span>
       </div>
@@ -555,18 +594,21 @@ function TramoCard({
   icon,
   stats,
   explicacion,
+  tooltip,
 }: {
   label: string;
   icon: string;
   stats: TiempoStats | undefined;
   explicacion: string;
+  tooltip?: Tooltip;
 }) {
   return (
     <div className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 flex flex-col gap-sm p-md">
       <header className="flex items-center gap-3">
         <Icon name={icon} className="text-primary" />
-        <h4 className="font-title-lg text-title-lg text-on-surface">
+        <h4 className="font-title-lg text-title-lg text-on-surface flex items-center gap-1">
           {label}
+          {tooltip && <InfoTip {...tooltip} />}
         </h4>
       </header>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1309,12 +1351,20 @@ export default function App() {
                       title="Servicios en el periodo"
                       value={nf(universes?.servicios_cargados)}
                       detail="Total visible para las fechas"
+                      tooltip={{
+                        leer: "Todos los servicios que entran en el rango de fechas elegido, sin importar tipo, estado, campaña ni prestador.",
+                        calculo: "Cuenta filas cuya fecha de alta cae entre Desde y Hasta.",
+                      }}
                     />
                     <Card
                       icon={<Icon name="local_shipping" filled />}
                       title="Servicios vehiculares"
                       value={nf(universes?.servicios_vehiculares)}
                       detail="Tipos operativos seleccionados"
+                      tooltip={{
+                        leer: "De esos, cuántos son del tipo de servicio que involucra un vehículo (remolques, extracciones, mecánica, etc.).",
+                        calculo: "Marca definida en el catálogo de tipos de servicio.",
+                      }}
                     />
                     <Card
                       icon={<Icon name="check_circle" filled />}
@@ -1322,6 +1372,10 @@ export default function App() {
                       value={nf(universes?.servicios_evaluables)}
                       detail="Base seleccionada para KPI"
                       tone="green"
+                      tooltip={{
+                        leer: "De los vehiculares, cuántos están en condiciones de ser evaluados (no cancelados antes de tiempo, con un estado reconocido).",
+                        calculo: "Marca definida en el catálogo de estados/tipos.",
+                      }}
                     />
                     <Card
                       icon={<Icon name="cancel" filled />}
@@ -1329,6 +1383,10 @@ export default function App() {
                       value={nf(universes?.servicios_cancelados)}
                       detail="Estados cancelados"
                       tone="red"
+                      tooltip={{
+                        leer: "De los vehiculares, cuántos terminaron cancelados.",
+                        calculo: "Vehiculares con estado marcado como cancelado.",
+                      }}
                     />
                     <Card
                       icon={<Icon name="warning" filled />}
@@ -1336,6 +1394,10 @@ export default function App() {
                       value={nf(universes?.servicios_no_finalizados)}
                       detail="Pendientes o en curso"
                       tone="amber"
+                      tooltip={{
+                        leer: "De los vehiculares, cuántos siguen pendientes o en curso, todavía sin llegar a un cierre ni cancelación.",
+                        calculo: "Vehiculares cuyo estado no está marcado como final ni como cancelado.",
+                      }}
                     />
                     <Card
                       icon={<Icon name="filter_alt" filled />}
@@ -1354,6 +1416,10 @@ export default function App() {
                             : `${filters.tipos.length} tipos seleccionados`,
                       ].join(" · ")}
                       highlight
+                      tooltip={{
+                        leer: "Cuántos servicios quedan después de aplicar TODOS los filtros elegidos. Es el denominador real de los indicadores operativos.",
+                        calculo: "Filas que pasan los 5 filtros (fecha, campaña, prestador, estado, tipo) a la vez.",
+                      }}
                     />
                   </div>
                 </section>
@@ -1400,6 +1466,10 @@ export default function App() {
                         label="Servicios seleccionados"
                         value={nf(summary?.servicios_consultados)}
                         detail={`${nf(summary?.enviador_si)} con enviador · ${nf(summary?.enviador_no)} sin enviador`}
+                        tooltip={{
+                          leer: "El total del universo filtrado, y cuántos de esos pasaron o no por el despacho automático.",
+                          calculo: "Total de filas filtradas; el detalle separa por ConEnvioOK = SI / NO.",
+                        }}
                       />
                       <IndicatorRow
                         icon={<Icon name="send_to_mobile" className="text-[18px]" />}
@@ -1407,6 +1477,10 @@ export default function App() {
                         value={pct(summary?.uso_enviador)}
                         detail={`${nf(summary?.enviador_si)} servicios`}
                         onClick={() => open("ENVIADOR_SI", "Servicios con enviador")}
+                        tooltip={{
+                          leer: "Qué porcentaje de los servicios pasó por el despacho automático (\"el enviador\"), en vez de asignarse a mano.",
+                          calculo: "ConEnvioOK = SI ÷ total del universo filtrado.",
+                        }}
                       />
                       <IndicatorRow
                         icon={<Icon name="rv_hookup" className="text-[18px]" />}
@@ -1414,6 +1488,10 @@ export default function App() {
                         value={nf(summary?.asigna_movil)}
                         detail={`${pct(summary?.efectividad_enviador)} efectividad`}
                         onClick={() => open("ASIGNA_MOVIL", "Asigna móvil")}
+                        tooltip={{
+                          leer: "Cuántos servicios terminaron con un móvil asignado. \"% efectividad\" es más específico: de los que usaron el enviador, a cuántos les asignó un móvil.",
+                          calculo: "Principal: AsignoMovil=SI ÷ total filtrado. Efectividad: AsignoMovil=SI ÷ ConEnvioOK=SI.",
+                        }}
                       />
                       <IndicatorRow
                         icon={<Icon name="mobile_off" className="text-[18px]" />}
@@ -1421,6 +1499,10 @@ export default function App() {
                         value={nf(summary?.no_asigna_movil_cantidad)}
                         detail={pct(summary?.no_asigna_movil_porcentaje)}
                         onClick={() => open("NO_ASIGNA_MOVIL", "No asigna móvil")}
+                        tooltip={{
+                          leer: "El espejo del anterior: servicios que no terminaron con un móvil asignado.",
+                          calculo: "AsignoMovil ≠ SI ÷ total del universo filtrado.",
+                        }}
                       />
                       <IndicatorRow
                         icon={<Icon name="event_available" className="text-[18px]" />}
@@ -1428,6 +1510,10 @@ export default function App() {
                         value={nf(summary?.servicios_programados)}
                         detail={pct(summary?.programados_porcentaje)}
                         onClick={() => open("PROGRAMADOS", "Programados")}
+                        tooltip={{
+                          leer: "Cuántos servicios del universo filtrado estaban agendados para un horario específico, en vez de ser una urgencia inmediata.",
+                          calculo: "EsProgramado = SI ÷ total del universo filtrado.",
+                        }}
                       />
                       <IndicatorRow
                         icon={<Icon name="timer" className="text-[18px]" />}
@@ -1439,6 +1525,10 @@ export default function App() {
                         }
                         detail={`${nf(summary?.servicios_cumplidos)} cumplen · ${nf(summary?.servicios_no_cumplidos)} no cumplen`}
                         onClick={() => open("CUMPLE_DEMORA", "Cumple demora")}
+                        tooltip={{
+                          leer: "El termómetro oficial de SLA: qué % llegó dentro del tiempo prometido (con 14 min de tolerancia). Si falta el tiempo real, igual cuenta como si hubiera llegado al instante — ver \"Cumplimiento observado\" al lado.",
+                          calculo: "Cumple si DemoraReal ≤ DemoraPrometida + 14 (celda vacía cuenta como 0).",
+                        }}
                       />
                       {/* NUEVO (ADITIVO): separa el cumplimiento "formula
                           Excel" (arriba) del cumplimiento observado solo
@@ -1457,12 +1547,20 @@ export default function App() {
                         onClick={() =>
                           open("CUMPLE_DEMORA_TRAZABLE", "Cumple demora (trazable)")
                         }
+                        tooltip={{
+                          leer: "La misma pregunta, pero contestada SOLO con los servicios que tienen registrados tanto el tiempo prometido como el real — sin inflar el resultado. Suele ser más bajo, y es el número más honesto para evaluar performance real.",
+                          calculo: "Misma fórmula, pero solo sobre filas con DemoraPrometida y DemoraReal cargadas.",
+                        }}
                       />
                       <IndicatorRow
                         icon={<Icon name="fact_check" className="text-[18px]" />}
                         label="Cobertura de medición de demora"
                         value={pct(summary?.cobertura_medicion_demora)}
                         detail={`${nf(summary?.servicios_evaluados_demora_trazable)} de ${nf(summary?.servicios_consultados)} servicios con Demora Prometida y Real cargadas`}
+                        tooltip={{
+                          leer: "Qué % del universo filtrado tiene los datos completos como para medir su cumplimiento de verdad. Si es bajo, los dos indicadores anteriores hay que leerlos con pinzas.",
+                          calculo: "Filas con DemoraPrometida y DemoraReal cargadas ÷ total del universo filtrado.",
+                        }}
                       />
                     </div>
                   </div>
@@ -1471,8 +1569,12 @@ export default function App() {
                 {/* ---------- Distribución + Calidad ---------- */}
                 <section className="grid grid-cols-1 lg:grid-cols-2 gap-xl">
                   <div className="flex flex-col gap-sm">
-                    <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs">
+                    <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs flex items-center gap-1">
                       Distribución de servicios cumplidos
+                      <InfoTip
+                        leer="De los servicios que SÍ cumplieron la demora prometida, cuánto tiempo real tardaron — para distinguir un cumplimiento justo de uno con mucho margen."
+                        calculo="Se agrupan las filas que cumplieron, usando el valor tal cual viene en RangoDemoraReal."
+                      />
                     </h3>
                     <p className="font-label-sm text-label-sm text-on-surface-variant -mt-2">
                       Sobre {nf(summary?.servicios_cumplidos)} servicios cumplidos.
@@ -1491,8 +1593,12 @@ export default function App() {
                     </div>
                   </div>
                   <div className="flex flex-col gap-sm">
-                    <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs">
+                    <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs flex items-center gap-1">
                       Calidad de información
+                      <InfoTip
+                        leer="No mide performance operativa — mide qué tan completo está el Excel cargado. Un dato faltante puede ser tan importante como un mal resultado."
+                        calculo="Por cada campo: filas con esa columna no vacía ÷ total del universo filtrado."
+                      />
                     </h3>
                     <p className="font-label-sm text-label-sm text-on-surface-variant -mt-2">
                       Completitud sobre el universo filtrado.
@@ -1532,20 +1638,32 @@ export default function App() {
                       icon="directions_car"
                       stats={funnel?.tiempos.t4_asignacion_a_arribo}
                       explicacion="Así de rápido llega el prestador al lugar una vez que le asignan el servicio."
+                      tooltip={{
+                        leer: "Cuánto tarda el móvil en llegar al lugar, desde que se confirma el envío.",
+                        calculo: "HoraQueLlegoADarServicio − FechaHoraEnvioOk, en minutos.",
+                      }}
                     />
                     <TramoCard
                       label="Cuánto tarda en resolver el servicio"
                       icon="build"
                       stats={funnel?.tiempos.t5_ejecucion}
                       explicacion="Así de rápido resuelve el prestador el servicio, desde que llega hasta que termina."
+                      tooltip={{
+                        leer: "Cuánto dura la atención del servicio en el lugar, desde que llega el móvil hasta que termina.",
+                        calculo: "HoraQueFinalizaServicio − HoraQueLlegoADarServicio.",
+                      }}
                     />
                   </div>
                 </section>
 
                 <section className="grid grid-cols-1 lg:grid-cols-2 gap-xl">
                   <div className="flex flex-col gap-sm">
-                    <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs">
+                    <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs flex items-center gap-1">
                       SLA de llegada
+                      <InfoTip
+                        leer="De los servicios con tiempo prometido y real cargados, cuántos llegaron a tiempo, y cuánto se pasaron los que no."
+                        calculo="Bandas sobre DemoraReal − DemoraPrometida."
+                      />
                     </h3>
                     <p className="font-label-sm text-label-sm text-on-surface-variant -mt-2">
                       DemoraReal − DemoraPrometida · sobre{" "}
@@ -1573,6 +1691,10 @@ export default function App() {
                       icon="flag_circle"
                       stats={funnel?.tiempos.t6_end_to_end}
                       explicacion="Así de rápido es el recorrido completo del servicio, de punta a punta."
+                      tooltip={{
+                        leer: "El viaje completo del servicio, de punta a punta, desde que se crea hasta que se cierra.",
+                        calculo: "HoraQueFinalizaServicio − AltaDelServicio.",
+                      }}
                     />
                   </div>
                 </section>
@@ -1595,10 +1717,42 @@ export default function App() {
                           <tr className="text-label-md font-label-md text-on-surface-variant uppercase text-left border-b border-outline-variant/30">
                             <th className="py-2 pl-md pr-3">Campaña</th>
                             <th className="py-2 pr-3">Total</th>
-                            <th className="py-2 pr-3">Efectividad asignación</th>
-                            <th className="py-2 pr-3">Cumplimiento observado</th>
-                            <th className="py-2 pr-3">Oportunidad asignación</th>
-                            <th className="py-2 pr-md">Impacto asignación</th>
+                            <th className="py-2 pr-3">
+                              <span className="inline-flex items-center gap-1">
+                                Efectividad asignación
+                                <InfoTip
+                                  leer="De los servicios que usaron el enviador, qué % terminó con un móvil asignado."
+                                  calculo="AsignoMovil=SI ÷ ConEnvioOK=SI, dentro de esa campaña."
+                                />
+                              </span>
+                            </th>
+                            <th className="py-2 pr-3">
+                              <span className="inline-flex items-center gap-1">
+                                Cumplimiento observado
+                                <InfoTip
+                                  leer="Cumplimiento de demora de esa campaña, solo sobre servicios con Demora Prometida y Real cargadas."
+                                  calculo="cumplidos ÷ evaluados con ambos datos cargados."
+                                />
+                              </span>
+                            </th>
+                            <th className="py-2 pr-3">
+                              <span className="inline-flex items-center gap-1">
+                                Oportunidad asignación
+                                <InfoTip
+                                  leer="Cuánto margen de mejora le queda a la campaña en asignación."
+                                  calculo="1 − efectividad de asignación de esa campaña."
+                                />
+                              </span>
+                            </th>
+                            <th className="py-2 pr-md">
+                              <span className="inline-flex items-center gap-1">
+                                Impacto asignación
+                                <InfoTip
+                                  leer="Columna por la que se ordena la tabla: cuántos servicios se ganarían si esa campaña mejorara su asignación al máximo."
+                                  calculo="Total de servicios de la campaña × oportunidad de asignación."
+                                />
+                              </span>
+                            </th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1646,8 +1800,12 @@ export default function App() {
                 {/* ---------- NUEVO (ADITIVO): Distribución horaria ---------- */}
                 <section className="flex flex-col gap-sm">
                   <div className="flex justify-between items-end flex-wrap gap-2 border-b border-outline-variant/30 pb-xs">
-                    <h3 className="font-title-lg text-title-lg text-on-surface">
+                    <h3 className="font-title-lg text-title-lg text-on-surface flex items-center gap-1">
                       Servicios por hora del día
+                      <InfoTip
+                        leer="A qué hora del día llega más trabajo — para pensar la dotación de personal según la demanda real, no contra el promedio del día entero."
+                        calculo="Cuenta de servicios agrupados por la hora local (Argentina) de AltaDelServicio."
+                      />
                     </h3>
                     <div className="flex items-center gap-2 flex-wrap">
                       <select
@@ -1704,8 +1862,12 @@ export default function App() {
 
                 {/* ---------- NUEVO (ADITIVO): Estados por categoría ---------- */}
                 <section className="flex flex-col gap-sm">
-                  <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs">
+                  <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs flex items-center gap-1">
                     Estados por categoría semántica
+                    <InfoTip
+                      leer="El Excel trae docenas de estados distintos. Este panel los agrupa en familias (Finalizado, Cancelado, En proceso, Pendiente, Postservicio, Sin clasificar) para leerlos de un vistazo."
+                      calculo="Cada estado crudo se asigna a una categoría por nombre exacto o por palabra clave."
+                    />
                   </h3>
                   <p className="font-label-sm text-label-sm text-on-surface-variant -mt-2">
                     {estadosCategorizados?.nota ||
@@ -1754,8 +1916,12 @@ export default function App() {
 
                 {/* ---------- NUEVO (ADITIVO): Trazabilidad completa ---------- */}
                 <section className="flex flex-col gap-sm">
-                  <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs">
+                  <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs flex items-center gap-1">
                     Trazabilidad completa del servicio
+                    <InfoTip
+                      leer="Distinto de “Calidad de información”: ahí se mide campo por campo; acá se mide si un mismo servicio tiene TODA la cadena de eventos registrada, de punta a punta."
+                      calculo="Filas con las 6 columnas de tiempo cargadas ÷ total del universo filtrado."
+                    />
                   </h3>
                   <p className="font-label-sm text-label-sm text-on-surface-variant -mt-2">
                     No alcanza con que cada campo esté cargado — esto mide qué
@@ -1790,8 +1956,12 @@ export default function App() {
                 {/* ---------- NUEVO (ADITIVO): Habilitadores de asignación ---------- */}
                 <section className="grid grid-cols-1 lg:grid-cols-2 gap-xl">
                   <div className="flex flex-col gap-sm">
-                    <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs">
+                    <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs flex items-center gap-1">
                       Coordenadas como habilitador de asignación
+                      <InfoTip
+                        leer="Compara la efectividad de asignación entre servicios con y sin coordenadas cargadas. Si “con coordenadas” asigna mejor, cargar la ubicación ayuda a conseguir el móvil."
+                        calculo="AsignoMovil=SI ÷ ConEnvioOK=SI, separado por si tiene coordenadas o no."
+                      />
                     </h3>
                     <p className="font-label-sm text-label-sm text-on-surface-variant -mt-2">
                       Efectividad de asignación (dado que se usó el enviador)
@@ -1820,8 +1990,12 @@ export default function App() {
                     </div>
                   </div>
                   <div className="flex flex-col gap-sm">
-                    <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs">
+                    <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs flex items-center gap-1">
                       MóvilRegistrado como proxy de asignación
+                      <InfoTip
+                        leer="De los servicios que usaron el enviador, qué % terminó con el móvil concreto registrado en el sistema, y qué tan seguido eso coincide con AsignoMóvil."
+                        calculo="MovilRegistrado=SI ÷ ConEnvioOK=SI."
+                      />
                     </h3>
                     <p className="font-label-sm text-label-sm text-on-surface-variant -mt-2">
                       Sobre servicios con enviador, tasa de conversión a Móvil
@@ -1855,8 +2029,12 @@ export default function App() {
 
                 {/* ---------- NUEVO (ADITIVO): Gestión de programados ---------- */}
                 <section className="flex flex-col gap-sm">
-                  <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs">
+                  <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs flex items-center gap-1">
                     Gestión completa de servicios programados
+                    <InfoTip
+                      leer="“Servicios programados” solo cuenta cuántos estaban agendados. Esto sigue ese mismo grupo paso a paso, hasta ver cuántos realmente se cumplieron en horario."
+                      calculo="Funnel: EsProgramado=SI → con prestador → ConEnvioOK → AsignoMovil → ejecutado → finalizado."
+                    />
                   </h3>
                   <p className="font-label-sm text-label-sm text-on-surface-variant -mt-2">
                     "Servicios programados" mide solo EsProgramado=SI — esto
@@ -1886,8 +2064,12 @@ export default function App() {
                       }
                       className="bg-surface-container-lowest rounded-xl p-md card-shadow border border-outline-variant/20 flex flex-col justify-center items-center text-center gap-1 hover:border-primary/40 transition-colors cursor-pointer"
                     >
-                      <span className="font-label-md text-label-md text-on-surface-variant uppercase">
+                      <span className="font-label-md text-label-md text-on-surface-variant uppercase flex items-center gap-1">
                         Llegada en horario
+                        <InfoTip
+                          leer="De los programados con horario y llegada cargados, qué % llegó puntual o antes de la hora acordada con el cliente."
+                          calculo="HoraQueLlegoADarServicio ≤ FechaProgramada + HoraProgramada."
+                        />
                       </span>
                       <span className="font-display-lg text-display-lg text-primary">
                         {programadosFunnel?.llegada_en_horario.porcentaje != null
@@ -1910,8 +2092,12 @@ export default function App() {
                 {/* ---------- NUEVO (ADITIVO): Outliers / anomalías ---------- */}
                 <section className="flex flex-col gap-sm">
                   <div className="flex justify-between items-end flex-wrap gap-2 border-b border-outline-variant/30 pb-xs">
-                    <h3 className="font-title-lg text-title-lg text-on-surface">
+                    <h3 className="font-title-lg text-title-lg text-on-surface flex items-center gap-1">
                       Outliers por tramo
+                      <InfoTip
+                        leer="Los promedios y percentiles esconden los casos extremos. Acá se los ve uno por uno, con el prestador y el servicio puntual, para auditarlos."
+                        calculo="Top 20 valores más altos del tramo elegido; marcado como posible anomalía si supera 3× el P90 de ese tramo."
+                      />
                     </h3>
                     <select
                       className="form-input-styled font-body-md text-body-md text-on-surface"
@@ -2070,10 +2256,42 @@ export default function App() {
                         <th className="py-2 pr-3">Cumple</th>
                         <th className="py-2 pr-3">No cumple</th>
                         <th className="py-2 pr-3">Cumplimiento</th>
-                        <th className="py-2 pr-3">Índice calidad</th>
-                        <th className="py-2 pr-3">Trazabilidad</th>
-                        <th className="py-2 pr-3">Volumen rel.</th>
-                        <th className="py-2 pr-3">Score</th>
+                        <th className="py-2 pr-3">
+                          <span className="inline-flex items-center gap-1">
+                            Índice calidad
+                            <InfoTip
+                              leer="Qué tan completos están, en promedio, los datos de los servicios de ese prestador."
+                              calculo="Promedio de completitud de los campos clave, solo para ese prestador."
+                            />
+                          </span>
+                        </th>
+                        <th className="py-2 pr-3">
+                          <span className="inline-flex items-center gap-1">
+                            Trazabilidad
+                            <InfoTip
+                              leer="Qué % de los servicios de ese prestador tiene la cadena completa de eventos (Alta→Despachador→Asignado→Envío OK→Llegó→Finalizó)."
+                              calculo="Filas con las 6 columnas de tiempo cargadas ÷ total de ese prestador."
+                            />
+                          </span>
+                        </th>
+                        <th className="py-2 pr-3">
+                          <span className="inline-flex items-center gap-1">
+                            Volumen rel.
+                            <InfoTip
+                              leer="Qué tan grande es ese prestador comparado con el más grande del listado filtrado. 100% es el que más servicios tiene."
+                              calculo="Total de ese prestador ÷ total del prestador con más volumen."
+                            />
+                          </span>
+                        </th>
+                        <th className="py-2 pr-3">
+                          <span className="inline-flex items-center gap-1">
+                            Score
+                            <InfoTip
+                              leer="Una nota de 0 a 100% que combina las 4 columnas anteriores. El ⚠ avisa que ese prestador tiene menos de 20 servicios — con tan poca muestra, el score es poco confiable."
+                              calculo="37,5% Cumplimiento observado + 31,25% Efectividad asignación + 18,75% Índice calidad + 12,5% Volumen relativo (se renormaliza si falta algún componente)."
+                            />
+                          </span>
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
