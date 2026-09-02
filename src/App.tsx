@@ -834,8 +834,104 @@ function Pager({
   );
 }
 
+/* ---------- NUEVO (ADITIVO): orden por columna, para todas las tablas ---------- */
+type SortDir = "asc" | "desc";
+function compareValues(a: unknown, b: unknown, dir: SortDir): number {
+  if (a == null && b == null) return 0;
+  if (a == null) return 1; // los nulos/N-A siempre quedan al final
+  if (b == null) return -1;
+  const cmp =
+    typeof a === "number" && typeof b === "number"
+      ? a - b
+      : String(a).localeCompare(String(b), "es", {
+          numeric: true,
+          sensitivity: "base",
+        });
+  return dir === "asc" ? cmp : -cmp;
+}
+function useSort<T>(
+  rows: T[],
+  initialKey: string,
+  initialDir: SortDir = "desc",
+  accessors?: Record<string, (row: T) => unknown>,
+) {
+  const [key, setKey] = useState(initialKey);
+  const [dir, setDir] = useState<SortDir>(initialDir);
+  const toggle = (k: string, defaultDir: SortDir = "desc") => {
+    if (k === key) setDir((d) => (d === "asc" ? "desc" : "asc"));
+    else {
+      setKey(k);
+      setDir(defaultDir);
+    }
+  };
+  const getValue = (row: T) => {
+    const acc = accessors?.[key];
+    return acc ? acc(row) : (row as Record<string, unknown>)[key];
+  };
+  const sorted = useMemo(
+    () => [...rows].sort((a, b) => compareValues(getValue(a), getValue(b), dir)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rows, key, dir],
+  );
+  return { sorted, key, dir, toggle };
+}
+type SortState = { key: string; dir: SortDir; toggle: (k: string, d?: SortDir) => void };
+/* Encabezado de columna clickeable para ordenar, con tooltip opcional */
+function SortableTh({
+  label,
+  sortKey,
+  sort,
+  defaultDir = "desc",
+  tooltip,
+  className = "py-2 pr-3",
+}: {
+  label: string;
+  sortKey: string;
+  sort: SortState;
+  defaultDir?: SortDir;
+  tooltip?: Tooltip;
+  className?: string;
+}) {
+  const active = sort.key === sortKey;
+  return (
+    <th className={className}>
+      <span className="inline-flex items-center gap-1">
+        <button
+          type="button"
+          onClick={() => sort.toggle(sortKey, defaultDir)}
+          className={`inline-flex items-center gap-0.5 hover:text-on-surface transition-colors ${
+            active ? "text-on-surface" : ""
+          }`}
+        >
+          {label}
+          <Icon
+            name={
+              active
+                ? sort.dir === "asc"
+                  ? "arrow_upward"
+                  : "arrow_downward"
+                : "unfold_more"
+            }
+            className={`text-[14px] ${active ? "text-primary" : "text-on-surface-variant/40"}`}
+          />
+        </button>
+        {tooltip && <InfoTip {...tooltip} />}
+      </span>
+    </th>
+  );
+}
+
 /* ---------- NUEVO (ADITIVO): traducciones de la clasificación de
    Inteligencia de Prestadores a lenguaje simple ---------- */
+// Orden de severidad para poder ordenar la columna "Clasificación" (y su
+// derivada "Qué conviene hacer") de peor a mejor, no alfabéticamente.
+const CLASIFICACION_RANK: Record<Clasificacion, number> = {
+  urgente: 0,
+  atencion: 1,
+  estable: 2,
+  destacado: 3,
+  muestra_insuficiente: 4,
+};
 function clasificacionInfo(c: Clasificacion): {
   label: string;
   tone: string;
@@ -954,7 +1050,6 @@ export default function App() {
     [uploadStatus, setUploadStatus] = useState<IngestStatus | null>(null),
     [uploadMessage, setUploadMessage] = useState(""),
     [providerSearch, setProviderSearch] = useState(""),
-    [providerSort, setProviderSort] = useState<"total" | "score">("total"),
     [outlierTramo, setOutlierTramo] = useState<keyof Outliers>("demora_real"),
     [campanaImpactoPage, setCampanaImpactoPage] = useState(1),
     [outliersPage, setOutliersPage] = useState(1),
@@ -1270,16 +1365,61 @@ export default function App() {
     destacadosParaRecomendar = [...prestadoresEvaluables]
       .filter((p) => p.clasificacion === "destacado")
       .slice(0, 3);
-  const displayedProviders = providers
-    .filter((x) =>
-      x.prestador.toLowerCase().includes(providerSearch.toLowerCase()),
-    )
-    .slice()
-    .sort((a, b) =>
-      providerSort === "score"
-        ? (b.score_ranking ?? -1) - (a.score_ranking ?? -1)
-        : b.total_general - a.total_general,
-    );
+  const filteredProviders = providers.filter((x) =>
+    x.prestador.toLowerCase().includes(providerSearch.toLowerCase()),
+  );
+  // ---------- NUEVO (ADITIVO): orden por columna en cada tabla ----------
+  const sortCampanaImpacto = useSort(
+      campanaImpacto,
+      "impacto_asignacion",
+      "desc",
+      {
+        cumplimiento_demora_trazable: (r) =>
+          r.servicios_evaluados_demora_trazable > 0
+            ? r.cumplimiento_demora_trazable
+            : null,
+      },
+    ),
+    sortOutliers = useSort(
+      outliers?.[outlierTramo]?.top || [],
+      "valor_minutos",
+      "desc",
+    ),
+    sortProviders = useSort(filteredProviders, "total_general", "desc"),
+    sortCross = useSort(cross, "total_general", "desc"),
+    sortInteligencia = useSort(
+      inteligencia?.prestadores || [],
+      "percentil_benchmark",
+      "asc",
+      {
+        clasificacion: (r) => CLASIFICACION_RANK[r.clasificacion],
+      },
+    ),
+    sortDrill = useSort(drill?.rows || [], "fecha", "desc");
+  // Al reordenar una tabla paginada, siempre volvemos a la página 1 para
+  // no dejar al usuario viendo una página "vieja" de un orden distinto.
+  const sortCampanaImpactoPageable: SortState = {
+      ...sortCampanaImpacto,
+      toggle: (k, d) => {
+        sortCampanaImpacto.toggle(k, d);
+        setCampanaImpactoPage(1);
+      },
+    },
+    sortOutliersPageable: SortState = {
+      ...sortOutliers,
+      toggle: (k, d) => {
+        sortOutliers.toggle(k, d);
+        setOutliersPage(1);
+      },
+    },
+    sortInteligenciaPageable: SortState = {
+      ...sortInteligencia,
+      toggle: (k, d) => {
+        sortInteligencia.toggle(k, d);
+        setInteligenciaPage(1);
+      },
+    };
+  const displayedProviders = sortProviders.sorted;
   const ranges: [
     string,
     number | undefined,
@@ -1884,48 +2024,59 @@ export default function App() {
                       <table className="w-full text-body-md font-body-md">
                         <thead>
                           <tr className="text-label-md font-label-md text-on-surface-variant uppercase text-left border-b border-outline-variant/30">
-                            <th className="py-2 pl-md pr-3">Campaña</th>
-                            <th className="py-2 pr-3">Total</th>
-                            <th className="py-2 pr-3">
-                              <span className="inline-flex items-center gap-1">
-                                Efectividad asignación
-                                <InfoTip
-                                  leer="De los servicios que usaron el enviador, qué % terminó con un móvil asignado."
-                                  calculo="AsignoMovil=SI ÷ ConEnvioOK=SI, dentro de esa campaña."
-                                />
-                              </span>
-                            </th>
-                            <th className="py-2 pr-3">
-                              <span className="inline-flex items-center gap-1">
-                                Cumplimiento observado
-                                <InfoTip
-                                  leer="Cumplimiento de demora de esa campaña, solo sobre servicios con Demora Prometida y Real cargadas."
-                                  calculo="cumplidos ÷ evaluados con ambos datos cargados."
-                                />
-                              </span>
-                            </th>
-                            <th className="py-2 pr-3">
-                              <span className="inline-flex items-center gap-1">
-                                Oportunidad asignación
-                                <InfoTip
-                                  leer="Cuánto margen de mejora le queda a la campaña en asignación."
-                                  calculo="1 − efectividad de asignación de esa campaña."
-                                />
-                              </span>
-                            </th>
-                            <th className="py-2 pr-md">
-                              <span className="inline-flex items-center gap-1">
-                                Impacto asignación
-                                <InfoTip
-                                  leer="Columna por la que se ordena la tabla: cuántos servicios se ganarían si esa campaña mejorara su asignación al máximo."
-                                  calculo="Total de servicios de la campaña × oportunidad de asignación."
-                                />
-                              </span>
-                            </th>
+                            <SortableTh
+                              label="Campaña"
+                              sortKey="campana"
+                              sort={sortCampanaImpactoPageable}
+                              defaultDir="asc"
+                              className="py-2 pl-md pr-3"
+                            />
+                            <SortableTh
+                              label="Total"
+                              sortKey="total_general"
+                              sort={sortCampanaImpactoPageable}
+                            />
+                            <SortableTh
+                              label="Efectividad asignación"
+                              sortKey="efectividad_enviador"
+                              sort={sortCampanaImpactoPageable}
+                              tooltip={{
+                                leer: "De los servicios que usaron el enviador, qué % terminó con un móvil asignado.",
+                                calculo: "AsignoMovil=SI ÷ ConEnvioOK=SI, dentro de esa campaña.",
+                              }}
+                            />
+                            <SortableTh
+                              label="Cumplimiento observado"
+                              sortKey="cumplimiento_demora_trazable"
+                              sort={sortCampanaImpactoPageable}
+                              tooltip={{
+                                leer: "Cumplimiento de demora de esa campaña, solo sobre servicios con Demora Prometida y Real cargadas.",
+                                calculo: "cumplidos ÷ evaluados con ambos datos cargados.",
+                              }}
+                            />
+                            <SortableTh
+                              label="Oportunidad asignación"
+                              sortKey="oportunidad_mejora_asignacion"
+                              sort={sortCampanaImpactoPageable}
+                              tooltip={{
+                                leer: "Cuánto margen de mejora le queda a la campaña en asignación.",
+                                calculo: "1 − efectividad de asignación de esa campaña.",
+                              }}
+                            />
+                            <SortableTh
+                              label="Impacto asignación"
+                              sortKey="impacto_asignacion"
+                              sort={sortCampanaImpactoPageable}
+                              className="py-2 pr-md"
+                              tooltip={{
+                                leer: "Columna por la que se ordena la tabla por defecto: cuántos servicios se ganarían si esa campaña mejorara su asignación al máximo.",
+                                calculo: "Total de servicios de la campaña × oportunidad de asignación.",
+                              }}
+                            />
                           </tr>
                         </thead>
                         <tbody>
-                          {campanaImpacto
+                          {sortCampanaImpacto.sorted
                             .slice(
                               (campanaImpactoPage - 1) * 10,
                               campanaImpactoPage * 10,
@@ -2296,15 +2447,39 @@ export default function App() {
                       <table className="w-full text-body-md font-body-md">
                         <thead>
                           <tr className="text-label-md font-label-md text-on-surface-variant uppercase text-left border-b border-outline-variant/30">
-                            <th className="py-2 pl-md pr-3">ID servicio</th>
-                            <th className="py-2 pr-3">Prestador</th>
-                            <th className="py-2 pr-3">Campaña</th>
-                            <th className="py-2 pr-3">Fecha</th>
-                            <th className="py-2 pr-md">Minutos</th>
+                            <SortableTh
+                              label="ID servicio"
+                              sortKey="id_servicio_prestado"
+                              sort={sortOutliersPageable}
+                              className="py-2 pl-md pr-3"
+                            />
+                            <SortableTh
+                              label="Prestador"
+                              sortKey="prestador"
+                              sort={sortOutliersPageable}
+                              defaultDir="asc"
+                            />
+                            <SortableTh
+                              label="Campaña"
+                              sortKey="campana"
+                              sort={sortOutliersPageable}
+                              defaultDir="asc"
+                            />
+                            <SortableTh
+                              label="Fecha"
+                              sortKey="fecha"
+                              sort={sortOutliersPageable}
+                            />
+                            <SortableTh
+                              label="Minutos"
+                              sortKey="valor_minutos"
+                              sort={sortOutliersPageable}
+                              className="py-2 pr-md"
+                            />
                           </tr>
                         </thead>
                         <tbody>
-                          {(outliers?.[outlierTramo]?.top || [])
+                          {sortOutliers.sorted
                             .slice((outliersPage - 1) * 10, outliersPage * 10)
                             .map((o, i) => (
                               <tr
@@ -2375,28 +2550,6 @@ export default function App() {
                         onChange={(e) => setProviderSearch(e.target.value)}
                       />
                     </div>
-                    <div className="flex items-center rounded-lg border border-outline-variant/40 overflow-hidden">
-                      <button
-                        className={`h-10 px-sm font-label-md text-label-md transition-colors ${
-                          providerSort === "total"
-                            ? "bg-primary text-on-primary"
-                            : "bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-low"
-                        }`}
-                        onClick={() => setProviderSort("total")}
-                      >
-                        Ordenar por total
-                      </button>
-                      <button
-                        className={`h-10 px-sm font-label-md text-label-md transition-colors ${
-                          providerSort === "score"
-                            ? "bg-primary text-on-primary"
-                            : "bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-low"
-                        }`}
-                        onClick={() => setProviderSort("score")}
-                      >
-                        Ordenar por score
-                      </button>
-                    </div>
                   </div>
                   <button
                     className="h-10 px-sm rounded bg-primary-container text-on-primary-container font-label-md text-label-md flex items-center gap-2 hover:bg-primary hover:text-on-primary transition-colors"
@@ -2415,52 +2568,89 @@ export default function App() {
                   <table className="w-full text-body-md font-body-md">
                     <thead>
                       <tr className="text-label-md font-label-md text-on-surface-variant uppercase text-left border-b border-outline-variant/30">
-                        <th className="py-2 pr-3">Prestador</th>
-                        <th className="py-2 pr-3">Total</th>
-                        <th className="py-2 pr-3">Con enviador</th>
-                        <th className="py-2 pr-3">Uso</th>
-                        <th className="py-2 pr-3">Asigna</th>
-                        <th className="py-2 pr-3">Efectividad</th>
-                        <th className="py-2 pr-3">Programados</th>
-                        <th className="py-2 pr-3">Cumple</th>
-                        <th className="py-2 pr-3">No cumple</th>
-                        <th className="py-2 pr-3">Cumplimiento</th>
-                        <th className="py-2 pr-3">
-                          <span className="inline-flex items-center gap-1">
-                            Índice calidad
-                            <InfoTip
-                              leer="Qué tan completos están, en promedio, los datos de los servicios de ese prestador."
-                              calculo="Promedio de completitud de los campos clave, solo para ese prestador."
-                            />
-                          </span>
-                        </th>
-                        <th className="py-2 pr-3">
-                          <span className="inline-flex items-center gap-1">
-                            Trazabilidad
-                            <InfoTip
-                              leer="Qué % de los servicios de ese prestador tiene la cadena completa de eventos (Alta→Despachador→Asignado→Envío OK→Llegó→Finalizó)."
-                              calculo="Filas con las 6 columnas de tiempo cargadas ÷ total de ese prestador."
-                            />
-                          </span>
-                        </th>
-                        <th className="py-2 pr-3">
-                          <span className="inline-flex items-center gap-1">
-                            Volumen rel.
-                            <InfoTip
-                              leer="Qué tan grande es ese prestador comparado con el más grande del listado filtrado. 100% es el que más servicios tiene."
-                              calculo="Total de ese prestador ÷ total del prestador con más volumen."
-                            />
-                          </span>
-                        </th>
-                        <th className="py-2 pr-3">
-                          <span className="inline-flex items-center gap-1">
-                            Score
-                            <InfoTip
-                              leer="Una nota de 0 a 100% que combina las 4 columnas anteriores. El ⚠ avisa que ese prestador tiene menos de 20 servicios — con tan poca muestra, el score es poco confiable."
-                              calculo="37,5% Cumplimiento observado + 31,25% Efectividad asignación + 18,75% Índice calidad + 12,5% Volumen relativo (se renormaliza si falta algún componente)."
-                            />
-                          </span>
-                        </th>
+                        <SortableTh
+                          label="Prestador"
+                          sortKey="prestador"
+                          sort={sortProviders}
+                          defaultDir="asc"
+                        />
+                        <SortableTh
+                          label="Total"
+                          sortKey="total_general"
+                          sort={sortProviders}
+                        />
+                        <SortableTh
+                          label="Con enviador"
+                          sortKey="enviador_si"
+                          sort={sortProviders}
+                        />
+                        <SortableTh label="Uso" sortKey="uso_enviador" sort={sortProviders} />
+                        <SortableTh
+                          label="Asigna"
+                          sortKey="asigna_movil"
+                          sort={sortProviders}
+                        />
+                        <SortableTh
+                          label="Efectividad"
+                          sortKey="efectividad_enviador"
+                          sort={sortProviders}
+                        />
+                        <SortableTh
+                          label="Programados"
+                          sortKey="servicios_programados"
+                          sort={sortProviders}
+                        />
+                        <SortableTh
+                          label="Cumple"
+                          sortKey="servicios_cumplidos"
+                          sort={sortProviders}
+                        />
+                        <SortableTh
+                          label="No cumple"
+                          sortKey="servicios_no_cumplidos"
+                          sort={sortProviders}
+                        />
+                        <SortableTh
+                          label="Cumplimiento"
+                          sortKey="cumplimiento_demora"
+                          sort={sortProviders}
+                        />
+                        <SortableTh
+                          label="Índice calidad"
+                          sortKey="indice_calidad_datos"
+                          sort={sortProviders}
+                          tooltip={{
+                            leer: "Qué tan completos están, en promedio, los datos de los servicios de ese prestador.",
+                            calculo: "Promedio de completitud de los campos clave, solo para ese prestador.",
+                          }}
+                        />
+                        <SortableTh
+                          label="Trazabilidad"
+                          sortKey="porcentaje_trazabilidad_completa"
+                          sort={sortProviders}
+                          tooltip={{
+                            leer: "Qué % de los servicios de ese prestador tiene la cadena completa de eventos (Alta→Despachador→Asignado→Envío OK→Llegó→Finalizó).",
+                            calculo: "Filas con las 6 columnas de tiempo cargadas ÷ total de ese prestador.",
+                          }}
+                        />
+                        <SortableTh
+                          label="Volumen rel."
+                          sortKey="volumen_relativo"
+                          sort={sortProviders}
+                          tooltip={{
+                            leer: "Qué tan grande es ese prestador comparado con el más grande del listado filtrado. 100% es el que más servicios tiene.",
+                            calculo: "Total de ese prestador ÷ total del prestador con más volumen.",
+                          }}
+                        />
+                        <SortableTh
+                          label="Score"
+                          sortKey="score_ranking"
+                          sort={sortProviders}
+                          tooltip={{
+                            leer: "Una nota de 0 a 100% que combina las 4 columnas anteriores. El ⚠ avisa que ese prestador tiene menos de 20 servicios — con tan poca muestra, el score es poco confiable.",
+                            calculo: "37,5% Cumplimiento observado + 31,25% Efectividad asignación + 18,75% Índice calidad + 12,5% Volumen relativo (se renormaliza si falta algún componente).",
+                          }}
+                        />
                       </tr>
                     </thead>
                     <tbody>
@@ -2538,18 +2728,48 @@ export default function App() {
                   <table className="w-full text-body-md font-body-md">
                     <thead>
                       <tr className="text-label-md font-label-md text-on-surface-variant uppercase text-left border-b border-outline-variant/30">
-                        <th className="py-2 pr-3">Campaña</th>
-                        <th className="py-2 pr-3">Prestador</th>
-                        <th className="py-2 pr-3">Total</th>
-                        <th className="py-2 pr-3">Con enviador</th>
-                        <th className="py-2 pr-3">Efectividad</th>
-                        <th className="py-2 pr-3">Cumple</th>
-                        <th className="py-2 pr-3">No cumple</th>
-                        <th className="py-2 pr-3">Cumplimiento</th>
+                        <SortableTh
+                          label="Campaña"
+                          sortKey="campana"
+                          sort={sortCross}
+                          defaultDir="asc"
+                        />
+                        <SortableTh
+                          label="Prestador"
+                          sortKey="prestador"
+                          sort={sortCross}
+                          defaultDir="asc"
+                        />
+                        <SortableTh label="Total" sortKey="total_general" sort={sortCross} />
+                        <SortableTh
+                          label="Con enviador"
+                          sortKey="enviador_si"
+                          sort={sortCross}
+                        />
+                        <SortableTh
+                          label="Efectividad"
+                          sortKey="efectividad_enviador"
+                          sort={sortCross}
+                        />
+                        <SortableTh
+                          label="Cumple"
+                          sortKey="servicios_cumplidos"
+                          sort={sortCross}
+                        />
+                        <SortableTh
+                          label="No cumple"
+                          sortKey="servicios_no_cumplidos"
+                          sort={sortCross}
+                        />
+                        <SortableTh
+                          label="Cumplimiento"
+                          sortKey="cumplimiento_demora"
+                          sort={sortCross}
+                        />
                       </tr>
                     </thead>
                     <tbody>
-                      {cross.map((x, i) => (
+                      {sortCross.sorted.map((x, i) => (
                         <tr
                           key={`${x.campana}-${x.prestador_id}-${i}`}
                           className="border-b border-outline-variant/10 hover:bg-surface-container-low"
@@ -2777,44 +2997,54 @@ export default function App() {
                         <table className="w-full text-body-md font-body-md">
                           <thead>
                             <tr className="text-label-md font-label-md text-on-surface-variant uppercase text-left border-b border-outline-variant/30">
-                              <th className="py-2 pr-3">Prestador</th>
-                              <th className="py-2 pr-3">
-                                <span className="inline-flex items-center gap-1">
-                                  Puntualidad actual
-                                  <InfoTip
-                                    leer="Porcentaje de servicios de este prestador que cumplieron la demora prometida, dentro del período filtrado."
-                                    calculo="Cumplimiento de demora trazable: servicios con DemoraReal ≤ DemoraPrometida sobre el total de servicios de ese prestador que tienen ambos valores cargados (se excluyen los que no tienen dato)."
-                                  />
-                                </span>
-                              </th>
-                              <th className="py-2 pr-3">
-                                <span className="inline-flex items-center gap-1">
-                                  Comparado con similares
-                                  <InfoTip
-                                    leer="Indica si este prestador rinde mejor o peor que el resto de los prestadores dentro del mismo grupo de filtros."
-                                    calculo="Percentil del prestador dentro del universo de prestadores comparables (con muestra suficiente) que quedó después de aplicar los filtros globales."
-                                  />
-                                </span>
-                              </th>
-                              <th className="py-2 pr-3">
-                                <span className="inline-flex items-center gap-1">
-                                  Clasificación
-                                  <InfoTip
-                                    leer="Resultado de combinar la tendencia reciente del prestador con su posición relativa frente a sus pares."
-                                    calculo="Urgente / Atención / Destacado / Estable, según umbrales fijos de tendencia (primera vs. segunda mitad del período) y percentil. Sin muestra suficiente de servicios con Demora Prometida y Real cargadas, queda como Muestra insuficiente."
-                                  />
-                                </span>
-                              </th>
-                              <th className="py-2 pr-3">
-                                <span className="inline-flex items-center gap-1">
-                                  Qué conviene hacer
-                                  <InfoTip leer="Sugerencia derivada directamente de la clasificación del prestador — no es una recomendación generada por un modelo, es una regla fija por categoría." />
-                                </span>
-                              </th>
+                              <SortableTh
+                                label="Prestador"
+                                sortKey="prestador"
+                                sort={sortInteligenciaPageable}
+                                defaultDir="asc"
+                              />
+                              <SortableTh
+                                label="Puntualidad actual"
+                                sortKey="cumplimiento_actual"
+                                sort={sortInteligenciaPageable}
+                                tooltip={{
+                                  leer: "Porcentaje de servicios de este prestador que cumplieron la demora prometida, dentro del período filtrado.",
+                                  calculo: "Cumplimiento de demora trazable: servicios con DemoraReal ≤ DemoraPrometida sobre el total de servicios de ese prestador que tienen ambos valores cargados (se excluyen los que no tienen dato).",
+                                }}
+                              />
+                              <SortableTh
+                                label="Comparado con similares"
+                                sortKey="percentil_benchmark"
+                                sort={sortInteligenciaPageable}
+                                defaultDir="asc"
+                                tooltip={{
+                                  leer: "Indica si este prestador rinde mejor o peor que el resto de los prestadores dentro del mismo grupo de filtros.",
+                                  calculo: "Percentil del prestador dentro del universo de prestadores comparables (con muestra suficiente) que quedó después de aplicar los filtros globales.",
+                                }}
+                              />
+                              <SortableTh
+                                label="Clasificación"
+                                sortKey="clasificacion"
+                                sort={sortInteligenciaPageable}
+                                defaultDir="asc"
+                                tooltip={{
+                                  leer: "Resultado de combinar la tendencia reciente del prestador con su posición relativa frente a sus pares.",
+                                  calculo: "Urgente / Atención / Destacado / Estable, según umbrales fijos de tendencia (primera vs. segunda mitad del período) y percentil. Sin muestra suficiente de servicios con Demora Prometida y Real cargadas, queda como Muestra insuficiente.",
+                                }}
+                              />
+                              <SortableTh
+                                label="Qué conviene hacer"
+                                sortKey="clasificacion"
+                                sort={sortInteligenciaPageable}
+                                defaultDir="asc"
+                                tooltip={{
+                                  leer: "Sugerencia derivada directamente de la clasificación del prestador — no es una recomendación generada por un modelo, es una regla fija por categoría.",
+                                }}
+                              />
                             </tr>
                           </thead>
                           <tbody>
-                            {inteligencia.prestadores
+                            {sortInteligencia.sorted
                               .slice(
                                 (inteligenciaPage - 1) * 10,
                                 inteligenciaPage * 10,
@@ -3087,19 +3317,48 @@ export default function App() {
               <table className="w-full text-body-md font-body-md">
                 <thead>
                   <tr className="text-label-md font-label-md text-on-surface-variant uppercase text-left border-b border-outline-variant/30 sticky top-0 bg-surface-container-lowest">
-                    <th className="py-2 pr-3">ID</th>
-                    <th className="py-2 pr-3">Fecha</th>
-                    <th className="py-2 pr-3">Estado</th>
-                    <th className="py-2 pr-3">Tipo</th>
-                    <th className="py-2 pr-3">Prestador</th>
-                    <th className="py-2 pr-3">Campaña</th>
-                    <th className="py-2 pr-3">Prometida</th>
-                    <th className="py-2 pr-3">Real</th>
-                    <th className="py-2 pr-3">Rango</th>
+                    <SortableTh label="ID" sortKey="id_servicio_prestado" sort={sortDrill} />
+                    <SortableTh label="Fecha" sortKey="fecha" sort={sortDrill} />
+                    <SortableTh
+                      label="Estado"
+                      sortKey="estado"
+                      sort={sortDrill}
+                      defaultDir="asc"
+                    />
+                    <SortableTh
+                      label="Tipo"
+                      sortKey="tipo_de_servicio"
+                      sort={sortDrill}
+                      defaultDir="asc"
+                    />
+                    <SortableTh
+                      label="Prestador"
+                      sortKey="prestador"
+                      sort={sortDrill}
+                      defaultDir="asc"
+                    />
+                    <SortableTh
+                      label="Campaña"
+                      sortKey="campana"
+                      sort={sortDrill}
+                      defaultDir="asc"
+                    />
+                    <SortableTh
+                      label="Prometida"
+                      sortKey="demora_prometida"
+                      sort={sortDrill}
+                    />
+                    <SortableTh label="Real" sortKey="demora_real" sort={sortDrill} />
+                    <SortableTh
+                      label="Rango"
+                      sortKey="rango_demora_real"
+                      sort={sortDrill}
+                      defaultDir="asc"
+                    />
                   </tr>
                 </thead>
                 <tbody>
-                  {drill.rows.map((x) => (
+                  {sortDrill.sorted.map((x) => (
                     <tr
                       key={x.servicio_row_id}
                       className="border-b border-outline-variant/10 hover:bg-surface-container-low"
