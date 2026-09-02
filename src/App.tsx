@@ -17,8 +17,11 @@ import {
   type EstadoOption,
   type EstadosCategorizados,
   type FunnelTiempos,
+  type Clasificacion,
   type HabilitadoresAsignacion,
   type IngestStatus,
+  type InteligenciaPrestador,
+  type InteligenciaPrestadores,
   type MetricaTrackeo,
   type Outliers,
   type PrestadorMetric,
@@ -314,6 +317,7 @@ function Card({
   tone = "blue",
   highlight = false,
   tooltip,
+  linkText = "Ver servicios",
 }: {
   icon: ReactNode;
   title: string;
@@ -323,6 +327,7 @@ function Card({
   tone?: string;
   highlight?: boolean;
   tooltip?: Tooltip;
+  linkText?: string;
 }) {
   return (
     <article
@@ -353,7 +358,7 @@ function Card({
         </small>
         {onClick && (
           <b className="font-label-md text-label-md text-primary mt-1 inline-flex items-center gap-0.5">
-            Ver servicios
+            {linkText}
             <Icon name="chevron_right" className="text-[16px]" />
           </b>
         )}
@@ -829,6 +834,64 @@ function Pager({
   );
 }
 
+/* ---------- NUEVO (ADITIVO): traducciones de la clasificación de
+   Inteligencia de Prestadores a lenguaje simple ---------- */
+function clasificacionInfo(c: Clasificacion): {
+  label: string;
+  tone: string;
+  icon: string;
+} {
+  switch (c) {
+    case "urgente":
+      return { label: "Urgente", tone: "text-error bg-error/10", icon: "error" };
+    case "atencion":
+      return {
+        label: "Atención",
+        tone: "text-[#b5610a] bg-[#f59e0b]/10",
+        icon: "warning",
+      };
+    case "destacado":
+      return {
+        label: "Destacado",
+        tone: "text-tertiary bg-tertiary/10",
+        icon: "trending_up",
+      };
+    case "estable":
+      return {
+        label: "Estable",
+        tone: "text-on-surface-variant bg-surface-container-low",
+        icon: "check_circle",
+      };
+    default:
+      return {
+        label: "Muestra insuficiente",
+        tone: "text-on-surface-variant bg-surface-container-low",
+        icon: "help",
+      };
+  }
+}
+function comparadoConSimilares(percentil: number | null): string {
+  if (percentil == null) return "Sin datos suficientes";
+  if (percentil >= 80) return "Entre los mejores";
+  if (percentil >= 50) return "Por encima del promedio";
+  if (percentil >= 20) return "Por debajo del promedio";
+  return "Entre los más bajos";
+}
+function queHacer(c: Clasificacion): string {
+  switch (c) {
+    case "urgente":
+      return "Revisar su rendimiento cuanto antes";
+    case "atencion":
+      return "Monitorear de cerca";
+    case "destacado":
+      return "Buen candidato a más volumen";
+    case "estable":
+      return "Mantener como está";
+    default:
+      return "Esperar más datos antes de decidir";
+  }
+}
+
 function csv(rows: Record<string, unknown>[], name: string) {
   if (!rows.length) return;
   const cols = Object.keys(rows[0]),
@@ -900,7 +963,14 @@ export default function App() {
     [horaLocalDistribucion, setHoraLocalDistribucion] = useState<
       FunnelTiempos["distribucion_horaria"] | null
     >(null),
-    [horaLocalLoading, setHoraLocalLoading] = useState(false);
+    [horaLocalLoading, setHoraLocalLoading] = useState(false),
+    [inteligencia, setInteligencia] = useState<InteligenciaPrestadores | null>(
+      null,
+    ),
+    [inteligenciaLoading, setInteligenciaLoading] = useState(false),
+    [inteligenciaPage, setInteligenciaPage] = useState(1),
+    [modalClasificacion, setModalClasificacion] =
+      useState<Clasificacion | null>(null);
   const load = useCallback(async (f: TrackeoFilters) => {
     setLoading(true);
     setError(null);
@@ -1002,6 +1072,31 @@ export default function App() {
       cancelado = true;
     };
   }, [horaPrestador, horaCampana, filters]);
+  useEffect(() => {
+    // NUEVO (ADITIVO): solo se pide cuando la pestaña "Inteligencia
+    // Operativa" está activa, para no sumar un pedido más en cada
+    // cambio de filtro si el usuario nunca la visita. Siempre parte
+    // de `filters` (los mismos 5 filtros globales de toda la
+    // plataforma).
+    if (page !== "intelligence") return;
+    let cancelado = false;
+    setInteligenciaLoading(true);
+    setInteligenciaPage(1);
+    api
+      .inteligenciaPrestadores(filters)
+      .then((x) => {
+        if (!cancelado) setInteligencia(x);
+      })
+      .catch(() => {
+        if (!cancelado) setInteligencia(null);
+      })
+      .finally(() => {
+        if (!cancelado) setInteligenciaLoading(false);
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, [page, filters]);
   useEffect(() => {
     const run = () =>
       api
@@ -1155,6 +1250,26 @@ export default function App() {
         ["Demora real", quality.demora_real_completa],
       ]
     : [];
+  // NUEVO (ADITIVO): derivados para la pantalla "Inteligencia
+  // Operativa", todos calculados en el cliente a partir de la misma
+  // lista que ya trajo /api/inteligencia/prestadores -- no son
+  // pedidos adicionales al backend.
+  const prestadoresEvaluables = (inteligencia?.prestadores || []).filter(
+      (p) => p.clasificacion !== "muestra_insuficiente",
+    ),
+    top3Peores = [...prestadoresEvaluables]
+      .sort((a, b) => (a.percentil_benchmark ?? 0) - (b.percentil_benchmark ?? 0))
+      .slice(0, 3),
+    top3Mejores = [...prestadoresEvaluables]
+      .sort((a, b) => (b.percentil_benchmark ?? 0) - (a.percentil_benchmark ?? 0))
+      .slice(0, 3),
+    avisosImportantes = [...prestadoresEvaluables]
+      .filter((p) => p.clasificacion === "urgente" || p.clasificacion === "atencion")
+      .sort((a, b) => (a.percentil_benchmark ?? 0) - (b.percentil_benchmark ?? 0))
+      .slice(0, 6),
+    destacadosParaRecomendar = [...prestadoresEvaluables]
+      .filter((p) => p.clasificacion === "destacado")
+      .slice(0, 3);
   const displayedProviders = providers
     .filter((x) =>
       x.prestador.toLowerCase().includes(providerSearch.toLowerCase()),
@@ -2457,7 +2572,7 @@ export default function App() {
 
             {page === "intelligence" && (
               <div className="flex flex-col gap-lg">
-                {/* ---------- Encabezado + disclaimer de mockup ---------- */}
+                {/* ---------- Encabezado ---------- */}
                 <div className="flex flex-col gap-2">
                   <div className="flex items-center gap-3">
                     <Icon name="psychology" className="text-primary text-[32px]" filled />
@@ -2468,362 +2583,290 @@ export default function App() {
                   <div className="flex items-start gap-2 bg-primary-container/50 border border-primary/30 rounded-xl px-md py-sm">
                     <Icon name="info" className="text-primary text-[20px] mt-0.5 shrink-0" />
                     <p className="font-body-md text-body-md text-on-surface">
-                      <b>Ejemplo de cómo se vería esta pantalla — todavía no existe de
-                      verdad.</b> Muestra, prestador por prestador, cómo viene rindiendo y
-                      qué es probable que pase con él en el próximo mes, para ayudar a
-                      decidir con quién hablar y qué proponerle. No muestra viajes ni
-                      pedidos puntuales, solo el comportamiento general de cada prestador.
+                      Evalúa el comportamiento histórico de cada prestador para identificar
+                      rápido a quién revisar con urgencia, a quién prestarle atención, y
+                      quién se está destacando. Todo se calcula sobre datos que ya
+                      ocurrieron dentro de los filtros elegidos arriba — no hay pronósticos
+                      ni probabilidades de lo que podría pasar.
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-x-lg gap-y-1 bg-surface-container-low rounded-lg px-md py-2">
                     <span className="font-label-sm text-label-sm text-on-surface-variant flex items-center gap-1">
-                      <Icon name="event_available" className="text-[16px]" />
-                      Datos actualizados al <b className="text-on-surface">30 de agosto de 2026</b>
+                      <Icon name="groups" className="text-[16px]" />
+                      <b className="text-on-surface">
+                        {nf(inteligencia?.total_prestadores)}
+                      </b>{" "}
+                      prestadores evaluados
                     </span>
                     <span className="font-label-sm text-label-sm text-on-surface-variant flex items-center gap-1">
-                      <Icon name="fact_check" className="text-[16px]" />
-                      Qué tan completa está la información: <b className="text-on-surface">Alta</b>
-                    </span>
-                    <span className="font-label-sm text-label-sm text-on-surface-variant flex items-center gap-1">
-                      <Icon name="autorenew" className="text-[16px]" />
-                      Se actualiza <b className="text-on-surface">todas las semanas</b>
+                      <Icon name="rule" className="text-[16px]" />
+                      Reglas sobre datos históricos, sin modelos predictivos
                     </span>
                   </div>
                 </div>
 
-                {/* ---------- Panorama general ---------- */}
-                <section className="flex flex-col gap-sm">
-                  <h3 className="font-title-lg text-title-lg text-on-surface">
-                    Panorama general de los prestadores
-                  </h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-md">
-                    <Card
-                      icon={<Icon name="error" />}
-                      title="Necesitan atención urgente"
-                      value="3"
-                      detail="Es muy probable que sigan rindiendo peor en el próximo mes"
-                      tone="red"
-                    />
-                    <Card
-                      icon={<Icon name="warning" />}
-                      title="Vienen bajando su rendimiento"
-                      value="6"
-                      detail="Empeoraron de forma seguida o rinden peor que prestadores parecidos"
-                      tone="amber"
-                    />
-                    <Card
-                      icon={<Icon name="trending_up" />}
-                      title="Rinden bien o están mejorando"
-                      value="21"
-                      detail="Sin ninguna señal de alerta por ahora"
-                      tone="green"
-                    />
+                {inteligenciaLoading && (
+                  <div className="flex items-center justify-center py-xl">
+                    <Spinner className="text-[28px] text-primary" />
                   </div>
-                </section>
+                )}
 
-                {/* ---------- Perfil de prestador ---------- */}
-                <div className="flex flex-col gap-1">
-                  <h3 className="font-title-lg text-title-lg text-on-surface">
-                    Cómo viene rindiendo — Prestador A
-                  </h3>
-                  <p className="font-label-sm text-label-sm text-on-surface-variant">
-                    Con datos de agosto de 2026
+                {!inteligenciaLoading && !inteligencia && (
+                  <p className="font-body-md text-body-md text-on-surface-variant text-center py-xl">
+                    No se pudo cargar la información. Probá de nuevo o revisá los filtros.
                   </p>
-                </div>
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-lg">
-                  <section className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 flex flex-col gap-sm p-md">
-                    <header className="flex items-center gap-3">
-                      <Icon name="analytics" className="text-primary" />
-                      <h3 className="font-title-lg text-title-lg text-on-surface">
-                        Cómo viene trabajando
-                      </h3>
-                    </header>
-                    <div className="grid grid-cols-3 gap-2">
-                      {[
-                        { label: "Cumple los tiempos prometidos", value: 0.89 },
-                        { label: "Consigue un móvil para el servicio", value: 0.94 },
-                        { label: "Carga bien sus datos", value: 0.97 },
-                      ].map((s) => (
-                        <div
-                          key={s.label}
-                          className="flex flex-col items-center gap-1 bg-surface-container-low rounded-lg py-sm text-center px-1"
-                        >
-                          <span className="font-headline-sm text-headline-sm text-on-surface">
-                            {pct(s.value)}
-                          </span>
-                          <span className="font-label-sm text-label-sm text-on-surface-variant">
-                            {s.label}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="flex items-center gap-2 bg-error/10 rounded-lg px-sm py-2">
-                      <Icon name="trending_down" className="text-error text-[18px] shrink-0" />
-                      <span className="font-body-md text-body-md text-on-surface">
-                        Su puntualidad <b>bajó 5 puntos</b> en el último mes
-                      </span>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wide">
-                        Por qué está pasando esto
-                      </span>
-                      {[
-                        "Bajó su puntualidad en el último mes",
-                        "Sus demoras más largas aumentaron respecto de antes",
-                        "Sus tiempos de respuesta son menos parejos que antes",
-                        "Igual sigue rindiendo mejor que la mayoría de los prestadores parecidos, pero la tendencia reciente preocupa",
-                      ].map((motivo) => (
-                        <div key={motivo} className="flex items-start gap-2">
-                          <Icon
-                            name="chevron_right"
-                            className="text-[16px] text-on-surface-variant mt-0.5 shrink-0"
-                          />
-                          <span className="font-body-md text-body-md text-on-surface">
-                            {motivo}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </section>
+                )}
 
-                  <section className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 flex flex-col gap-sm p-md">
-                    <header className="flex items-center gap-3">
-                      <Icon name="insights" className="text-primary" />
+                {!inteligenciaLoading && inteligencia && (
+                  <>
+                    {/* ---------- Panorama general ---------- */}
+                    <section className="flex flex-col gap-sm">
                       <h3 className="font-title-lg text-title-lg text-on-surface">
-                        Qué es probable que pase
+                        Panorama general de los prestadores
                       </h3>
-                    </header>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="flex flex-col gap-1 bg-surface-container-low rounded-lg p-sm">
-                        <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wide">
-                          Puntualidad esperada el próximo mes
-                        </span>
-                        <span className="font-headline-sm text-headline-sm text-on-surface">
-                          {pct(0.85)}
-                        </span>
-                        <span className="font-label-sm text-label-sm text-on-surface-variant">
-                          Podría variar entre {pct(0.81)} y {pct(0.88)}
-                        </span>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-md">
+                        <Card
+                          icon={<Icon name="error" />}
+                          title="Necesitan atención urgente"
+                          value={nf(inteligencia.resumen.urgente)}
+                          detail="Bajaron de forma sostenida o rinden muy por debajo de sus pares — clic para ver quiénes"
+                          tone="red"
+                          onClick={() => setModalClasificacion("urgente")}
+                          linkText="Ver prestadores"
+                        />
+                        <Card
+                          icon={<Icon name="warning" />}
+                          title="Requieren atención"
+                          value={nf(inteligencia.resumen.atencion)}
+                          detail="Vienen bajando o rinden por debajo del promedio — clic para ver quiénes"
+                          tone="amber"
+                          onClick={() => setModalClasificacion("atencion")}
+                          linkText="Ver prestadores"
+                        />
+                        <Card
+                          icon={<Icon name="trending_up" />}
+                          title="Se están destacando"
+                          value={nf(inteligencia.resumen.destacado)}
+                          detail="Rinden muy bien y de forma estable — clic para ver quiénes"
+                          tone="green"
+                          onClick={() => setModalClasificacion("destacado")}
+                          linkText="Ver prestadores"
+                        />
                       </div>
-                      <div className="flex flex-col gap-1 bg-surface-container-low rounded-lg p-sm">
-                        <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wide">
-                          Riesgo de que siga empeorando
-                        </span>
-                        <span className="font-headline-sm text-headline-sm text-on-surface">
-                          {pct(0.68)}
-                        </span>
-                        <span className="font-label-md text-label-md text-[#b5610a] bg-[#f59e0b]/10 rounded-full px-2 py-0.5 w-fit uppercase tracking-wide">
-                          Riesgo medio
-                        </span>
-                      </div>
-                      <div className="flex flex-col gap-1 bg-surface-container-low rounded-lg p-sm">
-                        <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wide">
-                          Comparado con prestadores parecidos
-                        </span>
-                        <span className="font-headline-sm text-headline-sm text-on-surface">
-                          Mejor que la mayoría
-                        </span>
-                        <span className="font-label-sm text-label-sm text-tertiary">
-                          Rinde mejor que 87 de cada 100 prestadores similares
-                        </span>
-                      </div>
-                      <div className="flex flex-col gap-1 bg-surface-container-low rounded-lg p-sm">
-                        <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wide">
-                          Qué tan segura es esta predicción
-                        </span>
-                        <span className="font-headline-sm text-headline-sm text-on-surface">
-                          Alta
-                        </span>
-                        <span className="font-label-sm text-label-sm text-on-surface-variant">
-                          Hay suficiente historial de este prestador
-                        </span>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 bg-primary-container/50 rounded-lg px-sm py-2">
-                      <Icon name="auto_awesome" className="text-primary text-[18px] shrink-0" />
-                      <span className="font-body-md text-body-md text-on-surface">
-                        Qué hacer: <b>revisar su rendimiento pronto</b>, antes de que el
-                        problema crezca
-                      </span>
-                    </div>
-                  </section>
-                </div>
+                    </section>
 
-                {/* ---------- Comparativa entre prestadores ---------- */}
-                <section className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 flex flex-col gap-sm p-md">
-                  <header className="flex items-center gap-3">
-                    <Icon name="leaderboard" className="text-primary" />
-                    <div>
-                      <h3 className="font-title-lg text-title-lg text-on-surface">
-                        Comparativa entre prestadores
-                      </h3>
-                      <p className="font-label-sm text-label-sm text-on-surface-variant">
-                        Cómo viene cada uno, qué se espera de él el próximo mes, y qué
-                        conviene hacer
-                      </p>
+                    {/* ---------- Top 3 peores / mejores ---------- */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-lg">
+                      <section className="flex flex-col gap-sm">
+                        <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs">
+                          Los 3 que más necesitan atención
+                        </h3>
+                        <div className="flex flex-col gap-sm">
+                          {top3Peores.length === 0 && (
+                            <p className="font-body-md text-body-md text-on-surface-variant">
+                              No hay suficientes datos para armar este ranking.
+                            </p>
+                          )}
+                          {top3Peores.map((p) => (
+                            <div
+                              key={p.prestador_id}
+                              className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 flex items-center justify-between gap-3 p-md"
+                            >
+                              <div className="min-w-0">
+                                <div className="font-body-md text-body-md font-medium text-on-surface truncate">
+                                  {p.prestador}
+                                </div>
+                                <div className="font-label-sm text-label-sm text-on-surface-variant">
+                                  {p.factores[0]}
+                                </div>
+                              </div>
+                              <div className="flex flex-col items-end gap-1 shrink-0">
+                                <span className="font-headline-sm text-headline-sm text-on-surface">
+                                  {pct(p.cumplimiento_actual)}
+                                </span>
+                                <span
+                                  className={`font-label-md text-label-md rounded-full px-2 py-0.5 uppercase tracking-wide ${clasificacionInfo(p.clasificacion).tone}`}
+                                >
+                                  {clasificacionInfo(p.clasificacion).label}
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+                      <section className="flex flex-col gap-sm">
+                        <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs">
+                          Los 3 que más se destacan
+                        </h3>
+                        <div className="flex flex-col gap-sm">
+                          {top3Mejores.length === 0 && (
+                            <p className="font-body-md text-body-md text-on-surface-variant">
+                              No hay suficientes datos para armar este ranking.
+                            </p>
+                          )}
+                          {top3Mejores.map((p) => (
+                            <div
+                              key={p.prestador_id}
+                              className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 flex items-center justify-between gap-3 p-md"
+                            >
+                              <div className="min-w-0">
+                                <div className="font-body-md text-body-md font-medium text-on-surface truncate">
+                                  {p.prestador}
+                                </div>
+                                <div className="font-label-sm text-label-sm text-on-surface-variant">
+                                  {p.factores[0]}
+                                </div>
+                              </div>
+                              <div className="flex flex-col items-end gap-1 shrink-0">
+                                <span className="font-headline-sm text-headline-sm text-on-surface">
+                                  {pct(p.cumplimiento_actual)}
+                                </span>
+                                <span
+                                  className={`font-label-md text-label-md rounded-full px-2 py-0.5 uppercase tracking-wide ${clasificacionInfo(p.clasificacion).tone}`}
+                                >
+                                  {clasificacionInfo(p.clasificacion).label}
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </section>
                     </div>
-                  </header>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-body-md font-body-md">
-                      <thead>
-                        <tr className="text-label-md font-label-md text-on-surface-variant uppercase text-left border-b border-outline-variant/30">
-                          <th className="py-2 pr-3">Prestador</th>
-                          <th className="py-2 pr-3">Puntualidad actual</th>
-                          <th className="py-2 pr-3">Puntualidad esperada (próx. mes)</th>
-                          <th className="py-2 pr-3">Comparado con similares</th>
-                          <th className="py-2 pr-3">Riesgo de que empeore</th>
-                          <th className="py-2 pr-3">Qué conviene hacer</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {[
-                          {
-                            prestador: "Prestador C",
-                            historico: 0.9,
-                            forecast: 0.9,
-                            comparativa: "Entre los mejores",
-                            nivel: "bajo",
-                            recomendacion: "Candidato a más volumen",
-                          },
-                          {
-                            prestador: "Prestador B",
-                            historico: 0.82,
-                            forecast: 0.86,
-                            comparativa: "Por encima del promedio",
-                            nivel: "bajo",
-                            recomendacion: "Mantener como está",
-                          },
-                          {
-                            prestador: "Prestador A",
-                            historico: 0.89,
-                            forecast: 0.85,
-                            comparativa: "Por encima del promedio",
-                            nivel: "medio",
-                            recomendacion: "Revisar su rendimiento",
-                          },
-                          {
-                            prestador: "Prestador D",
-                            historico: 0.65,
-                            forecast: 0.58,
-                            comparativa: "Por debajo del promedio",
-                            nivel: "alto",
-                            recomendacion: "Pedir un plan de mejora",
-                          },
-                        ].map((p) => (
-                          <tr
-                            key={p.prestador}
-                            className="border-b border-outline-variant/10"
-                          >
-                            <td className="py-2 pr-3 text-on-surface font-medium">
-                              {p.prestador}
-                            </td>
-                            <td className="py-2 pr-3">{pct(p.historico)}</td>
-                            <td className="py-2 pr-3">{pct(p.forecast)}</td>
-                            <td className="py-2 pr-3">{p.comparativa}</td>
-                            <td className="py-2 pr-3">
+
+                    {/* ---------- Comparativa entre prestadores ---------- */}
+                    <section className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 flex flex-col">
+                      <header className="flex items-center gap-3 p-md pb-0">
+                        <Icon name="leaderboard" className="text-primary" />
+                        <div>
+                          <h3 className="font-title-lg text-title-lg text-on-surface">
+                            Comparativa entre prestadores
+                          </h3>
+                          <p className="font-label-sm text-label-sm text-on-surface-variant">
+                            Cómo viene cada uno y qué conviene hacer, ordenados del que más
+                            necesita atención al que mejor está
+                          </p>
+                        </div>
+                      </header>
+                      <div className="overflow-x-auto p-md">
+                        <table className="w-full text-body-md font-body-md">
+                          <thead>
+                            <tr className="text-label-md font-label-md text-on-surface-variant uppercase text-left border-b border-outline-variant/30">
+                              <th className="py-2 pr-3">Prestador</th>
+                              <th className="py-2 pr-3">Puntualidad actual</th>
+                              <th className="py-2 pr-3">Comparado con similares</th>
+                              <th className="py-2 pr-3">Clasificación</th>
+                              <th className="py-2 pr-3">Qué conviene hacer</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {inteligencia.prestadores
+                              .slice(
+                                (inteligenciaPage - 1) * 10,
+                                inteligenciaPage * 10,
+                              )
+                              .map((p) => (
+                                <tr
+                                  key={p.prestador_id}
+                                  className="border-b border-outline-variant/10 hover:bg-surface-container-low"
+                                >
+                                  <td className="py-2 pr-3 text-on-surface font-medium">
+                                    {p.prestador}
+                                  </td>
+                                  <td className="py-2 pr-3">
+                                    {pct(p.cumplimiento_actual)}
+                                  </td>
+                                  <td className="py-2 pr-3">
+                                    {comparadoConSimilares(p.percentil_benchmark)}
+                                  </td>
+                                  <td className="py-2 pr-3">
+                                    <span
+                                      className={`font-label-md text-label-md rounded-full px-2 py-0.5 uppercase tracking-wide ${clasificacionInfo(p.clasificacion).tone}`}
+                                    >
+                                      {clasificacionInfo(p.clasificacion).label}
+                                    </span>
+                                  </td>
+                                  <td className="py-2 pr-3">
+                                    {queHacer(p.clasificacion)}
+                                  </td>
+                                </tr>
+                              ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <Pager
+                        page={inteligenciaPage}
+                        setPage={setInteligenciaPage}
+                        total={inteligencia.prestadores.length}
+                      />
+                    </section>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-lg">
+                      {/* ---------- Avisos importantes ---------- */}
+                      <section className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 flex flex-col gap-sm p-md">
+                        <header className="flex items-center gap-3">
+                          <Icon name="notifications_active" className="text-[#f59e0b]" />
+                          <h3 className="font-title-lg text-title-lg text-on-surface">
+                            Avisos importantes
+                          </h3>
+                        </header>
+                        <div className="flex flex-col gap-2">
+                          {avisosImportantes.length === 0 && (
+                            <p className="font-body-md text-body-md text-on-surface-variant">
+                              Sin avisos por ahora.
+                            </p>
+                          )}
+                          {avisosImportantes.map((p) => (
+                            <div
+                              key={p.prestador_id}
+                              className="flex items-start gap-2 bg-surface-container-low rounded-lg px-sm py-2"
+                            >
                               <span
-                                className={`font-label-md text-label-md rounded-full px-2 py-0.5 uppercase tracking-wide ${
-                                  p.nivel === "alto"
-                                    ? "text-error bg-error/10"
-                                    : p.nivel === "medio"
-                                      ? "text-[#b5610a] bg-[#f59e0b]/10"
-                                      : "text-tertiary bg-tertiary/10"
-                                }`}
+                                className={`font-label-md text-label-md rounded px-1.5 py-0.5 uppercase tracking-wide shrink-0 ${clasificacionInfo(p.clasificacion).tone}`}
                               >
-                                {p.nivel === "alto" ? "Alto" : p.nivel === "medio" ? "Medio" : "Bajo"}
+                                {clasificacionInfo(p.clasificacion).label}
                               </span>
-                            </td>
-                            <td className="py-2 pr-3">{p.recomendacion}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </section>
-
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-lg">
-                  {/* ---------- Avisos importantes ---------- */}
-                  <section className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 flex flex-col gap-sm p-md">
-                    <header className="flex items-center gap-3">
-                      <Icon name="notifications_active" className="text-[#f59e0b]" />
-                      <h3 className="font-title-lg text-title-lg text-on-surface">
-                        Avisos importantes
-                      </h3>
-                    </header>
-                    <div className="flex flex-col gap-2">
-                      {[
-                        {
-                          etiqueta: "Urgente",
-                          texto:
-                            "Prestador D: su comportamiento cambió de forma muy inusual — conviene revisarlo cuanto antes",
-                          tone: "text-error bg-error/10",
-                        },
-                        {
-                          etiqueta: "Urgente",
-                          texto:
-                            "Prestador A: es muy probable que su rendimiento siga bajando en el próximo mes",
-                          tone: "text-error bg-error/10",
-                        },
-                        {
-                          etiqueta: "Atención",
-                          texto:
-                            "Prestador D: bajó su puntualidad en las últimas semanas y rinde peor que prestadores parecidos",
-                          tone: "text-[#b5610a] bg-[#f59e0b]/10",
-                        },
-                        {
-                          etiqueta: "Informativo",
-                          texto: "Prestador C: viene rindiendo bien y de forma estable",
-                          tone: "text-tertiary bg-tertiary/10",
-                        },
-                      ].map((a) => (
-                        <div
-                          key={a.texto}
-                          className="flex items-start gap-2 bg-surface-container-low rounded-lg px-sm py-2"
-                        >
-                          <span
-                            className={`font-label-md text-label-md rounded px-1.5 py-0.5 uppercase tracking-wide shrink-0 ${a.tone}`}
-                          >
-                            {a.etiqueta}
-                          </span>
-                          <span className="font-body-md text-body-md text-on-surface">
-                            {a.texto}
-                          </span>
+                              <span className="font-body-md text-body-md text-on-surface">
+                                {p.prestador}: {p.factores.join(". ")}
+                              </span>
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
-                  </section>
+                      </section>
 
-                  {/* ---------- Qué hacer con cada prestador ---------- */}
-                  <section className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 flex flex-col gap-sm p-md">
-                    <header className="flex items-center gap-3">
-                      <Icon name="auto_awesome" className="text-tertiary" />
-                      <h3 className="font-title-lg text-title-lg text-on-surface">
-                        Qué hacer con cada prestador
-                      </h3>
-                    </header>
-                    <div className="flex flex-col gap-2">
-                      {[
-                        "Prestador D — Pedir un plan de mejora: es probable que siga rindiendo peor y ya está por debajo de lo acordado",
-                        "Prestador A — Revisar su rendimiento pronto: viene bajando de forma seguida",
-                        "Prestador C — Buen candidato a más volumen: rinde muy bien y de forma estable",
-                        "Prestador B — Mantener como está: sin ninguna señal de alerta",
-                      ].map((accion) => (
-                        <div
-                          key={accion}
-                          className="flex items-start gap-2 bg-tertiary/10 rounded-lg px-sm py-2"
-                        >
-                          <Icon
-                            name="arrow_forward"
-                            className="text-tertiary text-[18px] mt-0.5 shrink-0"
-                          />
-                          <span className="font-body-md text-body-md text-on-surface">
-                            {accion}
-                          </span>
+                      {/* ---------- Qué hacer con cada prestador ---------- */}
+                      <section className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 flex flex-col gap-sm p-md">
+                        <header className="flex items-center gap-3">
+                          <Icon name="auto_awesome" className="text-tertiary" />
+                          <h3 className="font-title-lg text-title-lg text-on-surface">
+                            Qué hacer con cada prestador
+                          </h3>
+                        </header>
+                        <div className="flex flex-col gap-2">
+                          {[...avisosImportantes, ...destacadosParaRecomendar].length ===
+                            0 && (
+                            <p className="font-body-md text-body-md text-on-surface-variant">
+                              Sin recomendaciones por ahora.
+                            </p>
+                          )}
+                          {[...avisosImportantes, ...destacadosParaRecomendar].map((p) => (
+                            <div
+                              key={p.prestador_id}
+                              className="flex items-start gap-2 bg-tertiary/10 rounded-lg px-sm py-2"
+                            >
+                              <Icon
+                                name="arrow_forward"
+                                className="text-tertiary text-[18px] mt-0.5 shrink-0"
+                              />
+                              <span className="font-body-md text-body-md text-on-surface">
+                                {p.prestador} — {queHacer(p.clasificacion)}
+                              </span>
+                            </div>
+                          ))}
                         </div>
-                      ))}
+                      </section>
                     </div>
-                  </section>
-                </div>
+                  </>
+                )}
               </div>
             )}
 
@@ -3034,6 +3077,78 @@ export default function App() {
                 Siguiente
               </button>
             </footer>
+          </section>
+        </div>
+      )}
+
+      {/* ---------- Modal de lista de prestadores (Inteligencia Operativa) ---------- */}
+      {modalClasificacion && (
+        <div
+          className="fixed inset-0 bg-on-surface/40 z-[100] flex items-center justify-center p-md"
+          onMouseDown={() => setModalClasificacion(null)}
+        >
+          <section
+            className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <header className="flex items-center justify-between gap-3 px-md py-md border-b border-outline-variant/20">
+              <div className="flex items-center gap-2">
+                <span
+                  className={`w-8 h-8 rounded-full flex items-center justify-center ${clasificacionInfo(modalClasificacion).tone}`}
+                >
+                  <Icon
+                    name={clasificacionInfo(modalClasificacion).icon}
+                    className="text-[18px]"
+                  />
+                </span>
+                <div>
+                  <h2 className="font-title-lg text-title-lg text-on-surface">
+                    {clasificacionInfo(modalClasificacion).label}
+                  </h2>
+                  <p className="font-label-sm text-label-sm text-on-surface-variant">
+                    {nf(
+                      prestadoresEvaluables.filter(
+                        (p) => p.clasificacion === modalClasificacion,
+                      ).length,
+                    )}{" "}
+                    prestadores
+                  </p>
+                </div>
+              </div>
+              <button
+                className="w-9 h-9 rounded-full flex items-center justify-center text-on-surface-variant hover:bg-surface-container-low transition-colors"
+                onClick={() => setModalClasificacion(null)}
+              >
+                <Icon name="close" />
+              </button>
+            </header>
+            <div className="overflow-auto px-md py-sm flex-1 flex flex-col gap-2">
+              {prestadoresEvaluables
+                .filter((p) => p.clasificacion === modalClasificacion)
+                .map((p) => (
+                  <div
+                    key={p.prestador_id}
+                    className="bg-surface-container-low rounded-lg px-sm py-2 flex flex-col gap-1"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-body-md text-body-md font-medium text-on-surface">
+                        {p.prestador}
+                      </span>
+                      <span className="font-headline-sm text-headline-sm text-on-surface">
+                        {pct(p.cumplimiento_actual)}
+                      </span>
+                    </div>
+                    {p.factores.map((f) => (
+                      <span
+                        key={f}
+                        className="font-label-sm text-label-sm text-on-surface-variant"
+                      >
+                        {f}
+                      </span>
+                    ))}
+                  </div>
+                ))}
+            </div>
           </section>
         </div>
       )}

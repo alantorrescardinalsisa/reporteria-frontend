@@ -334,6 +334,33 @@ export type OutlierTramo = {
   p90_referencia: number | null;
   top: OutlierItem[];
 };
+// NUEVO v4.21.0 (ADITIVO). Motor de reglas sobre datos historicos
+// (ver /api/inteligencia/prestadores en app.py) -- sin pronostico ni
+// probabilidad de ocurrencia futura, sin modelo entrenado.
+export type Clasificacion =
+  | "urgente"
+  | "atencion"
+  | "destacado"
+  | "estable"
+  | "muestra_insuficiente";
+export type InteligenciaPrestador = {
+  prestador_id: string;
+  prestador: string;
+  total_general: number;
+  servicios_evaluados_demora_trazable: number;
+  cumplimiento_actual: number;
+  tendencia_pp: number | null;
+  muestra_suficiente: boolean;
+  percentil_benchmark: number | null;
+  clasificacion: Clasificacion;
+  factores: string[];
+};
+export type InteligenciaPrestadores = {
+  total_prestadores: number;
+  resumen: Record<Clasificacion, number>;
+  prestadores: InteligenciaPrestador[];
+  metodologia: string;
+};
 export type Outliers = {
   t1_alta_a_despachador: OutlierTramo;
   t2_despachador_a_asignacion: OutlierTramo;
@@ -505,6 +532,10 @@ export const api = {
     ),
   trackeoOutliers: (f: TrackeoFilters) =>
     request<Outliers>("/api/metricas-trackeo/outliers" + qs(fp(f))),
+  inteligenciaPrestadores: (f: TrackeoFilters) =>
+    request<InteligenciaPrestadores>(
+      "/api/inteligencia/prestadores" + qs(fp(f)),
+    ),
   trackeoCampanaPrestador: (f: TrackeoFilters) =>
     request<{ cantidad: number; resultados: CampanaPrestadorMetric[] }>(
       "/api/metricas-trackeo/campana-prestador" + qs(fp(f)),
