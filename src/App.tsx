@@ -548,6 +548,70 @@ function TrendChart({ data }: { data: TrendPoint[] }) {
   );
 }
 
+/* ---------- NUEVO (ADITIVO): gráfico de barras "Servicios por hora del día" ---------- */
+function HourlyBarChart({
+  data,
+}: {
+  data: { hora: number; servicios: number }[];
+}) {
+  if (!data.length)
+    return (
+      <div className="flex-1 min-h-[300px] flex items-center justify-center text-body-md font-body-md text-on-surface-variant">
+        Sin datos
+      </div>
+    );
+  const W = 1000,
+    H = 320,
+    PT = 34,
+    PB = 26,
+    n = data.length,
+    max = Math.max(1, ...data.map((d) => d.servicios)),
+    plotH = H - PT - PB,
+    slot = W / n,
+    bw = slot * 0.55,
+    barX = (i: number) => i * slot + (slot - bw) / 2,
+    barH = (v: number) => (v / max) * plotH,
+    barY = (v: number) => PT + (plotH - barH(v));
+  return (
+    <svg
+      width={W}
+      height={H}
+      viewBox={`0 0 ${W} ${H}`}
+      className="w-full block"
+      style={{ height: H }}
+    >
+      {data.map((d, i) => (
+        <g key={d.hora}>
+          <text
+            x={barX(i) + bw / 2}
+            y={Math.max(12, barY(d.servicios) - 6)}
+            textAnchor="middle"
+            className="fill-on-surface text-[11px] font-semibold"
+          >
+            {nf(d.servicios)}
+          </text>
+          <rect
+            x={barX(i)}
+            y={barY(d.servicios)}
+            width={bw}
+            height={barH(d.servicios)}
+            rx={2}
+            className="fill-primary"
+          />
+          <text
+            x={barX(i) + bw / 2}
+            y={H - 8}
+            textAnchor="middle"
+            className="fill-outline text-[10px]"
+          >
+            {String(d.hora).padStart(2, "0")}:00
+          </text>
+        </g>
+      ))}
+    </svg>
+  );
+}
+
 /* ---------- NUEVO (ADITIVO): paginado de a 10 para tablas largas ---------- */
 function Pager({
   page,
@@ -655,12 +719,19 @@ export default function App() {
     [providerSort, setProviderSort] = useState<"total" | "score">("total"),
     [outlierTramo, setOutlierTramo] = useState<keyof Outliers>("demora_real"),
     [campanaImpactoPage, setCampanaImpactoPage] = useState(1),
-    [outliersPage, setOutliersPage] = useState(1);
+    [outliersPage, setOutliersPage] = useState(1),
+    [horaPrestador, setHoraPrestador] = useState(""),
+    [horaLocalDistribucion, setHoraLocalDistribucion] = useState<
+      FunnelTiempos["distribucion_horaria"] | null
+    >(null),
+    [horaLocalLoading, setHoraLocalLoading] = useState(false);
   const load = useCallback(async (f: TrackeoFilters) => {
     setLoading(true);
     setError(null);
     setCampanaImpactoPage(1);
     setOutliersPage(1);
+    setHoraPrestador("");
+    setHoraLocalDistribucion(null);
     const r = await Promise.allSettled([
       api.trackeoResumen(f),
       api.trackeoUniversos(f),
@@ -721,6 +792,34 @@ export default function App() {
   useEffect(() => {
     load(filters);
   }, [filters, load]);
+  useEffect(() => {
+    // NUEVO (ADITIVO): filtro local de "Distribución horaria" por un
+    // solo prestador. Siempre parte de `filters` (los filtros
+    // globales activos) y solo agrega la restriccion de prestador
+    // encima -- nunca la reemplaza ni la ignora. `horaPrestador` solo
+    // puede valer un id que ya viene de `providers`, que a su vez ya
+    // esta acotado por los filtros globales (ver <select> mas abajo).
+    if (!horaPrestador) {
+      setHoraLocalDistribucion(null);
+      return;
+    }
+    let cancelado = false;
+    setHoraLocalLoading(true);
+    api
+      .trackeoFunnelTiempos({ ...filters, prestador_ids: [horaPrestador] })
+      .then((x) => {
+        if (!cancelado) setHoraLocalDistribucion(x.distribucion_horaria);
+      })
+      .catch(() => {
+        if (!cancelado) setHoraLocalDistribucion(null);
+      })
+      .finally(() => {
+        if (!cancelado) setHoraLocalLoading(false);
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, [horaPrestador, filters]);
   useEffect(() => {
     const run = () =>
       api
@@ -1526,55 +1625,46 @@ export default function App() {
 
                 {/* ---------- NUEVO (ADITIVO): Distribución horaria ---------- */}
                 <section className="flex flex-col gap-sm">
-                  <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs">
-                    Distribución horaria
-                  </h3>
+                  <div className="flex justify-between items-end flex-wrap gap-2 border-b border-outline-variant/30 pb-xs">
+                    <h3 className="font-title-lg text-title-lg text-on-surface">
+                      Servicios por hora del día
+                    </h3>
+                    <select
+                      className="form-input-styled font-body-md text-body-md text-on-surface"
+                      value={horaPrestador}
+                      onChange={(e) => setHoraPrestador(e.target.value)}
+                    >
+                      <option value="">Todos los prestadores</option>
+                      {providers.map((p) => (
+                        <option key={p.prestador_id} value={p.prestador_id}>
+                          {p.prestador}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                   <p className="font-label-sm text-label-sm text-on-surface-variant -mt-2">
                     Volumen de servicios por hora del día (hora local
                     Argentina) — para dimensionar capacidad contra la demanda
-                    real por franja horaria, no solo por día.
+                    real por franja horaria, no solo por día. El selector de
+                    prestador solo ofrece los prestadores que ya están
+                    incluidos en los filtros globales activos, y nunca
+                    reemplaza esos filtros — solo agrega una restricción
+                    más encima.
                   </p>
-                  <div className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 overflow-x-auto">
-                    <table className="w-full text-body-md font-body-md">
-                      <thead>
-                        <tr className="text-label-md font-label-md text-on-surface-variant uppercase text-left border-b border-outline-variant/30">
-                          <th className="py-2 pl-md pr-3">Hora</th>
-                          <th className="py-2 pr-3">Servicios</th>
-                          <th className="py-2 pr-md w-1/3">Volumen relativo</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(() => {
-                          const maxServicios = Math.max(
-                            1,
-                            ...(funnel?.distribucion_horaria || []).map(
-                              (h) => h.servicios,
-                            ),
-                          );
-                          return (funnel?.distribucion_horaria || []).map((h) => (
-                            <tr
-                              key={h.hora}
-                              className="border-b border-outline-variant/10 hover:bg-surface-container-low"
-                            >
-                              <td className="py-2 pl-md pr-3 text-on-surface font-medium">
-                                {String(h.hora).padStart(2, "0")}:00
-                              </td>
-                              <td className="py-2 pr-3">{nf(h.servicios)}</td>
-                              <td className="py-2 pr-md">
-                                <div className="w-full h-xs bg-surface-container-highest rounded-full overflow-hidden">
-                                  <div
-                                    className="h-full rounded-full bg-primary"
-                                    style={{
-                                      width: `${(h.servicios / maxServicios) * 100}%`,
-                                    }}
-                                  />
-                                </div>
-                              </td>
-                            </tr>
-                          ));
-                        })()}
-                      </tbody>
-                    </table>
+                  <div className="bg-surface-container-lowest rounded-xl p-md card-shadow border border-outline-variant/20 flex-1 min-h-[350px] flex flex-col">
+                    {horaLocalLoading ? (
+                      <div className="flex-1 min-h-[300px] flex items-center justify-center">
+                        <Spinner className="text-[24px] text-primary" />
+                      </div>
+                    ) : (
+                      <HourlyBarChart
+                        data={
+                          horaPrestador && horaLocalDistribucion
+                            ? horaLocalDistribucion
+                            : funnel?.distribucion_horaria || []
+                        }
+                      />
+                    )}
                   </div>
                 </section>
 
