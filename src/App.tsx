@@ -1326,7 +1326,9 @@ export default function App() {
                     Funnel de tiempos (minutos)
                   </h3>
                   <p className="font-label-sm text-label-sm text-on-surface-variant -mt-2">
-                    Tramos del proceso, en minutos. Valores negativos (fin
+                    Tramos del proceso a cargo del prestador, en minutos (no
+                    se incluyen los tramos previos a la asignación, que son
+                    operativa interna de Cardinal). Valores negativos (fin
                     registrado antes que el inicio) se excluyen de los
                     percentiles y se muestran aparte como dato de calidad.
                   </p>
@@ -1349,9 +1351,6 @@ export default function App() {
                       <tbody>
                         {(
                           [
-                            ["T1 · Alta → Despachador", funnel?.tiempos.t1_alta_a_despachador],
-                            ["T2 · Despachador → Asignación", funnel?.tiempos.t2_despachador_a_asignacion],
-                            ["T3 · Alta → Asignación", funnel?.tiempos.t3_alta_a_asignacion],
                             ["T4 · Asignación → Arribo", funnel?.tiempos.t4_asignacion_a_arribo],
                             ["T5 · Ejecución (arribo → fin)", funnel?.tiempos.t5_ejecucion],
                             ["T6 · Alta → Fin (end-to-end)", funnel?.tiempos.t6_end_to_end],
@@ -1386,47 +1385,25 @@ export default function App() {
                   </div>
                 </section>
 
-                <section className="grid grid-cols-1 lg:grid-cols-2 gap-xl">
-                  <div className="flex flex-col gap-sm">
-                    <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs">
-                      SLA de despacho
-                    </h3>
-                    <p className="font-label-sm text-label-sm text-on-surface-variant -mt-2">
-                      {funnel?.sla_despacho.base_tiempo} · sobre{" "}
-                      {nf(funnel?.sla_despacho.cantidad_evaluable)} servicios evaluables.
-                    </p>
-                    <div className="bg-surface-container-lowest rounded-xl p-md card-shadow border border-outline-variant/20 flex flex-col gap-4">
-                      {(funnel?.sla_despacho.buckets || []).map((b) => (
-                        <ProgressBar
-                          key={b.etiqueta}
-                          label={b.etiqueta}
-                          valueLabel={`${nf(b.cantidad)} · ${pct(b.porcentaje)}`}
-                          ratio={b.porcentaje}
-                          color="#004ac6"
-                        />
-                      ))}
-                    </div>
-                  </div>
-                  <div className="flex flex-col gap-sm">
-                    <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs">
-                      SLA de llegada
-                    </h3>
-                    <p className="font-label-sm text-label-sm text-on-surface-variant -mt-2">
-                      DemoraReal − DemoraPrometida · sobre{" "}
-                      {nf(funnel?.sla_llegada.cantidad_evaluable)} servicios con
-                      trazabilidad completa.
-                    </p>
-                    <div className="bg-surface-container-lowest rounded-xl p-md card-shadow border border-outline-variant/20 flex flex-col gap-4">
-                      {(funnel?.sla_llegada.buckets || []).map((b) => (
-                        <ProgressBar
-                          key={b.etiqueta}
-                          label={b.etiqueta}
-                          valueLabel={`${nf(b.cantidad)} · ${pct(b.porcentaje)}`}
-                          ratio={b.porcentaje}
-                          color="#006058"
-                        />
-                      ))}
-                    </div>
+                <section className="flex flex-col gap-sm">
+                  <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs">
+                    SLA de llegada
+                  </h3>
+                  <p className="font-label-sm text-label-sm text-on-surface-variant -mt-2">
+                    DemoraReal − DemoraPrometida · sobre{" "}
+                    {nf(funnel?.sla_llegada.cantidad_evaluable)} servicios con
+                    trazabilidad completa.
+                  </p>
+                  <div className="bg-surface-container-lowest rounded-xl p-md card-shadow border border-outline-variant/20 flex flex-col gap-4">
+                    {(funnel?.sla_llegada.buckets || []).map((b) => (
+                      <ProgressBar
+                        key={b.etiqueta}
+                        label={b.etiqueta}
+                        valueLabel={`${nf(b.cantidad)} · ${pct(b.porcentaje)}`}
+                        ratio={b.porcentaje}
+                        color="#006058"
+                      />
+                    ))}
                   </div>
                 </section>
 
@@ -1499,12 +1476,12 @@ export default function App() {
                 {/* ---------- NUEVO (ADITIVO): Distribución horaria ---------- */}
                 <section className="flex flex-col gap-sm">
                   <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs">
-                    Distribución horaria y SLA de despacho
+                    Distribución horaria
                   </h3>
                   <p className="font-label-sm text-label-sm text-on-surface-variant -mt-2">
-                    Volumen y tiempo de asignación (T3) por hora del día (hora
-                    local Argentina) — para dimensionar capacidad contra la
-                    demanda real por franja horaria, no solo por día.
+                    Volumen de servicios por hora del día (hora local
+                    Argentina) — para dimensionar capacidad contra la demanda
+                    real por franja horaria, no solo por día.
                   </p>
                   <div className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 overflow-x-auto">
                     <table className="w-full text-body-md font-body-md">
@@ -1512,9 +1489,7 @@ export default function App() {
                         <tr className="text-label-md font-label-md text-on-surface-variant uppercase text-left border-b border-outline-variant/30">
                           <th className="py-2 pl-md pr-3">Hora</th>
                           <th className="py-2 pr-3">Servicios</th>
-                          <th className="py-2 pr-3 w-1/3">Volumen relativo</th>
-                          <th className="py-2 pr-3">T3 promedio</th>
-                          <th className="py-2 pr-md">T3 P90</th>
+                          <th className="py-2 pr-md w-1/3">Volumen relativo</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1534,7 +1509,7 @@ export default function App() {
                                 {String(h.hora).padStart(2, "0")}:00
                               </td>
                               <td className="py-2 pr-3">{nf(h.servicios)}</td>
-                              <td className="py-2 pr-3">
+                              <td className="py-2 pr-md">
                                 <div className="w-full h-xs bg-surface-container-highest rounded-full overflow-hidden">
                                   <div
                                     className="h-full rounded-full bg-primary"
@@ -1544,8 +1519,6 @@ export default function App() {
                                   />
                                 </div>
                               </td>
-                              <td className="py-2 pr-3">{nf(h.t3_promedio)}</td>
-                              <td className="py-2 pr-md">{nf(h.t3_p90)}</td>
                             </tr>
                           ));
                         })()}
