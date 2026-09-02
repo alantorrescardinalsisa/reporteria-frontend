@@ -2633,6 +2633,12 @@ export default function App() {
                           tone="red"
                           onClick={() => setModalClasificacion("urgente")}
                           linkText="Ver prestadores"
+                          tooltip={{
+                            leer:
+                              "Prestadores que necesitan revisión cuanto antes: bajaron mucho su cumplimiento entre la primera y la segunda mitad del período filtrado, o quedaron entre el 20% más bajo comparados con sus pares dentro de ese mismo período.",
+                            calculo:
+                              "Se compara el cumplimiento de demora trazable de la primera mitad del período contra la segunda (ordenado por fecha). Si cayó 10 puntos porcentuales o más, o si el prestador queda en el percentil 20 o menor frente a los demás prestadores filtrados, se clasifica como Urgente.",
+                          }}
                         />
                         <Card
                           icon={<Icon name="warning" />}
@@ -2642,6 +2648,12 @@ export default function App() {
                           tone="amber"
                           onClick={() => setModalClasificacion("atencion")}
                           linkText="Ver prestadores"
+                          tooltip={{
+                            leer:
+                              "Prestadores que conviene monitorear de cerca: vienen bajando un poco su cumplimiento, o rinden por debajo del promedio comparados con sus pares dentro del período filtrado — sin llegar todavía al nivel de Urgente.",
+                            calculo:
+                              "Se clasifica como Atención cuando la caída entre la primera y la segunda mitad del período es de 5 a 10 puntos porcentuales, o cuando el percentil frente a los demás prestadores filtrados está entre 21 y 40.",
+                          }}
                         />
                         <Card
                           icon={<Icon name="trending_up" />}
@@ -2651,6 +2663,12 @@ export default function App() {
                           tone="green"
                           onClick={() => setModalClasificacion("destacado")}
                           linkText="Ver prestadores"
+                          tooltip={{
+                            leer:
+                              "Prestadores que se están destacando: quedan entre el grupo con mejor cumplimiento dentro del período filtrado y, además, no muestran una caída reciente.",
+                            calculo:
+                              "Se clasifica como Destacado cuando el percentil frente a los demás prestadores filtrados es 80 o mayor, y la variación entre la primera y la segunda mitad del período no bajó más de 2 puntos porcentuales.",
+                          }}
                         />
                       </div>
                     </section>
@@ -2658,8 +2676,12 @@ export default function App() {
                     {/* ---------- Top 3 peores / mejores ---------- */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-lg">
                       <section className="flex flex-col gap-sm">
-                        <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs">
+                        <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs flex items-center gap-1">
                           Los 3 que más necesitan atención
+                          <InfoTip
+                            leer="Los 3 prestadores con menor cumplimiento relativo dentro del período filtrado, entre los que tienen datos suficientes para compararlos."
+                            calculo="Se ordena a todos los prestadores con muestra suficiente por su percentil de cumplimiento (de más bajo a más alto) y se muestran los 3 primeros."
+                          />
                         </h3>
                         <div className="flex flex-col gap-sm">
                           {top3Peores.length === 0 && (
@@ -2695,8 +2717,12 @@ export default function App() {
                         </div>
                       </section>
                       <section className="flex flex-col gap-sm">
-                        <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs">
+                        <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs flex items-center gap-1">
                           Los 3 que más se destacan
+                          <InfoTip
+                            leer="Los 3 prestadores con mayor cumplimiento relativo dentro del período filtrado, entre los que tienen datos suficientes para compararlos."
+                            calculo="Se ordena a todos los prestadores con muestra suficiente por su percentil de cumplimiento (de más alto a más bajo) y se muestran los 3 primeros."
+                          />
                         </h3>
                         <div className="flex flex-col gap-sm">
                           {top3Mejores.length === 0 && (
@@ -2752,10 +2778,39 @@ export default function App() {
                           <thead>
                             <tr className="text-label-md font-label-md text-on-surface-variant uppercase text-left border-b border-outline-variant/30">
                               <th className="py-2 pr-3">Prestador</th>
-                              <th className="py-2 pr-3">Puntualidad actual</th>
-                              <th className="py-2 pr-3">Comparado con similares</th>
-                              <th className="py-2 pr-3">Clasificación</th>
-                              <th className="py-2 pr-3">Qué conviene hacer</th>
+                              <th className="py-2 pr-3">
+                                <span className="inline-flex items-center gap-1">
+                                  Puntualidad actual
+                                  <InfoTip
+                                    leer="Porcentaje de servicios de este prestador que cumplieron la demora prometida, dentro del período filtrado."
+                                    calculo="Cumplimiento de demora trazable: servicios con DemoraReal ≤ DemoraPrometida sobre el total de servicios de ese prestador que tienen ambos valores cargados (se excluyen los que no tienen dato)."
+                                  />
+                                </span>
+                              </th>
+                              <th className="py-2 pr-3">
+                                <span className="inline-flex items-center gap-1">
+                                  Comparado con similares
+                                  <InfoTip
+                                    leer="Indica si este prestador rinde mejor o peor que el resto de los prestadores dentro del mismo grupo de filtros."
+                                    calculo="Percentil del prestador dentro del universo de prestadores comparables (con muestra suficiente) que quedó después de aplicar los filtros globales."
+                                  />
+                                </span>
+                              </th>
+                              <th className="py-2 pr-3">
+                                <span className="inline-flex items-center gap-1">
+                                  Clasificación
+                                  <InfoTip
+                                    leer="Resultado de combinar la tendencia reciente del prestador con su posición relativa frente a sus pares."
+                                    calculo="Urgente / Atención / Destacado / Estable, según umbrales fijos de tendencia (primera vs. segunda mitad del período) y percentil. Sin muestra suficiente de servicios con Demora Prometida y Real cargadas, queda como Muestra insuficiente."
+                                  />
+                                </span>
+                              </th>
+                              <th className="py-2 pr-3">
+                                <span className="inline-flex items-center gap-1">
+                                  Qué conviene hacer
+                                  <InfoTip leer="Sugerencia derivada directamente de la clasificación del prestador — no es una recomendación generada por un modelo, es una regla fija por categoría." />
+                                </span>
+                              </th>
                             </tr>
                           </thead>
                           <tbody>
@@ -2805,8 +2860,12 @@ export default function App() {
                       <section className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 flex flex-col gap-sm p-md">
                         <header className="flex items-center gap-3">
                           <Icon name="notifications_active" className="text-[#f59e0b]" />
-                          <h3 className="font-title-lg text-title-lg text-on-surface">
+                          <h3 className="font-title-lg text-title-lg text-on-surface flex items-center gap-1">
                             Avisos importantes
+                            <InfoTip
+                              leer="Prestadores clasificados como Urgente o Atención, ordenados del que peor está al que menos, con la razón puntual de por qué quedó en esa categoría."
+                              calculo="Se toman los prestadores con clasificación Urgente o Atención (excluyendo los de muestra insuficiente), se ordenan por percentil ascendente y se muestran hasta 6."
+                            />
                           </h3>
                         </header>
                         <div className="flex flex-col gap-2">
@@ -2837,8 +2896,12 @@ export default function App() {
                       <section className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 flex flex-col gap-sm p-md">
                         <header className="flex items-center gap-3">
                           <Icon name="auto_awesome" className="text-tertiary" />
-                          <h3 className="font-title-lg text-title-lg text-on-surface">
+                          <h3 className="font-title-lg text-title-lg text-on-surface flex items-center gap-1">
                             Qué hacer con cada prestador
+                            <InfoTip
+                              leer="Combina a los prestadores con avisos importantes (Urgente/Atención) con los que se destacaron, para tener en una sola lista a quién conviene prestarle atención primero."
+                              calculo="Une la lista de Avisos importantes con hasta 3 prestadores Destacados, y para cada uno muestra la acción sugerida según su clasificación (regla fija, no generada por un modelo)."
+                            />
                           </h3>
                         </header>
                         <div className="flex flex-col gap-2">
