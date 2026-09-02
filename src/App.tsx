@@ -1320,68 +1320,119 @@ export default function App() {
                   </div>
                 </section>
 
-                {/* ---------- NUEVO (ADITIVO): Funnel de tiempos + SLA ---------- */}
+                {/* ---------- NUEVO (ADITIVO): Funnel de tiempos, en lenguaje simple ---------- */}
                 <section className="flex flex-col gap-sm">
                   <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs">
-                    Funnel de tiempos (minutos)
+                    Tiempos del prestador
                   </h3>
                   <p className="font-label-sm text-label-sm text-on-surface-variant -mt-2">
-                    Tramos del proceso a cargo del prestador, en minutos (no
-                    se incluyen los tramos previos a la asignación, que son
-                    operativa interna de Cardinal). Valores negativos (fin
-                    registrado antes que el inicio) se excluyen de los
-                    percentiles y se muestran aparte como dato de calidad.
+                    Cuánto tarda el prestador en cada etapa, desde que le
+                    asignan el servicio hasta que lo termina. No incluye el
+                    tiempo previo a la asignación, que es operativa interna
+                    de Cardinal.
                   </p>
-                  <div className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 overflow-x-auto">
-                    <table className="w-full text-body-md font-body-md">
-                      <thead>
-                        <tr className="text-label-md font-label-md text-on-surface-variant uppercase text-left border-b border-outline-variant/30">
-                          <th className="py-2 pl-md pr-3">Tramo</th>
-                          <th className="py-2 pr-3">Evaluables</th>
-                          <th className="py-2 pr-3">Promedio</th>
-                          <th className="py-2 pr-3">P50</th>
-                          <th className="py-2 pr-3">P75</th>
-                          <th className="py-2 pr-3">P90</th>
-                          <th className="py-2 pr-3">P95</th>
-                          <th className="py-2 pr-3">P99</th>
-                          <th className="py-2 pr-3">Máximo</th>
-                          <th className="py-2 pr-md">Negativos</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(
-                          [
-                            ["T4 · Asignación → Arribo", funnel?.tiempos.t4_asignacion_a_arribo],
-                            ["T5 · Ejecución (arribo → fin)", funnel?.tiempos.t5_ejecucion],
-                            ["T6 · Alta → Fin (end-to-end)", funnel?.tiempos.t6_end_to_end],
-                          ] as [string, TiempoStats | undefined][]
-                        ).map(([label, s]) => (
-                          <tr
-                            key={label}
-                            className="border-b border-outline-variant/10 hover:bg-surface-container-low"
-                          >
-                            <td className="py-2 pl-md pr-3 text-on-surface font-medium">{label}</td>
-                            <td className="py-2 pr-3">{nf(s?.cantidad)}</td>
-                            <td className="py-2 pr-3">{nf(s?.promedio)}</td>
-                            <td className="py-2 pr-3">{nf(s?.p50)}</td>
-                            <td className="py-2 pr-3">{nf(s?.p75)}</td>
-                            <td className="py-2 pr-3">{nf(s?.p90)}</td>
-                            <td className="py-2 pr-3">{nf(s?.p95)}</td>
-                            <td className="py-2 pr-3">{nf(s?.p99)}</td>
-                            <td className="py-2 pr-3">{nf(s?.maximo)}</td>
-                            <td className="py-2 pr-md">
-                              {s?.cantidad_invalidos_negativos ? (
-                                <span className="text-error">
-                                  {nf(s.cantidad_invalidos_negativos)}
-                                </span>
-                              ) : (
-                                nf(s?.cantidad_invalidos_negativos)
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                  <div className="flex flex-col gap-lg">
+                    {(
+                      [
+                        {
+                          label: "Cuánto tarda en llegar",
+                          icon: "directions_car",
+                          stats: funnel?.tiempos.t4_asignacion_a_arribo,
+                          explicacion:
+                            "Así de rápido llega el prestador al lugar una vez que le asignan el servicio.",
+                        },
+                        {
+                          label: "Cuánto tarda en resolver el servicio",
+                          icon: "build",
+                          stats: funnel?.tiempos.t5_ejecucion,
+                          explicacion:
+                            "Así de rápido resuelve el prestador el servicio, desde que llega hasta que termina.",
+                        },
+                        {
+                          label: "Cuánto dura todo el proceso",
+                          icon: "flag_circle",
+                          stats: funnel?.tiempos.t6_end_to_end,
+                          explicacion:
+                            "Así de rápido es el recorrido completo del servicio, de punta a punta.",
+                        },
+                      ] as {
+                        label: string;
+                        icon: string;
+                        stats: TiempoStats | undefined;
+                        explicacion: string;
+                      }[]
+                    ).map((t) => (
+                      <div
+                        key={t.label}
+                        className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 flex flex-col gap-sm p-md"
+                      >
+                        <header className="flex items-center gap-3">
+                          <Icon name={t.icon} className="text-primary" />
+                          <h4 className="font-title-lg text-title-lg text-on-surface">
+                            {t.label}
+                          </h4>
+                        </header>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <div className="flex flex-col gap-1 bg-surface-container-low rounded-lg p-sm">
+                            <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wide">
+                              Tiempo típico
+                            </span>
+                            <span className="font-headline-sm text-headline-sm text-on-surface">
+                              {nf(t.stats?.p50)} min
+                            </span>
+                            <span className="font-label-sm text-label-sm text-on-surface-variant">
+                              La mitad de los casos tarda menos que esto
+                            </span>
+                          </div>
+                          <div className="flex flex-col gap-1 bg-surface-container-low rounded-lg p-sm">
+                            <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wide">
+                              En los casos más lentos
+                            </span>
+                            <span className="font-headline-sm text-headline-sm text-on-surface">
+                              {nf(t.stats?.p90)} min
+                            </span>
+                            <span className="font-label-md text-label-md text-[#b5610a] bg-[#f59e0b]/10 rounded-full px-2 py-0.5 w-fit uppercase tracking-wide">
+                              10 de cada 100 casos
+                            </span>
+                          </div>
+                          <div className="flex flex-col gap-1 bg-surface-container-low rounded-lg p-sm">
+                            <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wide">
+                              Casos medidos
+                            </span>
+                            <span className="font-headline-sm text-headline-sm text-on-surface">
+                              {nf(t.stats?.cantidad)}
+                            </span>
+                            <span className="font-label-sm text-label-sm text-on-surface-variant">
+                              Servicios con datos completos para esta etapa
+                            </span>
+                          </div>
+                          <div className="flex flex-col gap-1 bg-surface-container-low rounded-lg p-sm">
+                            <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wide">
+                              Calidad del dato
+                            </span>
+                            <span className="font-headline-sm text-headline-sm text-on-surface">
+                              {t.stats?.cantidad_invalidos_negativos
+                                ? "Con errores"
+                                : "Sin problemas"}
+                            </span>
+                            <span className="font-label-sm text-label-sm text-on-surface-variant">
+                              {t.stats?.cantidad_invalidos_negativos
+                                ? `${nf(t.stats.cantidad_invalidos_negativos)} casos con datos cargados mal, no se cuentan`
+                                : "No se detectaron datos cargados con error"}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 bg-primary-container/50 rounded-lg px-sm py-2">
+                          <Icon
+                            name="auto_awesome"
+                            className="text-primary text-[18px] shrink-0"
+                          />
+                          <span className="font-body-md text-body-md text-on-surface">
+                            {t.explicacion}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </section>
 
