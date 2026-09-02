@@ -4,6 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
 import {
@@ -362,22 +363,31 @@ function ProgressBar({
 }
 
 /* ---------- Tendencia diaria (mismos cálculos de coordenadas) ---------- */
-function Trend({ data }: { data: TrendPoint[] }) {
-  if (!data.length)
-    return (
-      <div className="flex-1 min-h-[260px] flex items-center justify-center text-body-md font-body-md text-on-surface-variant">
-        Sin datos
-      </div>
-    );
-  const W = 900,
-    H = 260,
+function TrendSvg({
+  data,
+  width,
+  height,
+  responsive = false,
+}: {
+  data: TrendPoint[];
+  width: number;
+  height: number;
+  responsive?: boolean;
+}) {
+  const W = width,
+    H = height,
     P = 35,
     x = (i: number) => P + (i * (W - 2 * P)) / Math.max(1, data.length - 1),
     y = (v: number) => H - P - v * (H - 2 * P),
     points = (k: keyof TrendPoint) =>
       data.map((d, i) => `${x(i)},${y(Number(d[k] || 0))}`).join(" ");
   return (
-    <svg className="w-full flex-1 min-h-[260px]" viewBox={`0 0 ${W} ${H}`}>
+    <svg
+      {...(responsive
+        ? { className: "w-full block", style: { height: H } }
+        : { width: W, height: H, className: "block" })}
+      viewBox={`0 0 ${W} ${H}`}
+    >
       {[0, 0.25, 0.5, 0.75, 1].map((v) => (
         <g key={v}>
           <line
@@ -426,6 +436,157 @@ function Trend({ data }: { data: TrendPoint[] }) {
         </text>
       ))}
     </svg>
+  );
+}
+
+/* ---------- NUEVO (ADITIVO): período local + zoom + paneo por
+   arrastre, todo acotado a los datos que ya trajeron los filtros
+   globales (nunca se pide un rango mayor al ya cargado) ---------- */
+const PERIODOS_TENDENCIA: { value: "7" | "14" | "30" | "todo"; label: string }[] = [
+  { value: "7", label: "Últimos 7 días" },
+  { value: "14", label: "Últimos 14 días" },
+  { value: "30", label: "Último mes" },
+  { value: "todo", label: "Todo el período filtrado" },
+];
+function TrendChart({ data }: { data: TrendPoint[] }) {
+  const [periodo, setPeriodo] = useState<"7" | "14" | "30" | "todo">("30"),
+    [zoom, setZoom] = useState(false),
+    [dragging, setDragging] = useState(false),
+    viewportRef = useRef<HTMLDivElement>(null),
+    dragStart = useRef({ x: 0, y: 0, scrollLeft: 0, scrollTop: 0 });
+
+  useEffect(() => {
+    if (viewportRef.current) {
+      viewportRef.current.scrollLeft = 0;
+      viewportRef.current.scrollTop = 0;
+    }
+  }, [periodo, zoom, data]);
+
+  if (!data.length)
+    return (
+      <div className="flex-1 min-h-[260px] flex items-center justify-center text-body-md font-body-md text-on-surface-variant">
+        Sin datos
+      </div>
+    );
+
+  const visible = periodo === "todo" ? data : data.slice(-Number(periodo));
+  const VIEWPORT_H = 300;
+  const width = zoom ? Math.max(900, visible.length * 55) : 900;
+  const height = zoom ? 480 : VIEWPORT_H;
+
+  const onMouseDown = (e: ReactMouseEvent) => {
+    if (!viewportRef.current) return;
+    setDragging(true);
+    dragStart.current = {
+      x: e.clientX,
+      y: e.clientY,
+      scrollLeft: viewportRef.current.scrollLeft,
+      scrollTop: viewportRef.current.scrollTop,
+    };
+  };
+  const onMouseMove = (e: ReactMouseEvent) => {
+    if (!dragging || !viewportRef.current) return;
+    viewportRef.current.scrollLeft =
+      dragStart.current.scrollLeft - (e.clientX - dragStart.current.x);
+    viewportRef.current.scrollTop =
+      dragStart.current.scrollTop - (e.clientY - dragStart.current.y);
+  };
+  const stopDragging = () => setDragging(false);
+
+  return (
+    <div className="flex flex-col gap-2 flex-1">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <select
+          className="form-input-styled font-body-md text-body-md text-on-surface h-9"
+          value={periodo}
+          onChange={(e) => setPeriodo(e.target.value as typeof periodo)}
+        >
+          {PERIODOS_TENDENCIA.map((p) => (
+            <option key={p.value} value={p.value}>
+              {p.label}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          onClick={() => setZoom((z) => !z)}
+          className="h-9 px-sm rounded bg-surface-container-low text-on-surface font-label-md text-label-md flex items-center gap-1 hover:bg-surface-variant transition-colors"
+          title={
+            zoom
+              ? "Quitar zoom (ajustar al ancho de la tarjeta)"
+              : "Hacer zoom (arrastrar para desplazarse)"
+          }
+        >
+          <Icon name={zoom ? "zoom_out" : "zoom_in"} className="text-[18px]" />
+          {zoom ? "Quitar zoom" : "Zoom"}
+        </button>
+      </div>
+      <div
+        ref={viewportRef}
+        onMouseDown={onMouseDown}
+        onMouseMove={onMouseMove}
+        onMouseUp={stopDragging}
+        onMouseLeave={stopDragging}
+        className={`w-full overflow-auto rounded-lg ${
+          zoom ? (dragging ? "cursor-grabbing" : "cursor-grab") : ""
+        }`}
+        style={{ height: VIEWPORT_H }}
+      >
+        <TrendSvg
+          data={visible}
+          width={width}
+          height={height}
+          responsive={!zoom}
+        />
+      </div>
+      {zoom && (
+        <span className="font-label-sm text-label-sm text-on-surface-variant">
+          Hacé clic y arrastrá el gráfico para desplazarte
+        </span>
+      )}
+    </div>
+  );
+}
+
+/* ---------- NUEVO (ADITIVO): paginado de a 10 para tablas largas ---------- */
+function Pager({
+  page,
+  setPage,
+  total,
+  pageSize = 10,
+}: {
+  page: number;
+  setPage: (p: number) => void;
+  total: number;
+  pageSize?: number;
+}) {
+  const totalPages = Math.max(1, Math.ceil(total / pageSize)),
+    start = total === 0 ? 0 : (page - 1) * pageSize + 1,
+    end = Math.min(page * pageSize, total);
+  return (
+    <div className="flex items-center justify-between px-md py-sm border-t border-outline-variant/20">
+      <span className="font-label-sm text-label-sm text-on-surface-variant">
+        {total === 0 ? "Sin registros" : `Mostrando ${nf(start)}–${nf(end)} de ${nf(total)}`}
+      </span>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          className="h-8 px-sm rounded bg-surface-container-low text-on-surface font-label-md text-label-md disabled:opacity-40 disabled:cursor-not-allowed hover:bg-surface-variant transition-colors"
+          disabled={page <= 1}
+          onClick={() => setPage(page - 1)}
+        >
+          Anterior
+        </button>
+        <button
+          type="button"
+          className="h-8 px-sm rounded bg-primary-container text-on-primary-container font-label-md text-label-md disabled:opacity-40 disabled:cursor-not-allowed hover:bg-primary hover:text-on-primary transition-colors"
+          disabled={page >= totalPages}
+          onClick={() => setPage(page + 1)}
+        >
+          Siguiente
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -492,10 +653,14 @@ export default function App() {
     [uploadMessage, setUploadMessage] = useState(""),
     [providerSearch, setProviderSearch] = useState(""),
     [providerSort, setProviderSort] = useState<"total" | "score">("total"),
-    [outlierTramo, setOutlierTramo] = useState<keyof Outliers>("demora_real");
+    [outlierTramo, setOutlierTramo] = useState<keyof Outliers>("demora_real"),
+    [campanaImpactoPage, setCampanaImpactoPage] = useState(1),
+    [outliersPage, setOutliersPage] = useState(1);
   const load = useCallback(async (f: TrackeoFilters) => {
     setLoading(true);
     setError(null);
+    setCampanaImpactoPage(1);
+    setOutliersPage(1);
     const r = await Promise.allSettled([
       api.trackeoResumen(f),
       api.trackeoUniversos(f),
@@ -982,12 +1147,16 @@ export default function App() {
                       title="Universo seleccionado"
                       value={nf(summary?.servicios_consultados)}
                       detail={[
-                        filters.estados.length
-                          ? `Estado: ${filters.estados.join(", ")}`
-                          : "Todos los estados",
-                        filters.tipos.length
-                          ? `Tipo: ${filters.tipos.join(", ")}`
-                          : "Todos los tipos",
+                        filters.estados.length === 0
+                          ? "Todos los estados"
+                          : filters.estados.length === 1
+                            ? `Estado: ${filters.estados[0]}`
+                            : `${filters.estados.length} estados seleccionados`,
+                        filters.tipos.length === 0
+                          ? "Todos los tipos"
+                          : filters.tipos.length === 1
+                            ? `Tipo: ${filters.tipos[0]}`
+                            : `${filters.tipos.length} tipos seleccionados`,
                       ].join(" · ")}
                       highlight
                     />
@@ -1023,7 +1192,7 @@ export default function App() {
                           </div>
                         </div>
                       </div>
-                      <Trend data={trend} />
+                      <TrendChart data={trend} />
                     </div>
                   </div>
                   <div className="xl:col-span-4 flex flex-col gap-sm">
@@ -1272,44 +1441,58 @@ export default function App() {
                     peor porcentaje — ordenado por impacto en asignación, no por
                     porcentaje.
                   </p>
-                  <div className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 overflow-x-auto">
-                    <table className="w-full text-body-md font-body-md">
-                      <thead>
-                        <tr className="text-label-md font-label-md text-on-surface-variant uppercase text-left border-b border-outline-variant/30">
-                          <th className="py-2 pl-md pr-3">Campaña</th>
-                          <th className="py-2 pr-3">Total</th>
-                          <th className="py-2 pr-3">Efectividad asignación</th>
-                          <th className="py-2 pr-3">Cumplimiento observado</th>
-                          <th className="py-2 pr-3">Oportunidad asignación</th>
-                          <th className="py-2 pr-md">Impacto asignación</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {campanaImpacto.map((c) => (
-                          <tr
-                            key={c.campana_normalizada}
-                            className="border-b border-outline-variant/10 hover:bg-surface-container-low"
-                          >
-                            <td className="py-2 pl-md pr-3 text-on-surface font-medium">
-                              {c.campana}
-                            </td>
-                            <td className="py-2 pr-3">{nf(c.total_general)}</td>
-                            <td className="py-2 pr-3">{pct(c.efectividad_enviador)}</td>
-                            <td className="py-2 pr-3">
-                              {c.servicios_evaluados_demora_trazable > 0
-                                ? pct(c.cumplimiento_demora_trazable)
-                                : "N/A"}
-                            </td>
-                            <td className="py-2 pr-3">
-                              {pct(c.oportunidad_mejora_asignacion)}
-                            </td>
-                            <td className="py-2 pr-md font-medium text-on-surface">
-                              {nf(c.impacto_asignacion)}
-                            </td>
+                  <div className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 flex flex-col">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-body-md font-body-md">
+                        <thead>
+                          <tr className="text-label-md font-label-md text-on-surface-variant uppercase text-left border-b border-outline-variant/30">
+                            <th className="py-2 pl-md pr-3">Campaña</th>
+                            <th className="py-2 pr-3">Total</th>
+                            <th className="py-2 pr-3">Efectividad asignación</th>
+                            <th className="py-2 pr-3">Cumplimiento observado</th>
+                            <th className="py-2 pr-3">Oportunidad asignación</th>
+                            <th className="py-2 pr-md">Impacto asignación</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody>
+                          {campanaImpacto
+                            .slice(
+                              (campanaImpactoPage - 1) * 10,
+                              campanaImpactoPage * 10,
+                            )
+                            .map((c) => (
+                              <tr
+                                key={c.campana_normalizada}
+                                className="border-b border-outline-variant/10 hover:bg-surface-container-low"
+                              >
+                                <td className="py-2 pl-md pr-3 text-on-surface font-medium">
+                                  {c.campana}
+                                </td>
+                                <td className="py-2 pr-3">{nf(c.total_general)}</td>
+                                <td className="py-2 pr-3">
+                                  {pct(c.efectividad_enviador)}
+                                </td>
+                                <td className="py-2 pr-3">
+                                  {c.servicios_evaluados_demora_trazable > 0
+                                    ? pct(c.cumplimiento_demora_trazable)
+                                    : "N/A"}
+                                </td>
+                                <td className="py-2 pr-3">
+                                  {pct(c.oportunidad_mejora_asignacion)}
+                                </td>
+                                <td className="py-2 pr-md font-medium text-on-surface">
+                                  {nf(c.impacto_asignacion)}
+                                </td>
+                              </tr>
+                            ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <Pager
+                      page={campanaImpactoPage}
+                      setPage={setCampanaImpactoPage}
+                      total={campanaImpacto.length}
+                    />
                   </div>
                 </section>
 
@@ -1572,9 +1755,10 @@ export default function App() {
                     <select
                       className="form-input-styled font-body-md text-body-md text-on-surface"
                       value={outlierTramo}
-                      onChange={(e) =>
-                        setOutlierTramo(e.target.value as keyof Outliers)
-                      }
+                      onChange={(e) => {
+                        setOutlierTramo(e.target.value as keyof Outliers);
+                        setOutliersPage(1);
+                      }}
                     >
                       <option value="demora_real">Demora real</option>
                       <option value="t1_alta_a_despachador">T1 · Alta → Despachador</option>
@@ -1591,42 +1775,55 @@ export default function App() {
                     {nf(outliers?.[outlierTramo]?.p90_referencia)} min · marcado
                     como posible anomalía si supera 3× ese P90).
                   </p>
-                  <div className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 overflow-x-auto">
-                    <table className="w-full text-body-md font-body-md">
-                      <thead>
-                        <tr className="text-label-md font-label-md text-on-surface-variant uppercase text-left border-b border-outline-variant/30">
-                          <th className="py-2 pl-md pr-3">ID servicio</th>
-                          <th className="py-2 pr-3">Prestador</th>
-                          <th className="py-2 pr-3">Campaña</th>
-                          <th className="py-2 pr-3">Fecha</th>
-                          <th className="py-2 pr-md">Minutos</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(outliers?.[outlierTramo]?.top || []).map((o, i) => (
-                          <tr
-                            key={`${o.id_servicio_prestado}-${i}`}
-                            className="border-b border-outline-variant/10 hover:bg-surface-container-low"
-                          >
-                            <td className="py-2 pl-md pr-3">{o.id_servicio_prestado}</td>
-                            <td className="py-2 pr-3 text-on-surface">{o.prestador}</td>
-                            <td className="py-2 pr-3">{o.campana}</td>
-                            <td className="py-2 pr-3">{o.fecha}</td>
-                            <td className="py-2 pr-md font-medium">
-                              {nf(o.valor_minutos)}
-                              {o.es_anomalia_probable && (
-                                <span
-                                  className="ml-1 text-error"
-                                  title="Supera 3x el P90 del tramo"
-                                >
-                                  ⚠
-                                </span>
-                              )}
-                            </td>
+                  <div className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 flex flex-col">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-body-md font-body-md">
+                        <thead>
+                          <tr className="text-label-md font-label-md text-on-surface-variant uppercase text-left border-b border-outline-variant/30">
+                            <th className="py-2 pl-md pr-3">ID servicio</th>
+                            <th className="py-2 pr-3">Prestador</th>
+                            <th className="py-2 pr-3">Campaña</th>
+                            <th className="py-2 pr-3">Fecha</th>
+                            <th className="py-2 pr-md">Minutos</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </thead>
+                        <tbody>
+                          {(outliers?.[outlierTramo]?.top || [])
+                            .slice((outliersPage - 1) * 10, outliersPage * 10)
+                            .map((o, i) => (
+                              <tr
+                                key={`${o.id_servicio_prestado}-${i}`}
+                                className="border-b border-outline-variant/10 hover:bg-surface-container-low"
+                              >
+                                <td className="py-2 pl-md pr-3">
+                                  {o.id_servicio_prestado}
+                                </td>
+                                <td className="py-2 pr-3 text-on-surface">
+                                  {o.prestador}
+                                </td>
+                                <td className="py-2 pr-3">{o.campana}</td>
+                                <td className="py-2 pr-3">{o.fecha}</td>
+                                <td className="py-2 pr-md font-medium">
+                                  {nf(o.valor_minutos)}
+                                  {o.es_anomalia_probable && (
+                                    <span
+                                      className="ml-1 text-error"
+                                      title="Supera 3x el P90 del tramo"
+                                    >
+                                      ⚠
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <Pager
+                      page={outliersPage}
+                      setPage={setOutliersPage}
+                      total={(outliers?.[outlierTramo]?.top || []).length}
+                    />
                   </div>
                 </section>
               </>
