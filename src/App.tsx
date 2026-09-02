@@ -548,6 +548,85 @@ function TrendChart({ data }: { data: TrendPoint[] }) {
   );
 }
 
+/* ---------- NUEVO (ADITIVO): tarjeta de un tramo del funnel, en
+   lenguaje simple (usada por "Tiempos del prestador") ---------- */
+function TramoCard({
+  label,
+  icon,
+  stats,
+  explicacion,
+}: {
+  label: string;
+  icon: string;
+  stats: TiempoStats | undefined;
+  explicacion: string;
+}) {
+  return (
+    <div className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 flex flex-col gap-sm p-md">
+      <header className="flex items-center gap-3">
+        <Icon name={icon} className="text-primary" />
+        <h4 className="font-title-lg text-title-lg text-on-surface">
+          {label}
+        </h4>
+      </header>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <div className="flex flex-col gap-1 bg-surface-container-low rounded-lg p-sm">
+          <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wide">
+            Tiempo típico
+          </span>
+          <span className="font-headline-sm text-headline-sm text-on-surface">
+            {nf(stats?.p50)} min
+          </span>
+          <span className="font-label-sm text-label-sm text-on-surface-variant">
+            La mitad de los casos tarda menos que esto
+          </span>
+        </div>
+        <div className="flex flex-col gap-1 bg-surface-container-low rounded-lg p-sm">
+          <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wide">
+            En los casos más lentos
+          </span>
+          <span className="font-headline-sm text-headline-sm text-on-surface">
+            {nf(stats?.p90)} min
+          </span>
+          <span className="font-label-md text-label-md text-[#b5610a] bg-[#f59e0b]/10 rounded-full px-2 py-0.5 w-fit uppercase tracking-wide">
+            10 de cada 100 casos
+          </span>
+        </div>
+        <div className="flex flex-col gap-1 bg-surface-container-low rounded-lg p-sm">
+          <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wide">
+            Casos medidos
+          </span>
+          <span className="font-headline-sm text-headline-sm text-on-surface">
+            {nf(stats?.cantidad)}
+          </span>
+          <span className="font-label-sm text-label-sm text-on-surface-variant">
+            Servicios con datos completos para esta etapa
+          </span>
+        </div>
+        <div className="flex flex-col gap-1 bg-surface-container-low rounded-lg p-sm">
+          <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wide">
+            Calidad del dato
+          </span>
+          <span className="font-headline-sm text-headline-sm text-on-surface">
+            {stats?.cantidad_invalidos_negativos ? "Con errores" : "Sin problemas"}
+          </span>
+          <span className="font-label-sm text-label-sm text-on-surface-variant">
+            {stats?.cantidad_invalidos_negativos
+              ? `${nf(stats.cantidad_invalidos_negativos)} casos con datos cargados mal, no se cuentan`
+              : "No se detectaron datos cargados con error"}
+          </span>
+        </div>
+      </div>
+      <div className="flex items-center gap-2 bg-primary-container/50 rounded-lg px-sm py-2">
+        <Icon name="auto_awesome" className="text-primary text-[18px] shrink-0" />
+        <span className="font-body-md text-body-md text-on-surface">
+          {explicacion}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 /* ---------- NUEVO (ADITIVO): gráfico de barras "Servicios por hora del día" ---------- */
 function HourlyBarChart({
   data,
@@ -1447,130 +1526,54 @@ export default function App() {
                     tiempo previo a la asignación, que es operativa interna
                     de Cardinal.
                   </p>
-                  <div className="flex flex-col gap-lg">
-                    {(
-                      [
-                        {
-                          label: "Cuánto tarda en llegar",
-                          icon: "directions_car",
-                          stats: funnel?.tiempos.t4_asignacion_a_arribo,
-                          explicacion:
-                            "Así de rápido llega el prestador al lugar una vez que le asignan el servicio.",
-                        },
-                        {
-                          label: "Cuánto tarda en resolver el servicio",
-                          icon: "build",
-                          stats: funnel?.tiempos.t5_ejecucion,
-                          explicacion:
-                            "Así de rápido resuelve el prestador el servicio, desde que llega hasta que termina.",
-                        },
-                        {
-                          label: "Cuánto dura todo el proceso",
-                          icon: "flag_circle",
-                          stats: funnel?.tiempos.t6_end_to_end,
-                          explicacion:
-                            "Así de rápido es el recorrido completo del servicio, de punta a punta.",
-                        },
-                      ] as {
-                        label: string;
-                        icon: string;
-                        stats: TiempoStats | undefined;
-                        explicacion: string;
-                      }[]
-                    ).map((t) => (
-                      <div
-                        key={t.label}
-                        className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 flex flex-col gap-sm p-md"
-                      >
-                        <header className="flex items-center gap-3">
-                          <Icon name={t.icon} className="text-primary" />
-                          <h4 className="font-title-lg text-title-lg text-on-surface">
-                            {t.label}
-                          </h4>
-                        </header>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          <div className="flex flex-col gap-1 bg-surface-container-low rounded-lg p-sm">
-                            <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wide">
-                              Tiempo típico
-                            </span>
-                            <span className="font-headline-sm text-headline-sm text-on-surface">
-                              {nf(t.stats?.p50)} min
-                            </span>
-                            <span className="font-label-sm text-label-sm text-on-surface-variant">
-                              La mitad de los casos tarda menos que esto
-                            </span>
-                          </div>
-                          <div className="flex flex-col gap-1 bg-surface-container-low rounded-lg p-sm">
-                            <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wide">
-                              En los casos más lentos
-                            </span>
-                            <span className="font-headline-sm text-headline-sm text-on-surface">
-                              {nf(t.stats?.p90)} min
-                            </span>
-                            <span className="font-label-md text-label-md text-[#b5610a] bg-[#f59e0b]/10 rounded-full px-2 py-0.5 w-fit uppercase tracking-wide">
-                              10 de cada 100 casos
-                            </span>
-                          </div>
-                          <div className="flex flex-col gap-1 bg-surface-container-low rounded-lg p-sm">
-                            <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wide">
-                              Casos medidos
-                            </span>
-                            <span className="font-headline-sm text-headline-sm text-on-surface">
-                              {nf(t.stats?.cantidad)}
-                            </span>
-                            <span className="font-label-sm text-label-sm text-on-surface-variant">
-                              Servicios con datos completos para esta etapa
-                            </span>
-                          </div>
-                          <div className="flex flex-col gap-1 bg-surface-container-low rounded-lg p-sm">
-                            <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wide">
-                              Calidad del dato
-                            </span>
-                            <span className="font-headline-sm text-headline-sm text-on-surface">
-                              {t.stats?.cantidad_invalidos_negativos
-                                ? "Con errores"
-                                : "Sin problemas"}
-                            </span>
-                            <span className="font-label-sm text-label-sm text-on-surface-variant">
-                              {t.stats?.cantidad_invalidos_negativos
-                                ? `${nf(t.stats.cantidad_invalidos_negativos)} casos con datos cargados mal, no se cuentan`
-                                : "No se detectaron datos cargados con error"}
-                            </span>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2 bg-primary-container/50 rounded-lg px-sm py-2">
-                          <Icon
-                            name="auto_awesome"
-                            className="text-primary text-[18px] shrink-0"
-                          />
-                          <span className="font-body-md text-body-md text-on-surface">
-                            {t.explicacion}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-lg">
+                    <TramoCard
+                      label="Cuánto tarda en llegar"
+                      icon="directions_car"
+                      stats={funnel?.tiempos.t4_asignacion_a_arribo}
+                      explicacion="Así de rápido llega el prestador al lugar una vez que le asignan el servicio."
+                    />
+                    <TramoCard
+                      label="Cuánto tarda en resolver el servicio"
+                      icon="build"
+                      stats={funnel?.tiempos.t5_ejecucion}
+                      explicacion="Así de rápido resuelve el prestador el servicio, desde que llega hasta que termina."
+                    />
                   </div>
                 </section>
 
-                <section className="flex flex-col gap-sm">
-                  <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs">
-                    SLA de llegada
-                  </h3>
-                  <p className="font-label-sm text-label-sm text-on-surface-variant -mt-2">
-                    DemoraReal − DemoraPrometida · sobre{" "}
-                    {nf(funnel?.sla_llegada.cantidad_evaluable)} servicios con
-                    trazabilidad completa.
-                  </p>
-                  <div className="bg-surface-container-lowest rounded-xl p-md card-shadow border border-outline-variant/20 flex flex-col gap-4">
-                    {(funnel?.sla_llegada.buckets || []).map((b) => (
-                      <ProgressBar
-                        key={b.etiqueta}
-                        label={b.etiqueta}
-                        valueLabel={`${nf(b.cantidad)} · ${pct(b.porcentaje)}`}
-                        ratio={b.porcentaje}
-                        color="#006058"
-                      />
-                    ))}
+                <section className="grid grid-cols-1 lg:grid-cols-2 gap-xl">
+                  <div className="flex flex-col gap-sm">
+                    <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs">
+                      SLA de llegada
+                    </h3>
+                    <p className="font-label-sm text-label-sm text-on-surface-variant -mt-2">
+                      DemoraReal − DemoraPrometida · sobre{" "}
+                      {nf(funnel?.sla_llegada.cantidad_evaluable)} servicios con
+                      trazabilidad completa.
+                    </p>
+                    <div className="bg-surface-container-lowest rounded-xl p-md card-shadow border border-outline-variant/20 flex flex-col gap-4">
+                      {(funnel?.sla_llegada.buckets || []).map((b) => (
+                        <ProgressBar
+                          key={b.etiqueta}
+                          label={b.etiqueta}
+                          valueLabel={`${nf(b.cantidad)} · ${pct(b.porcentaje)}`}
+                          ratio={b.porcentaje}
+                          color="#006058"
+                        />
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-sm">
+                    <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs">
+                      &nbsp;
+                    </h3>
+                    <TramoCard
+                      label="Cuánto dura todo el proceso"
+                      icon="flag_circle"
+                      stats={funnel?.tiempos.t6_end_to_end}
+                      explicacion="Así de rápido es el recorrido completo del servicio, de punta a punta."
+                    />
                   </div>
                 </section>
 
