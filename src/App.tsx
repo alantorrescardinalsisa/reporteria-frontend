@@ -1752,7 +1752,16 @@ export default function App() {
                         />
                       ))}
                     </div>
-                    <div className="bg-surface-container-lowest rounded-xl p-md card-shadow border border-outline-variant/20 flex flex-col justify-center items-center text-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        open(
+                          "PROGRAMADOS_A_TIEMPO",
+                          "Llegada en horario · Cumplieron",
+                        )
+                      }
+                      className="bg-surface-container-lowest rounded-xl p-md card-shadow border border-outline-variant/20 flex flex-col justify-center items-center text-center gap-1 hover:border-primary/40 transition-colors cursor-pointer"
+                    >
                       <span className="font-label-md text-label-md text-on-surface-variant uppercase">
                         Llegada en horario
                       </span>
@@ -1766,7 +1775,11 @@ export default function App() {
                         {nf(programadosFunnel?.llegada_en_horario.evaluables)}{" "}
                         con Fecha/HoraProgramada y llegada cargadas
                       </span>
-                    </div>
+                      <span className="font-label-md text-label-md text-primary mt-1 inline-flex items-center gap-0.5">
+                        Ver servicios
+                        <Icon name="chevron_right" className="text-[16px]" />
+                      </span>
+                    </button>
                   </div>
                 </section>
 
@@ -2529,6 +2542,40 @@ export default function App() {
                 </button>
               </div>
             </header>
+            {(drill.metric === "PROGRAMADOS_A_TIEMPO" ||
+              drill.metric === "PROGRAMADOS_FUERA_DE_TIEMPO") && (
+              <div className="flex items-center gap-2 px-md py-sm border-b border-outline-variant/20">
+                <button
+                  type="button"
+                  onClick={() =>
+                    open("PROGRAMADOS_A_TIEMPO", "Llegada en horario · Cumplieron")
+                  }
+                  className={`h-8 px-sm rounded-full font-label-md text-label-md transition-colors ${
+                    drill.metric === "PROGRAMADOS_A_TIEMPO"
+                      ? "bg-primary text-on-primary"
+                      : "bg-surface-container-low text-on-surface-variant hover:bg-surface-variant"
+                  }`}
+                >
+                  Cumplieron (incluidos en el %)
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    open(
+                      "PROGRAMADOS_FUERA_DE_TIEMPO",
+                      "Llegada en horario · No cumplieron",
+                    )
+                  }
+                  className={`h-8 px-sm rounded-full font-label-md text-label-md transition-colors ${
+                    drill.metric === "PROGRAMADOS_FUERA_DE_TIEMPO"
+                      ? "bg-primary text-on-primary"
+                      : "bg-surface-container-low text-on-surface-variant hover:bg-surface-variant"
+                  }`}
+                >
+                  No cumplieron (fuera del %)
+                </button>
+              </div>
+            )}
             {drill.error && (
               <div className="bg-error-container text-on-error-container px-md py-sm font-body-md text-body-md">
                 {drill.error}
