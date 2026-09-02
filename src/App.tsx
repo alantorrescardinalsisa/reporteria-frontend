@@ -721,6 +721,7 @@ export default function App() {
     [campanaImpactoPage, setCampanaImpactoPage] = useState(1),
     [outliersPage, setOutliersPage] = useState(1),
     [horaPrestador, setHoraPrestador] = useState(""),
+    [horaCampana, setHoraCampana] = useState(""),
     [horaLocalDistribucion, setHoraLocalDistribucion] = useState<
       FunnelTiempos["distribucion_horaria"] | null
     >(null),
@@ -731,6 +732,7 @@ export default function App() {
     setCampanaImpactoPage(1);
     setOutliersPage(1);
     setHoraPrestador("");
+    setHoraCampana("");
     setHoraLocalDistribucion(null);
     const r = await Promise.allSettled([
       api.trackeoResumen(f),
@@ -793,20 +795,25 @@ export default function App() {
     load(filters);
   }, [filters, load]);
   useEffect(() => {
-    // NUEVO (ADITIVO): filtro local de "Distribución horaria" por un
-    // solo prestador. Siempre parte de `filters` (los filtros
-    // globales activos) y solo agrega la restriccion de prestador
-    // encima -- nunca la reemplaza ni la ignora. `horaPrestador` solo
-    // puede valer un id que ya viene de `providers`, que a su vez ya
-    // esta acotado por los filtros globales (ver <select> mas abajo).
-    if (!horaPrestador) {
+    // NUEVO (ADITIVO): filtros locales de "Distribución horaria" por
+    // prestador y/o campaña. Siempre parten de `filters` (los filtros
+    // globales activos) y solo agregan una restriccion mas encima --
+    // nunca los reemplazan ni los ignoran. `horaPrestador`/`horaCampana`
+    // solo pueden valer algo que ya viene de `providers`/`cross`, que a
+    // su vez ya estan acotados por los filtros globales (ver <select>
+    // mas abajo).
+    if (!horaPrestador && !horaCampana) {
       setHoraLocalDistribucion(null);
       return;
     }
     let cancelado = false;
     setHoraLocalLoading(true);
     api
-      .trackeoFunnelTiempos({ ...filters, prestador_ids: [horaPrestador] })
+      .trackeoFunnelTiempos({
+        ...filters,
+        ...(horaPrestador ? { prestador_ids: [horaPrestador] } : {}),
+        ...(horaCampana ? { campanas: [horaCampana] } : {}),
+      })
       .then((x) => {
         if (!cancelado) setHoraLocalDistribucion(x.distribucion_horaria);
       })
@@ -819,7 +826,7 @@ export default function App() {
     return () => {
       cancelado = true;
     };
-  }, [horaPrestador, filters]);
+  }, [horaPrestador, horaCampana, filters]);
   useEffect(() => {
     const run = () =>
       api
@@ -857,7 +864,17 @@ export default function App() {
     typeOpts = types.map((x) => ({
       value: x.tipo_normalizado,
       label: `${x.tipo_de_servicio} (${nf(x.cantidad)})`,
-    }));
+    })),
+    // NUEVO (ADITIVO): opciones de campaña para el filtro local del
+    // gráfico "Servicios por hora del día", derivadas de `cross`
+    // (/campana-prestador), que ya respeta los 5 filtros globales
+    // activos (incluida la campaña, a diferencia de `campaigns`/
+    // `campOpts`, que la excluye a proposito para poblar el selector
+    // global). Asi, si ya elegiste campañas puntuales arriba, acá solo
+    // se ofrecen esas.
+    horaCampanaOpts = Array.from(
+      new Map(cross.map((c) => [c.campana_normalizada, c.campana])).values(),
+    ).map((c) => ({ value: c, label: c }));
   async function open(
     metric: MetricaTrackeo,
     title: string,
@@ -1629,27 +1646,41 @@ export default function App() {
                     <h3 className="font-title-lg text-title-lg text-on-surface">
                       Servicios por hora del día
                     </h3>
-                    <select
-                      className="form-input-styled font-body-md text-body-md text-on-surface"
-                      value={horaPrestador}
-                      onChange={(e) => setHoraPrestador(e.target.value)}
-                    >
-                      <option value="">Todos los prestadores</option>
-                      {providers.map((p) => (
-                        <option key={p.prestador_id} value={p.prestador_id}>
-                          {p.prestador}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <select
+                        className="form-input-styled font-body-md text-body-md text-on-surface"
+                        value={horaCampana}
+                        onChange={(e) => setHoraCampana(e.target.value)}
+                      >
+                        <option value="">Todas las campañas</option>
+                        {horaCampanaOpts.map((c) => (
+                          <option key={c.value} value={c.value}>
+                            {c.label}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        className="form-input-styled font-body-md text-body-md text-on-surface"
+                        value={horaPrestador}
+                        onChange={(e) => setHoraPrestador(e.target.value)}
+                      >
+                        <option value="">Todos los prestadores</option>
+                        {providers.map((p) => (
+                          <option key={p.prestador_id} value={p.prestador_id}>
+                            {p.prestador}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                   <p className="font-label-sm text-label-sm text-on-surface-variant -mt-2">
                     Volumen de servicios por hora del día (hora local
                     Argentina) — para dimensionar capacidad contra la demanda
-                    real por franja horaria, no solo por día. El selector de
-                    prestador solo ofrece los prestadores que ya están
-                    incluidos en los filtros globales activos, y nunca
-                    reemplaza esos filtros — solo agrega una restricción
-                    más encima.
+                    real por franja horaria, no solo por día. Los
+                    selectores de campaña y prestador solo ofrecen las
+                    campañas/prestadores que ya están incluidos en los
+                    filtros globales activos, y nunca los reemplazan —
+                    solo agregan una restricción más encima.
                   </p>
                   <div className="bg-surface-container-lowest rounded-xl p-md card-shadow border border-outline-variant/20 flex-1 min-h-[350px] flex flex-col">
                     {horaLocalLoading ? (
@@ -1659,7 +1690,7 @@ export default function App() {
                     ) : (
                       <HourlyBarChart
                         data={
-                          horaPrestador && horaLocalDistribucion
+                          (horaPrestador || horaCampana) && horaLocalDistribucion
                             ? horaLocalDistribucion
                             : funnel?.distribucion_horaria || []
                         }
