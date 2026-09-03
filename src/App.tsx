@@ -1048,46 +1048,20 @@ function exportExcel(rows: Record<string, unknown>[], name: string) {
   );
 }
 
-/* ---------- NUEVO (ADITIVO): exportar como PDF, sin librerías externas.
-   Abre una pestaña con una tabla lista para imprimir y dispara el diálogo
-   de impresión del navegador, donde el usuario elige "Guardar como PDF"
-   -- genera un PDF real, descargable, sin agregar dependencias nuevas. ---------- */
-function exportPdf(
-  rows: Record<string, unknown>[],
-  title: string,
-  subtitle?: string,
-) {
-  if (!rows.length) return;
-  const cols = Object.keys(rows[0]),
-    esc = (x: unknown) =>
-      String(x ?? "")
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;"),
-    win = window.open("", "_blank");
-  if (!win) return;
-  win.document.write(`<!doctype html><html><head><title>${esc(title)}</title>
-<meta charset="utf-8">
-<style>
-  body { font-family: Arial, Helvetica, sans-serif; padding: 24px; color: #1a1a1a; }
-  h1 { font-size: 16px; margin: 0 0 4px; }
-  p.meta { font-size: 11px; color: #666; margin: 0 0 16px; }
-  table { border-collapse: collapse; width: 100%; font-size: 9.5px; }
-  th, td { border: 1px solid #ccc; padding: 4px 6px; text-align: left; white-space: nowrap; }
-  th { background: #e5e7eb; }
-  tr:nth-child(even) td { background: #fafafa; }
-  @media print { body { padding: 0; } }
-</style>
-</head><body>
-<h1>${esc(title)}</h1>
-<p class="meta">${subtitle ? esc(subtitle) + " · " : ""}Generado el ${new Date().toLocaleString("es-AR")} · ${rows.length} registro${rows.length === 1 ? "" : "s"}</p>
-<table>
-<thead><tr>${cols.map((c) => `<th>${esc(c)}</th>`).join("")}</tr></thead>
-<tbody>${rows.map((r) => `<tr>${cols.map((c) => `<td>${esc(r[c])}</td>`).join("")}</tr>`).join("")}</tbody>
-</table>
-<script>window.onload = function () { window.print(); };</script>
-</body></html>`);
-  win.document.close();
+/* ---------- NUEVO (ADITIVO): exportar como PDF = imprimir la vista actual
+   de la plataforma tal cual se ve (mismos gráficos, colores y datos), sin
+   reconstruir una tabla aparte. Usa el diálogo de impresión del navegador
+   ("Guardar como PDF"), con una hoja de estilos @media print (App.css)
+   que oculta el menú lateral y fuerza a imprimir los colores de fondo. ---------- */
+function printCurrentView(title: string) {
+  const prevTitle = document.title;
+  document.title = title;
+  const restore = () => {
+    document.title = prevTitle;
+    window.removeEventListener("afterprint", restore);
+  };
+  window.addEventListener("afterprint", restore);
+  window.print();
 }
 
 /* ---------- NUEVO (ADITIVO): botón de exportar con selector de formato
@@ -1096,14 +1070,12 @@ function ExportButton({
   rows,
   fileBaseName,
   pdfTitle,
-  pdfSubtitle,
   label = "Exportar",
   className = "h-10 px-sm rounded bg-primary-container text-on-primary-container font-label-md text-label-md flex items-center gap-2 hover:bg-primary hover:text-on-primary transition-colors",
 }: {
   rows: () => Record<string, unknown>[];
   fileBaseName: string;
   pdfTitle: string;
-  pdfSubtitle?: string;
   label?: string;
   className?: string;
 }) {
@@ -1139,12 +1111,12 @@ function ExportButton({
             type="button"
             className="flex items-center gap-2 px-md py-sm text-left font-body-md text-body-md text-on-surface hover:bg-surface-container-low transition-colors border-t border-outline-variant/20"
             onClick={() => {
-              exportPdf(rows(), pdfTitle, pdfSubtitle);
+              printCurrentView(pdfTitle);
               setOpen(false);
             }}
           >
             <Icon name="picture_as_pdf" className="text-[18px] text-error" />
-            Documento PDF
+            Documento PDF (vista actual)
           </button>
         </div>
       )}
@@ -2938,7 +2910,6 @@ export default function App() {
                       }
                       fileBaseName="inteligencia-prestadores"
                       pdfTitle="Inteligencia Operativa — Prestadores"
-                      pdfSubtitle="Motor de reglas sobre datos históricos, sin modelos predictivos"
                     />
                   </div>
                   <div className="flex items-start gap-2 bg-primary-container/50 border border-primary/30 rounded-xl px-md py-sm">

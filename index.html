@@ -169,6 +169,31 @@
         box-shadow: 0 0 0 2px #dbe1ff;
         outline: none;
       }
+      /* NUEVO (ADITIVO): exportar a PDF = imprimir la vista actual tal
+         cual se ve en la plataforma (mismos graficos, colores y datos),
+         ocultando solo el menu lateral fijo -- ver ExportButton/
+         printCurrentView en App.tsx. */
+      @media print {
+        * {
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+          color-adjust: exact !important;
+        }
+        nav {
+          display: none !important;
+        }
+        .ml-sidebar-width {
+          margin-left: 0 !important;
+          width: 100% !important;
+        }
+        main {
+          overflow: visible !important;
+          height: auto !important;
+        }
+        body {
+          background: #ffffff !important;
+        }
+      }
     </style>
   </head>
   <body>
