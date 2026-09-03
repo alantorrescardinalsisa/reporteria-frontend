@@ -186,8 +186,14 @@
           print-color-adjust: exact !important;
           color-adjust: exact !important;
         }
+        /* display:none solo a veces no alcanza para un elemento
+           position:fixed en impresión (bug conocido de Chromium/WebKit:
+           el motor de paginación intenta repetir los elementos fixed en
+           cada hoja, y esa lógica puede ganarle al display:none) -- por
+           eso también se le saca el position:fixed acá. */
         nav {
           display: none !important;
+          position: static !important;
         }
         .ml-sidebar-width {
           margin-left: 0 !important;
