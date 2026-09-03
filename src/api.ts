@@ -361,6 +361,31 @@ export type InteligenciaPrestadores = {
   prestadores: InteligenciaPrestador[];
   metodologia: string;
 };
+// NUEVO v4.22.0 (ADITIVO): sistema de alertas (campanita del header).
+export type PrestadorAlerta = {
+  prestador_id: string;
+  prestador: string;
+  score_mes_anterior: number;
+  score_mes_actual: number;
+  servicios_mes_anterior: number;
+  servicios_mes_actual: number;
+};
+export type CampanaAlerta = {
+  campana: string;
+  campana_normalizada: string;
+  cumplimiento_mes_anterior: number;
+  cumplimiento_mes_actual: number;
+  variacion_pp: number;
+  total_mes_actual: number;
+};
+export type Alertas = {
+  mes_actual: string | null;
+  mes_anterior: string | null;
+  prestadores_alerta: PrestadorAlerta[];
+  campanas_alerta: CampanaAlerta[];
+  total_alertas: number;
+  mensaje?: string;
+};
 export type Outliers = {
   t1_alta_a_despachador: OutlierTramo;
   t2_despachador_a_asignacion: OutlierTramo;
@@ -536,6 +561,8 @@ export const api = {
     request<InteligenciaPrestadores>(
       "/api/inteligencia/prestadores" + qs(fp(f)),
     ),
+  alertas: (f: TrackeoFilters) =>
+    request<Alertas>("/api/alertas" + qs(fp(f))),
   trackeoCampanaPrestador: (f: TrackeoFilters) =>
     request<{ cantidad: number; resultados: CampanaPrestadorMetric[] }>(
       "/api/metricas-trackeo/campana-prestador" + qs(fp(f)),

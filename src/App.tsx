@@ -10,6 +10,7 @@ import {
 import { createPortal, flushSync } from "react-dom";
 import {
   api,
+  type Alertas,
   type CampanaImpacto,
   type CampanaMetric,
   type CampanaPrestadorMetric,
@@ -1165,6 +1166,120 @@ function ExportButton({
   );
 }
 
+/* ---------- NUEVO (ADITIVO): sistema de alertas -- campanita del
+   header. Compara mes calendario actual vs anterior (siempre sobre los
+   5 filtros globales ya aplicados, /api/alertas) para avisar de dos
+   cosas que un vistazo a un solo período no muestra: prestadores con
+   score bajo sostenido dos meses seguidos, y campañas enteras cuyo
+   cumplimiento cae de un mes al siguiente. ---------- */
+function NotificationBell({
+  alertas,
+  setPage,
+}: {
+  alertas: Alertas | null;
+  setPage: (p: Page) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const h = (e: MouseEvent) =>
+      ref.current && !ref.current.contains(e.target as Node) && setOpen(false);
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+  const total = alertas?.total_alertas ?? 0;
+  const irA = (p: Page) => {
+    setPage(p);
+    setOpen(false);
+  };
+  return (
+    <div className="relative print:hidden" ref={ref}>
+      <button
+        type="button"
+        className="relative p-2 hover:bg-surface-container-low transition-colors rounded-full flex items-center justify-center"
+        onClick={() => setOpen(!open)}
+      >
+        <Icon name="notifications" filled={total > 0} />
+        {total > 0 && (
+          <span className="absolute top-1 right-1 min-w-[16px] h-4 px-1 rounded-full bg-error text-on-error font-label-sm text-[10px] font-bold flex items-center justify-center leading-none">
+            {total > 9 ? "9+" : total}
+          </span>
+        )}
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 z-40 bg-surface-container-lowest rounded-lg card-shadow border border-outline-variant/30 overflow-hidden w-[380px] max-h-[70vh] flex flex-col">
+          <header className="px-md py-sm border-b border-outline-variant/20">
+            <h3 className="font-title-lg text-title-lg text-on-surface">Alertas</h3>
+            {alertas?.mes_actual && alertas?.mes_anterior && (
+              <p className="font-label-sm text-label-sm text-on-surface-variant">
+                Comparando {alertas.mes_anterior} → {alertas.mes_actual}
+              </p>
+            )}
+          </header>
+          <div className="overflow-y-auto flex-1">
+            {total === 0 && (
+              <p className="p-md font-body-md text-body-md text-on-surface-variant">
+                {alertas?.mensaje || "Sin alertas por ahora."}
+              </p>
+            )}
+            {alertas && alertas.prestadores_alerta.length > 0 && (
+              <div className="p-md flex flex-col gap-2">
+                <span className="font-label-md text-label-md text-on-surface-variant uppercase tracking-wide">
+                  Prestadores con score bajo dos meses seguidos
+                </span>
+                {alertas.prestadores_alerta.map((p) => (
+                  <button
+                    key={p.prestador_id}
+                    type="button"
+                    onClick={() => irA("providers")}
+                    className="text-left flex items-center justify-between gap-2 bg-error/5 hover:bg-error/10 rounded-lg px-sm py-2 transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <div className="font-body-md text-body-md font-medium text-on-surface truncate">
+                        {p.prestador}
+                      </div>
+                      <div className="font-label-sm text-label-sm text-on-surface-variant">
+                        {pct(p.score_mes_anterior)} → {pct(p.score_mes_actual)}
+                      </div>
+                    </div>
+                    <Icon name="trending_down" className="text-error shrink-0" />
+                  </button>
+                ))}
+              </div>
+            )}
+            {alertas && alertas.campanas_alerta.length > 0 && (
+              <div className="p-md flex flex-col gap-2 border-t border-outline-variant/20">
+                <span className="font-label-md text-label-md text-on-surface-variant uppercase tracking-wide">
+                  Campañas bajando su rendimiento
+                </span>
+                {alertas.campanas_alerta.map((c) => (
+                  <button
+                    key={c.campana_normalizada}
+                    type="button"
+                    onClick={() => irA("cross")}
+                    className="text-left flex items-center justify-between gap-2 bg-[#f59e0b]/5 hover:bg-[#f59e0b]/10 rounded-lg px-sm py-2 transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <div className="font-body-md text-body-md font-medium text-on-surface truncate">
+                        {c.campana}
+                      </div>
+                      <div className="font-label-sm text-label-sm text-on-surface-variant">
+                        {pct(c.cumplimiento_mes_anterior)} → {pct(c.cumplimiento_mes_actual)} (
+                        {c.variacion_pp} pp)
+                      </div>
+                    </div>
+                    <Icon name="trending_down" className="text-[#f59e0b] shrink-0" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ---------- Navegación lateral ---------- */
 const NAV_ITEMS: { page: Page; label: string; icon: string }[] = [
   { page: "metrics", label: "Métricas de Trackeo", icon: "analytics" },
@@ -1225,6 +1340,10 @@ export default function App() {
     [inteligenciaPage, setInteligenciaPage] = useState(1),
     [modalClasificacion, setModalClasificacion] =
       useState<Clasificacion | null>(null),
+    // NUEVO (ADITIVO): sistema de alertas (campanita del header) --
+    // visible en cualquier pantalla, así que se pide siempre (no
+    // gateado por `page`, a diferencia de Inteligencia Operativa).
+    [alertas, setAlertas] = useState<Alertas | null>(null),
     // NUEVO (ADITIVO): el menú lateral seguía apareciendo en el PDF pese
     // a "display:none" en @media print, incluso probado y confirmado en
     // el sitio en vivo (ver CONTEXTO.md, sexto/séptimo ajuste). El menú
@@ -1385,6 +1504,20 @@ export default function App() {
       cancelado = true;
     };
   }, [page, filters]);
+  useEffect(() => {
+    let cancelado = false;
+    api
+      .alertas(filters)
+      .then((x) => {
+        if (!cancelado) setAlertas(x);
+      })
+      .catch(() => {
+        if (!cancelado) setAlertas(null);
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, [filters]);
   useEffect(() => {
     const run = () =>
       api
@@ -1724,9 +1857,7 @@ export default function App() {
       >
         <header className="flex justify-end items-center h-16 w-full px-md z-40 bg-surface shrink-0">
           <div className="flex items-center gap-sm text-on-surface-variant">
-            <button className="p-2 hover:bg-surface-container-low transition-colors rounded-full flex items-center justify-center">
-              <Icon name="notifications" />
-            </button>
+            <NotificationBell alertas={alertas} setPage={setPage} />
             <button className="p-2 hover:bg-surface-container-low transition-colors rounded-full flex items-center justify-center">
               <Icon name="help" />
             </button>
