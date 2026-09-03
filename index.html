@@ -169,55 +169,17 @@
         box-shadow: 0 0 0 2px #dbe1ff;
         outline: none;
       }
-      /* NUEVO (ADITIVO): exportar a PDF = capturar la vista actual tal
+      /* NUEVO (ADITIVO): exportar a PDF = imprimir la vista actual tal
          cual se ve en la plataforma (mismos graficos, colores y datos) --
-         ver exportPdfSnapshot() en App.tsx (html2pdf.js). Estas reglas
-         NO estan atadas a @media print porque html2canvas rasteriza el
-         DOM con los estilos de pantalla normales, no con los de
-         impresion -- por eso el modo "css" de paginacion de html2pdf.js
-         necesita poder leerlas siempre. No cambian nada visualmente en
-         pantalla (break-inside/break-after solo importan al paginar). */
-
-      /* Evitar que una tarjeta/indicador individual quede cortado justo
-         en el salto de pagina. A proposito NO se aplica a <section>
-         (agrupa varias tarjetas y puede ser mas alta que una hoja entera
-         -- si se le pidiera "no cortar" ahi, quedaria un hueco en blanco
-         enorme en vez de simplemente avanzar de pagina). */
-      .card-shadow,
-      table,
-      tr,
-      article {
-        break-inside: avoid;
-        page-break-inside: avoid;
-      }
-      /* Que un titulo no quede solo al final de una pagina, separado del
-         contenido que le sigue. */
-      h2,
-      h3,
-      h4 {
-        break-after: avoid-page;
-        page-break-after: avoid;
-      }
-
-      /* Activada por exportPdfSnapshot() justo antes de capturar (clase
-         en <body>, sacada apenas termina): libera los contenedores con
-         scroll propio (tablas anchas, el visor del gráfico de tendencia
-         diaria) para que se capture todo el contenido, no solo la
-         porción que estaba visible en pantalla en ese momento. */
-      .is-exporting-pdf .overflow-x-auto,
-      .is-exporting-pdf .overflow-y-auto,
-      .is-exporting-pdf .overflow-auto {
-        overflow: visible !important;
-      }
-      .is-exporting-pdf .trend-chart-viewport {
-        height: auto !important;
-        overflow: visible !important;
-      }
-
-      /* Respaldo minimo por si alguien usa el Ctrl+P nativo del
-         navegador en vez del botón "Exportar" (que ahora usa
-         html2pdf.js): al menos oculta el menú lateral y fuerza los
-         colores de fondo. */
+         ver printCurrentView()/ExportButton en App.tsx. Se probo antes
+         con html2pdf.js (html2canvas + jsPDF), pero esa libreria
+         rasteriza el DOM con su propio motor de medicion, que no
+         entiende bien el layout con flexbox anidado de esta plataforma:
+         tarjetas enteras quedaban partidas al medio entre una hoja y la
+         siguiente pese a tener break-inside:avoid (confirmado
+         visualmente en un PDF de prueba). window.print() usa el mismo
+         motor de renderizado que ya pinta la pantalla -- no hay paso de
+         rasterizado intermedio que pueda mal-interpretar el layout. */
       @media print {
         * {
           -webkit-print-color-adjust: exact !important;
@@ -235,6 +197,10 @@
           overflow: visible !important;
           height: auto !important;
         }
+        /* Los contenedores con scroll propio (tablas anchas, el visor
+           del gráfico de tendencia diaria) solo mostrarían, al imprimir,
+           la porción que estaba visible en pantalla -- se ven "cortados"
+           o "desfazados". Los liberamos para que se imprima todo. */
         .overflow-x-auto,
         .overflow-y-auto,
         .overflow-auto {
@@ -246,6 +212,45 @@
         }
         body {
           background: #ffffff !important;
+        }
+        /* Evitar que una tarjeta/indicador individual quede cortado
+           justo en el salto de página. A propósito NO se aplica a
+           <section> (agrupa varias tarjetas y puede ser más alta que
+           una hoja entera -- forzar "no cortar" ahí dejaría un hueco en
+           blanco enorme en vez de simplemente avanzar de página). */
+        .card-shadow,
+        table,
+        tr,
+        article {
+          break-inside: avoid;
+          page-break-inside: avoid;
+        }
+        /* Que un título no quede solo al final de una página, separado
+           del contenido que le sigue. */
+        h2,
+        h3,
+        h4 {
+          break-after: avoid-page;
+          page-break-after: avoid;
+        }
+        /* EL AJUSTE CLAVE para que los saltos de página no queden
+           "desfazados": los navegadores fragmentan de forma confiable
+           un layout de bloques (cada hijo, uno debajo del otro), pero
+           fragmentan mal el contenido DENTRO de un contenedor flex
+           (que es como está armada casi toda esta plataforma:
+           "flex flex-col" para apilar título + tarjeta + tarjeta...).
+           Ese es justo el motivo por el que break-inside:avoid en las
+           tarjetas no alcanzaba a evitar los cortes. Durante la
+           impresión, los contenedores que apilan verticalmente
+           (".flex-col") pasan a grid de una sola columna implícita --
+           mismo espaciado (gap funciona igual en grid que en flex) y
+           mismo apilado visual, pero el motor de paginación del
+           navegador sí sabe fragmentar bien un grid. No se toca ".flex"
+           a secas (sin "-col"), que es lo que usan las filas
+           horizontales -- ícono + texto, badges, botones -- para no
+           romper esa alineación lado a lado. */
+        .flex-col {
+          display: grid !important;
         }
       }
     </style>
