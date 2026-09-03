@@ -102,13 +102,23 @@ const pct = (v?: number | null) =>
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 function initial(): TrackeoFilters {
   const p = new URLSearchParams(location.search);
+  // BUGFIX: URLSearchParams.getAll(...) devuelve [] (nunca null) cuando
+  // el parámetro no está en la URL -- a diferencia de p.get(...), que sí
+  // devuelve null y permite el "|| DEFAULT...." de fecha_desde/hasta. Sin
+  // este chequeo de longitud, los defaults de campañas/prestadores/
+  // estados/tipos nunca se aplicaban (quedaban en [] para siempre en una
+  // visita sin esos parámetros en la URL, que es el caso normal).
+  const campanas = p.getAll("campana"),
+    prestador_ids = p.getAll("prestador_id"),
+    estados = p.getAll("estado"),
+    tipos = p.getAll("tipo");
   return {
     fecha_desde: p.get("desde") || DEFAULT.fecha_desde,
     fecha_hasta: p.get("hasta") || DEFAULT.fecha_hasta,
-    campanas: p.getAll("campana"),
-    prestador_ids: p.getAll("prestador_id"),
-    estados: p.getAll("estado"),
-    tipos: p.getAll("tipo"),
+    campanas: campanas.length ? campanas : DEFAULT.campanas,
+    prestador_ids: prestador_ids.length ? prestador_ids : DEFAULT.prestador_ids,
+    estados: estados.length ? estados : DEFAULT.estados,
+    tipos: tipos.length ? tipos : DEFAULT.tipos,
   };
 }
 
