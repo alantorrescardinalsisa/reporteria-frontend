@@ -1280,6 +1280,455 @@ function NotificationBell({
   );
 }
 
+/* ---------- NUEVO (ADITIVO): instructivo de ayuda (botón "?" del
+   header) -- explica toda la plataforma en lenguaje simple, sin dar
+   por sentado ningún conocimiento técnico previo. ---------- */
+type HelpSection = { id: string; icon: string; title: string; body: ReactNode };
+const HELP_SECTIONS: HelpSection[] = [
+  {
+    id: "intro",
+    icon: "info",
+    title: "Qué es esta plataforma",
+    body: (
+      <>
+        <p>
+          Reportería de Prestadores toma el mismo Excel de Trackeo que ya
+          se usa hoy y lo convierte en indicadores listos para leer, sin
+          tener que armar tablas dinámicas a mano. Todo lo que ves acá se
+          calcula a partir de esos mismos datos — nada se inventa ni se
+          estima: si un número te llama la atención, siempre podés
+          contrastarlo filtrando el Excel de la misma forma.
+        </p>
+        <p>
+          Está pensada para el área de Prestadores: para saber cómo viene
+          rindiendo cada prestador, cada campaña, y para detectar rápido
+          a quién conviene prestarle atención.
+        </p>
+      </>
+    ),
+  },
+  {
+    id: "filtros",
+    icon: "tune",
+    title: "Los filtros de arriba",
+    body: (
+      <>
+        <p>
+          En la parte de arriba de cada pantalla (menos en Inteligencia
+          Operativa y Cargar reportes) hay 5 filtros: <b>Desde</b> /{" "}
+          <b>Hasta</b> (rango de fechas), <b>Campañas</b>, <b>Prestadores</b>
+          , <b>Estados</b> y <b>Tipo de servicio</b>. Estos 5 filtros
+          mandan en toda la plataforma — cada indicador que ves ya está
+          calculado solo sobre los servicios que cumplen lo que
+          seleccionaste ahí arriba.
+        </p>
+        <p>
+          <b>Estado y Tipo de servicio son 100% manuales</b>: si no
+          elegís nada en esos dos, se incluyen TODOS los valores — igual
+          que si en Excel no filtraras esa columna. No hay ningún filtro
+          escondido aplicándose sin que lo elijas vos.
+        </p>
+        <ul>
+          <li>
+            Después de cambiar algo, tocá <b>Aplicar filtros</b> para que
+            los indicadores se actualicen.
+          </li>
+          <li>
+            <b>Restablecer</b> vuelve todo a los valores por defecto (los
+            últimos ~2 meses, sin ningún otro filtro).
+          </li>
+          <li>
+            Podés elegir varias campañas, prestadores, estados o tipos a
+            la vez — no hace falta ver de a uno.
+          </li>
+        </ul>
+      </>
+    ),
+  },
+  {
+    id: "metricas",
+    icon: "bar_chart",
+    title: "Métricas de Trackeo — lo esencial",
+    body: (
+      <>
+        <p>
+          Es la pantalla principal. Arriba de todo tenés los{" "}
+          <b>Universos analíticos</b>: cuántos servicios hay en total,
+          cuántos son vehiculares, cuántos quedaron cancelados, etc. Sirven
+          para entender el tamaño del universo que estás mirando antes de
+          leer los porcentajes de abajo (un 50% sobre 10 servicios no
+          significa lo mismo que un 50% sobre 10.000).
+        </p>
+        <p>Después vienen los indicadores operativos principales:</p>
+        <ul>
+          <li>
+            <b>Uso del enviador</b>: de los servicios, cuántos pasaron por
+            la herramienta de asignación automática.
+          </li>
+          <li>
+            <b>Efectividad de asignación</b>: de los que usaron esa
+            herramienta, a cuántos se les consiguió un móvil.
+          </li>
+          <li>
+            <b>Cumplimiento de demora</b>: de los servicios con tiempo
+            prometido y tiempo real cargados, cuántos llegaron dentro de
+            lo prometido.
+          </li>
+        </ul>
+        <p>
+          Cada tarjeta con una flechita (›) se puede clickear para ver el
+          listado exacto de servicios que forman ese número — nunca tenés
+          que confiar en el porcentaje "a ciegas".
+        </p>
+        <p>
+          El gráfico <b>"Tendencia diaria"</b> muestra esos mismos
+          indicadores día por día. Podés cambiar el período (última
+          semana, último mes, etc.) y hacer zoom para ver el detalle día a
+          día — el botón "Zoom" activa el arrastre con el mouse para
+          moverte por el gráfico.
+        </p>
+        <p>
+          <b>"Impacto por campaña"</b> no ordena las campañas por
+          porcentaje, sino por cuánto se ganaría en la práctica si esa
+          campaña mejorara — una campaña grande con un problema chico
+          puede pesar más que una campaña chica con un problema grande.
+        </p>
+      </>
+    ),
+  },
+  {
+    id: "tiempos",
+    icon: "schedule",
+    title: "Cómo leer los tiempos del prestador",
+    body: (
+      <>
+        <p>
+          La sección "Tiempos del prestador" traduce los tiempos técnicos
+          a preguntas simples: cuánto tarda en llegar, cuánto tarda en
+          resolver el servicio, cuánto dura todo el proceso de punta a
+          punta. A propósito <b>no incluye</b> el tiempo previo a que se
+          le asigna el servicio al prestador — eso es operativa interna
+          de Cardinal, no depende del prestador.
+        </p>
+        <p>Cada tarjeta muestra 4 datos:</p>
+        <ul>
+          <li>
+            <b>Tiempo típico</b>: la mitad de los casos tarda menos que
+            esto (es el valor "del medio", no un promedio que se puede
+            distorsionar por un caso extremo).
+          </li>
+          <li>
+            <b>En los casos más lentos</b>: cuánto tardan los peores 10 de
+            cada 100 casos — para saber qué tan mal puede llegar a salir,
+            no solo el caso típico.
+          </li>
+          <li>
+            <b>Casos medidos</b>: sobre cuántos servicios se pudo calcular
+            esto (si es un número chico, el dato hay que tomarlo con
+            pinzas).
+          </li>
+          <li>
+            <b>Calidad del dato</b>: si se detectaron datos cargados con
+            error en esa etapa.
+          </li>
+        </ul>
+      </>
+    ),
+  },
+  {
+    id: "horaria",
+    icon: "insights",
+    title: "Otros gráficos y tablas de esta pantalla",
+    body: (
+      <>
+        <p>
+          <b>"Servicios por hora del día"</b> muestra a qué hora llega más
+          trabajo — útil para pensar la dotación de personal según la
+          demanda real de cada franja horaria, no contra el promedio del
+          día entero. Se puede filtrar por prestador o por campaña sin
+          perder los filtros globales de arriba.
+        </p>
+        <p>
+          <b>"Distribución de servicios cumplidos"</b> y{" "}
+          <b>"Calidad de información"</b> muestran, respectivamente, qué
+          tan ajustado (o con margen) fue el cumplimiento de los
+          servicios que sí cumplieron, y qué tan completos están los
+          datos cargados en el Excel (un campo vacío puede ser tan
+          importante como un mal resultado).
+        </p>
+        <p>
+          <b>"Estados por categoría"</b> agrupa los estados individuales
+          del Excel en categorías más fáciles de leer (Finalizado,
+          Cancelado, En curso, etc.). <b>"Trazabilidad completa del
+          servicio"</b> mide qué % de los servicios tiene registrada toda
+          la cadena de eventos, de punta a punta.
+        </p>
+        <p>
+          <b>"Gestión completa de servicios programados"</b> sigue el
+          camino completo de un servicio programado (con fecha y hora
+          agendada) y en particular la <b>"Llegada en horario"</b>: si el
+          prestador llegó dentro de la ventana prometida. Haciendo clic
+          se puede ver por separado quiénes cumplieron y quiénes no.
+        </p>
+        <p>
+          <b>"Outliers por tramo"</b> muestra, caso por caso, los 20
+          valores más altos de cada tramo de tiempo — para auditar los
+          casos extremos en vez de que queden escondidos dentro de un
+          promedio.
+        </p>
+      </>
+    ),
+  },
+  {
+    id: "prestador",
+    icon: "person_search",
+    title: "Detalle por prestador y el Score",
+    body: (
+      <>
+        <p>
+          Esta pantalla muestra, prestador por prestador, todos los
+          indicadores anteriores en una sola fila. Se puede buscar por
+          nombre, ordenar por cualquier columna haciendo clic en su
+          encabezado (un clic más invierte el orden), y exportar la
+          tabla completa.
+        </p>
+        <p>
+          La columna <b>Score</b> es una nota de 0% a 100% que combina 4
+          cosas en una sola: cumplimiento de demora (37,5%), efectividad
+          de asignación (31,25%), calidad de los datos cargados (18,75%)
+          y qué tan grande es el prestador en volumen (12,5%). Si a un
+          prestador le falta alguno de esos datos, el score se calcula
+          solo con lo que sí tiene, ajustando los porcentajes — nunca se
+          asume "0" para un dato faltante.
+        </p>
+        <p>
+          El ⚠️ al lado del score avisa que ese prestador tiene menos de
+          20 servicios en el período filtrado — con tan poca muestra, el
+          número es menos confiable y conviene mirarlo con cautela.
+        </p>
+      </>
+    ),
+  },
+  {
+    id: "campana",
+    icon: "campaign",
+    title: "Campaña × prestador",
+    body: (
+      <p>
+        Es la misma idea que "Detalle por prestador", pero cruzando cada
+        prestador con cada campaña en la que trabajó — para responder
+        "¿este prestador rinde igual en todas las campañas, o hay alguna
+        en particular donde le va peor?". También se puede ordenar por
+        columna y exportar.
+      </p>
+    ),
+  },
+  {
+    id: "inteligencia",
+    icon: "psychology",
+    title: "Inteligencia Operativa",
+    body: (
+      <>
+        <p>
+          Esta pantalla identifica rápido a quién conviene revisar con
+          urgencia, a quién prestarle atención media, y quién se está
+          destacando — combinando la tendencia reciente de cada prestador
+          (¿mejoró o empeoró dentro del período filtrado?) con su
+          posición frente a sus pares (¿rinde mejor o peor que el resto?).
+        </p>
+        <p>
+          <b>Importante: no es un pronóstico.</b> Todo se calcula sobre
+          datos que ya ocurrieron — no hay ninguna probabilidad de lo que
+          "podría pasar" a futuro. Es un motor de reglas simples
+          (umbrales y comparaciones), no un modelo de inteligencia
+          artificial entrenado.
+        </p>
+        <p>
+          Las tarjetas de arriba (Urgente / Atención / Destacado) se
+          pueden clickear para ver el listado de prestadores de esa
+          categoría. Más abajo aparecen los 3 que más necesitan atención
+          y los 3 que más se destacan, y una tabla comparativa con todos.
+        </p>
+      </>
+    ),
+  },
+  {
+    id: "alertas",
+    icon: "notifications",
+    title: "Alertas (la campanita 🔔)",
+    body: (
+      <>
+        <p>
+          La campanita de arriba a la derecha avisa, sin que tengas que
+          ir a buscarlo, dos situaciones puntuales:
+        </p>
+        <ul>
+          <li>
+            Prestadores cuyo Score se mantiene bajo dos meses calendario
+            seguidos (no un mal mes puntual).
+          </li>
+          <li>
+            Campañas enteras cuyo cumplimiento de demora bajó de un mes
+            al siguiente.
+          </li>
+        </ul>
+        <p>
+          Un número al lado de la campana indica cuántas alertas hay
+          activas ahora mismo. Haciendo clic en cualquier alerta te lleva
+          directo a la pantalla con el detalle de ese prestador o esa
+          campaña.
+        </p>
+      </>
+    ),
+  },
+  {
+    id: "exportar",
+    icon: "download",
+    title: "Exportar datos",
+    body: (
+      <>
+        <p>
+          Los botones "Exportar" abren un menú con dos opciones:
+        </p>
+        <ul>
+          <li>
+            <b>Planilla de Excel</b>: descarga los datos de esa tabla en
+            un archivo que Excel abre directamente, para seguir
+            trabajando con esos números ahí.
+          </li>
+          <li>
+            <b>Documento PDF (vista actual)</b>: genera un PDF con la
+            pantalla tal cual se ve en ese momento — mismos gráficos,
+            mismos colores — para compartir o guardar como reporte.
+          </li>
+        </ul>
+      </>
+    ),
+  },
+  {
+    id: "cargar",
+    icon: "upload_file",
+    title: "Cargar reportes",
+    body: (
+      <p>
+        Desde esta pantalla se sube el Excel de Trackeo (.xlsx o .xlsm)
+        para que la plataforma lo procese y sus datos queden disponibles
+        en todas las demás pantallas. Se selecciona el archivo, se toca
+        "Procesar reporte", y abajo va apareciendo el estado de la carga
+        (cuántas filas se procesaron).
+      </p>
+    ),
+  },
+  {
+    id: "glosario",
+    icon: "menu_book",
+    title: "Glosario rápido",
+    body: (
+      <ul>
+        <li>
+          <b>Universo filtrado</b>: el conjunto de servicios que quedó
+          después de aplicar los 5 filtros de arriba — la base sobre la
+          que se calcula todo lo demás en esa pantalla.
+        </li>
+        <li>
+          <b>Demora prometida / Demora real</b>: el tiempo que se prometió
+          y el tiempo que efectivamente tardó un servicio. Un servicio
+          "cumple" si la demora real no superó la prometida.
+        </li>
+        <li>
+          <b>Enviador</b>: la herramienta de asignación automática de
+          móviles. "Uso del enviador" = cuántos servicios pasaron por
+          ahí; "Efectividad" = a cuántos de esos se les consiguió un
+          móvil.
+        </li>
+        <li>
+          <b>Trazabilidad</b>: qué tan completa está la cadena de eventos
+          de un servicio (alta, asignación, llegada, finalización, etc.)
+        </li>
+        <li>
+          <b>Percentil</b>: en qué posición queda un prestador frente a
+          sus pares. Percentil 80 significa que rinde mejor que 80 de
+          cada 100 prestadores comparables.
+        </li>
+        <li>
+          <b>Muestra insuficiente / baja</b>: cuando un prestador o
+          campaña tiene muy pocos servicios en el período filtrado como
+          para que el número sea confiable — se marca en vez de
+          ocultarse, para que quien lo lea sepa que hay que tomarlo con
+          cautela.
+        </li>
+      </ul>
+    ),
+  },
+];
+function HelpModal({ onClose }: { onClose: () => void }) {
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const irA = (id: string) =>
+    contentRef.current
+      ?.querySelector(`#help-${id}`)
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  return (
+    <div
+      className="fixed inset-0 bg-on-surface/40 z-[100] flex items-center justify-center p-md"
+      onMouseDown={onClose}
+    >
+      <section
+        className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <header className="flex items-center justify-between gap-3 px-md py-md border-b border-outline-variant/20">
+          <div className="flex items-center gap-3">
+            <Icon name="help" filled className="text-primary text-[28px]" />
+            <div>
+              <h2 className="font-title-lg text-title-lg text-on-surface">
+                Cómo usar la plataforma
+              </h2>
+              <p className="font-label-sm text-label-sm text-on-surface-variant">
+                Guía completa, pensada para leerse sin conocimiento técnico previo
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="w-9 h-9 rounded-full flex items-center justify-center text-on-surface-variant hover:bg-surface-container-low transition-colors"
+            onClick={onClose}
+          >
+            <Icon name="close" />
+          </button>
+        </header>
+        <div className="flex flex-1 min-h-0">
+          <nav className="hidden sm:flex flex-col w-64 shrink-0 border-r border-outline-variant/20 overflow-y-auto p-sm gap-1">
+            {HELP_SECTIONS.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => irA(s.id)}
+                className="flex items-center gap-2 px-sm py-2 rounded-lg text-left font-body-md text-body-md text-on-surface-variant hover:bg-surface-container-low hover:text-on-surface transition-colors"
+              >
+                <Icon name={s.icon} className="text-[18px] shrink-0" />
+                <span className="truncate">{s.title}</span>
+              </button>
+            ))}
+          </nav>
+          <div ref={contentRef} className="flex-1 overflow-y-auto p-lg flex flex-col gap-xl">
+            {HELP_SECTIONS.map((s) => (
+              <section key={s.id} id={`help-${s.id}`} className="flex flex-col gap-2 scroll-mt-4">
+                <h3 className="font-title-lg text-title-lg text-on-surface flex items-center gap-2 border-b border-outline-variant/30 pb-xs">
+                  <Icon name={s.icon} className="text-primary" />
+                  {s.title}
+                </h3>
+                <div className="font-body-md text-body-md text-on-surface flex flex-col gap-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:flex [&_ul]:flex-col [&_ul]:gap-1.5 [&_b]:font-semibold [&_b]:text-on-surface">
+                  {s.body}
+                </div>
+              </section>
+            ))}
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 /* ---------- Navegación lateral ---------- */
 const NAV_ITEMS: { page: Page; label: string; icon: string }[] = [
   { page: "metrics", label: "Métricas de Trackeo", icon: "analytics" },
@@ -1344,6 +1793,8 @@ export default function App() {
     // visible en cualquier pantalla, así que se pide siempre (no
     // gateado por `page`, a diferencia de Inteligencia Operativa).
     [alertas, setAlertas] = useState<Alertas | null>(null),
+    // NUEVO (ADITIVO): instructivo de ayuda (botón "?" del header).
+    [helpOpen, setHelpOpen] = useState(false),
     // NUEVO (ADITIVO): el menú lateral seguía apareciendo en el PDF pese
     // a "display:none" en @media print, incluso probado y confirmado en
     // el sitio en vivo (ver CONTEXTO.md, sexto/séptimo ajuste). El menú
@@ -1858,7 +2309,11 @@ export default function App() {
         <header className="flex justify-end items-center h-16 w-full px-md z-40 bg-surface shrink-0">
           <div className="flex items-center gap-sm text-on-surface-variant">
             <NotificationBell alertas={alertas} setPage={setPage} />
-            <button className="p-2 hover:bg-surface-container-low transition-colors rounded-full flex items-center justify-center">
+            <button
+              type="button"
+              className="p-2 hover:bg-surface-container-low transition-colors rounded-full flex items-center justify-center print:hidden"
+              onClick={() => setHelpOpen(true)}
+            >
               <Icon name="help" />
             </button>
             <button className="p-2 hover:bg-surface-container-low transition-colors rounded-full flex items-center justify-center ml-xs">
@@ -3806,6 +4261,9 @@ export default function App() {
           </section>
         </div>
       )}
+
+      {/* ---------- Modal de ayuda ---------- */}
+      {helpOpen && <HelpModal onClose={() => setHelpOpen(false)} />}
     </div>
   );
 }
