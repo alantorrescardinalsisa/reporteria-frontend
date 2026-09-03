@@ -566,7 +566,10 @@ function TrendSvg({
   const hover = hoverIdx != null ? data[hoverIdx] : null;
   // Tooltip: se ancla a la derecha del punto salvo que no entre en el
   // ancho del gráfico, en cuyo caso se ubica a la izquierda.
-  const TOOLTIP_W = 148,
+  // 190 (no 148): "Cumplimiento de demora: 100%" es la etiqueta más
+  // larga de las 3 y no entraba en el ancho anterior -- quedaba cortada
+  // contra el borde del tooltip.
+  const TOOLTIP_W = 190,
     TOOLTIP_PAD = 10;
   const hoverX = hoverIdx != null ? x(hoverIdx) : 0,
     tooltipHaciaLaIzquierda = hoverX + TOOLTIP_PAD + TOOLTIP_W > W,
