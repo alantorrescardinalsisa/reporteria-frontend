@@ -494,6 +494,33 @@ function ProgressBar({
 }
 
 /* ---------- Tendencia diaria (mismos cálculos de coordenadas) ---------- */
+// NUEVO (ADITIVO): series mostradas + su color, en un solo lugar para
+// no repetir la lista al dibujar las líneas y al armar el tooltip.
+const TREND_SERIES: {
+  key: keyof TrendPoint;
+  label: string;
+  stroke: string;
+  fill: string;
+}[] = [
+  {
+    key: "cumplimiento_demora",
+    label: "Cumplimiento de demora",
+    stroke: "stroke-tertiary",
+    fill: "fill-tertiary",
+  },
+  {
+    key: "efectividad_enviador",
+    label: "Efectividad enviador",
+    stroke: "stroke-primary",
+    fill: "fill-primary",
+  },
+  {
+    key: "uso_enviador",
+    label: "Uso enviador",
+    stroke: "stroke-[#7c3aed]",
+    fill: "fill-[#7c3aed]",
+  },
+];
 function TrendSvg({
   data,
   width,
@@ -505,6 +532,8 @@ function TrendSvg({
   height: number;
   responsive?: boolean;
 }) {
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const W = width,
     H = height,
     P = 35,
@@ -512,8 +541,44 @@ function TrendSvg({
     y = (v: number) => H - P - v * (H - 2 * P),
     points = (k: keyof TrendPoint) =>
       data.map((d, i) => `${x(i)},${y(Number(d[k] || 0))}`).join(" ");
+
+  // NUEVO (ADITIVO): antes se etiquetaba CADA día en el eje X -- con
+  // más de ~15-20 puntos las etiquetas se pisaban entre sí y quedaban
+  // ilegibles. Ahora se calcula cuántas etiquetas entran sin
+  // amontonarse (según el ancho real disponible) y se saltean el resto,
+  // siempre mostrando el primer y el último día.
+  const anchoUtil = W - 2 * P,
+    maxEtiquetas = Math.max(2, Math.floor(anchoUtil / 46)),
+    paso = Math.max(1, Math.ceil(data.length / maxEtiquetas)),
+    mostrarEtiqueta = (i: number) =>
+      i === 0 || i === data.length - 1 || i % paso === 0;
+
+  const moverHover = (e: ReactMouseEvent<SVGRectElement>) => {
+    const svg = svgRef.current;
+    if (!svg || data.length === 0) return;
+    const rect = svg.getBoundingClientRect();
+    const localX = ((e.clientX - rect.left) / rect.width) * W;
+    const ratio = (localX - P) / Math.max(1, anchoUtil);
+    const idx = Math.round(ratio * (data.length - 1));
+    setHoverIdx(Math.min(data.length - 1, Math.max(0, idx)));
+  };
+
+  const hover = hoverIdx != null ? data[hoverIdx] : null;
+  // Tooltip: se ancla a la derecha del punto salvo que no entre en el
+  // ancho del gráfico, en cuyo caso se ubica a la izquierda.
+  const TOOLTIP_W = 148,
+    TOOLTIP_PAD = 10;
+  const hoverX = hoverIdx != null ? x(hoverIdx) : 0,
+    tooltipHaciaLaIzquierda = hoverX + TOOLTIP_PAD + TOOLTIP_W > W,
+    tooltipX = tooltipHaciaLaIzquierda
+      ? hoverX - TOOLTIP_PAD - TOOLTIP_W
+      : hoverX + TOOLTIP_PAD,
+    tooltipY = 8,
+    tooltipH = 22 + TREND_SERIES.length * 16;
+
   return (
     <svg
+      ref={svgRef}
       {...(responsive
         ? { className: "w-full block", style: { height: H } }
         : { width: W, height: H, className: "block" })}
@@ -534,38 +599,102 @@ function TrendSvg({
           </text>
         </g>
       ))}
-      <polyline
-        className="fill-none stroke-tertiary"
-        strokeWidth={2.5}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        points={points("cumplimiento_demora")}
-      />
-      <polyline
-        className="fill-none stroke-primary"
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        points={points("efectividad_enviador")}
-      />
-      <polyline
-        className="fill-none stroke-[#7c3aed]"
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        points={points("uso_enviador")}
-      />
-      {data.map((d, i) => (
-        <text
-          key={d.fecha}
-          x={x(i)}
-          y={H - 7}
-          textAnchor="middle"
-          className="fill-outline text-[10px]"
-        >
-          {d.fecha.slice(5)}
-        </text>
+      {TREND_SERIES.map((s) => (
+        <polyline
+          key={s.key}
+          className={`fill-none ${s.stroke}`}
+          strokeWidth={s.key === "cumplimiento_demora" ? 2.5 : 2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          points={points(s.key)}
+        />
       ))}
+      {data.map(
+        (d, i) =>
+          mostrarEtiqueta(i) && (
+            <text
+              key={d.fecha}
+              x={x(i)}
+              y={H - 7}
+              textAnchor="middle"
+              className="fill-outline text-[10px]"
+            >
+              {d.fecha.slice(5)}
+            </text>
+          ),
+      )}
+
+      {/* ---------- NUEVO (ADITIVO): hover con línea guía + tooltip ---------- */}
+      {hover && (
+        <g pointerEvents="none">
+          <line
+            x1={hoverX}
+            x2={hoverX}
+            y1={0}
+            y2={H - P}
+            className="stroke-outline"
+            strokeWidth={1}
+            strokeDasharray="3,3"
+          />
+          {TREND_SERIES.map((s) => (
+            <circle
+              key={s.key}
+              cx={hoverX}
+              cy={y(Number(hover[s.key] || 0))}
+              r={3.5}
+              className={`${s.fill} stroke-surface-container-lowest`}
+              strokeWidth={1.5}
+            />
+          ))}
+          <rect
+            x={tooltipX}
+            y={tooltipY}
+            width={TOOLTIP_W}
+            height={tooltipH}
+            rx={6}
+            className="fill-inverse-surface"
+            opacity={0.95}
+          />
+          <text
+            x={tooltipX + 10}
+            y={tooltipY + 16}
+            className="fill-inverse-on-surface text-[11px] font-semibold"
+          >
+            {hover.fecha}
+          </text>
+          {TREND_SERIES.map((s, i) => (
+            <g key={s.key}>
+              <circle
+                cx={tooltipX + 12}
+                cy={tooltipY + 30 + i * 16}
+                r={3}
+                className={s.fill}
+              />
+              <text
+                x={tooltipX + 20}
+                y={tooltipY + 34 + i * 16}
+                className="fill-inverse-on-surface text-[10px]"
+              >
+                {s.label}: {Math.round(Number(hover[s.key] || 0) * 100)}%
+              </text>
+            </g>
+          ))}
+        </g>
+      )}
+
+      {/* Superficie invisible para capturar el mouse en todo el
+          gráfico (arriba de las líneas en el orden de pintado, para
+          que el hover funcione aunque el cursor no esté exactamente
+          sobre el trazo de una línea). */}
+      <rect
+        x={0}
+        y={0}
+        width={W}
+        height={H}
+        fill="transparent"
+        onMouseMove={moverHover}
+        onMouseLeave={() => setHoverIdx(null)}
+      />
     </svg>
   );
 }
