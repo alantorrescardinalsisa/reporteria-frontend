@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
+import html2pdf from "html2pdf.js";
 import {
   api,
   type CampanaImpacto,
@@ -560,20 +561,26 @@ function TrendChart({ data }: { data: TrendPoint[] }) {
     }
   }, [periodo, zoom, data]);
 
-  // Al exportar a PDF (window.print), si el gráfico había quedado con zoom
-  // y desplazado (drag), el navegador imprimiría justo esa porción movida
-  // -- se ve "desfazado". Antes de imprimir, siempre volvemos a la vista
-  // completa (sin zoom) y con el scroll en el origen.
+  // Al exportar (PDF con html2pdf, o un Ctrl+P nativo de respaldo), si el
+  // gráfico había quedado con zoom y desplazado (drag), se capturaría
+  // justo esa porción movida -- se ve "desfazado". Antes de capturar,
+  // siempre volvemos a la vista completa (sin zoom) y con el scroll en
+  // el origen. "app:before-pdf-export" lo dispara exportPdfSnapshot();
+  // "beforeprint" queda como red de respaldo si alguien usa Ctrl+P.
   useEffect(() => {
-    const beforePrint = () => {
+    const reset = () => {
       setZoom(false);
       if (viewportRef.current) {
         viewportRef.current.scrollLeft = 0;
         viewportRef.current.scrollTop = 0;
       }
     };
-    window.addEventListener("beforeprint", beforePrint);
-    return () => window.removeEventListener("beforeprint", beforePrint);
+    window.addEventListener("app:before-pdf-export", reset);
+    window.addEventListener("beforeprint", reset);
+    return () => {
+      window.removeEventListener("app:before-pdf-export", reset);
+      window.removeEventListener("beforeprint", reset);
+    };
   }, []);
 
   if (!data.length)
@@ -1064,20 +1071,51 @@ function exportExcel(rows: Record<string, unknown>[], name: string) {
   );
 }
 
-/* ---------- NUEVO (ADITIVO): exportar como PDF = imprimir la vista actual
-   de la plataforma tal cual se ve (mismos gráficos, colores y datos), sin
-   reconstruir una tabla aparte. Usa el diálogo de impresión del navegador
-   ("Guardar como PDF"), con una hoja de estilos @media print (App.css)
-   que oculta el menú lateral y fuerza a imprimir los colores de fondo. ---------- */
-function printCurrentView(title: string) {
-  const prevTitle = document.title;
-  document.title = title;
-  const restore = () => {
-    document.title = prevTitle;
-    window.removeEventListener("afterprint", restore);
-  };
-  window.addEventListener("afterprint", restore);
-  window.print();
+/* ---------- NUEVO (ADITIVO): exportar como PDF = capturar la vista actual
+   tal cual se ve en la plataforma (mismos gráficos, colores y datos).
+   Antes se usaba window.print(), pero la paginación nativa del navegador
+   no logra evitar que un indicador quede cortado a la mitad entre una
+   hoja y la siguiente -- la plataforma está armada con flexbox anidado
+   en casi todos los contenedores, y los motores de impresión de los
+   navegadores fragmentan mal el contenido dentro de layouts flex. Ahora
+   se genera con html2pdf.js (html2canvas + jsPDF): rasteriza el <main>
+   (todo menos el menú lateral, que ni siquiera es su hijo) y decide los
+   saltos de página por altura real de cada bloque, con el modo
+   "avoid-all" -- evita cortar cualquier elemento salvo que sea
+   imposible, y el modo "css" respeta las reglas break-inside/break-after
+   ya definidas en index.html sobre tarjetas, filas y títulos. */
+function waitForExportLayout(): Promise<void> {
+  return new Promise((resolve) => {
+    // Le avisamos a los componentes con estado propio (ej. el gráfico de
+    // tendencia diaria, que puede estar con zoom/scroll) que vuelvan a
+    // su vista de reposo, y le damos a React un par de frames para que
+    // aplique ese cambio al DOM antes de capturar.
+    window.dispatchEvent(new Event("app:before-pdf-export"));
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+  });
+}
+async function exportPdfSnapshot(title: string, fileBaseName: string) {
+  const el = document.querySelector<HTMLElement>("main");
+  if (!el) return;
+  await waitForExportLayout();
+  document.body.classList.add("is-exporting-pdf");
+  try {
+    const worker = html2pdf()
+      .set({
+        margin: 10,
+        filename: `${fileBaseName}.pdf`,
+        image: { type: "jpeg", quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true, backgroundColor: "#f7f9fb" },
+        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+        pagebreak: { mode: ["avoid-all", "css"] },
+      })
+      .from(el);
+    const pdf = await worker.toPdf().get("pdf");
+    pdf.setProperties({ title });
+    await worker.save();
+  } finally {
+    document.body.classList.remove("is-exporting-pdf");
+  }
 }
 
 /* ---------- NUEVO (ADITIVO): botón de exportar con selector de formato
@@ -1096,6 +1134,7 @@ function ExportButton({
   className?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
   const ref = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const h = (e: MouseEvent) =>
@@ -1104,7 +1143,11 @@ function ExportButton({
     return () => document.removeEventListener("mousedown", h);
   }, []);
   return (
-    <div className="relative" ref={ref}>
+    // print:hidden + data-html2canvas-ignore -- este botón es una acción
+    // de la interfaz, no un dato: no debe aparecer en el PDF exportado
+    // (data-html2canvas-ignore lo excluye de la captura de html2pdf.js;
+    // print:hidden cubre además un Ctrl+P nativo de respaldo).
+    <div className="relative print:hidden" data-html2canvas-ignore="true" ref={ref}>
       <button type="button" className={className} onClick={() => setOpen(!open)}>
         <Icon name="download" className="text-[18px]" />
         {label}
@@ -1125,14 +1168,24 @@ function ExportButton({
           </button>
           <button
             type="button"
-            className="flex items-center gap-2 px-md py-sm text-left font-body-md text-body-md text-on-surface hover:bg-surface-container-low transition-colors border-t border-outline-variant/20"
-            onClick={() => {
-              printCurrentView(pdfTitle);
+            disabled={exportingPdf}
+            className="flex items-center gap-2 px-md py-sm text-left font-body-md text-body-md text-on-surface hover:bg-surface-container-low transition-colors border-t border-outline-variant/20 disabled:opacity-60"
+            onClick={async () => {
               setOpen(false);
+              setExportingPdf(true);
+              try {
+                await exportPdfSnapshot(pdfTitle, fileBaseName);
+              } finally {
+                setExportingPdf(false);
+              }
             }}
           >
-            <Icon name="picture_as_pdf" className="text-[18px] text-error" />
-            Documento PDF (vista actual)
+            {exportingPdf ? (
+              <Spinner className="text-[18px]" />
+            ) : (
+              <Icon name="picture_as_pdf" className="text-[18px] text-error" />
+            )}
+            {exportingPdf ? "Generando PDF…" : "Documento PDF (vista actual)"}
           </button>
         </div>
       )}
