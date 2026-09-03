@@ -1006,6 +1006,152 @@ function csv(rows: Record<string, unknown>[], name: string) {
   URL.revokeObjectURL(url);
 }
 
+function downloadBlob(content: string, mime: string, name: string) {
+  const url = URL.createObjectURL(new Blob([content], { type: mime })),
+    a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/* ---------- NUEVO (ADITIVO): exportar como planilla de Excel real (no
+   solo CSV) usando el formato XML de Excel 2003 ("SpreadsheetML") -- un
+   único archivo de texto que Excel abre nativamente, sin necesitar
+   ninguna librería externa para armar un .xlsx comprimido. ---------- */
+function excelXml(rows: Record<string, unknown>[]): string {
+  const cols = Object.keys(rows[0]),
+    esc = (x: unknown) =>
+      String(x ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;"),
+    cell = (v: unknown) =>
+      `<Cell><Data ss:Type="${typeof v === "number" ? "Number" : "String"}">${esc(v)}</Data></Cell>`,
+    header = `<Row>${cols.map((c) => `<Cell ss:StyleID="h"><Data ss:Type="String">${esc(c)}</Data></Cell>`).join("")}</Row>`,
+    body = rows
+      .map((r) => `<Row>${cols.map((c) => cell(r[c])).join("")}</Row>`)
+      .join("");
+  return `<?xml version="1.0"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+<Styles><Style ss:ID="h"><Font ss:Bold="1"/><Interior ss:Color="#E5E7EB" ss:Pattern="Solid"/></Style></Styles>
+<Worksheet ss:Name="Datos"><Table>${header}${body}</Table></Worksheet>
+</Workbook>`;
+}
+function exportExcel(rows: Record<string, unknown>[], name: string) {
+  if (!rows.length) return;
+  downloadBlob(
+    excelXml(rows),
+    "application/vnd.ms-excel",
+    name.replace(/\.csv$/i, "") + ".xls",
+  );
+}
+
+/* ---------- NUEVO (ADITIVO): exportar como PDF, sin librerías externas.
+   Abre una pestaña con una tabla lista para imprimir y dispara el diálogo
+   de impresión del navegador, donde el usuario elige "Guardar como PDF"
+   -- genera un PDF real, descargable, sin agregar dependencias nuevas. ---------- */
+function exportPdf(
+  rows: Record<string, unknown>[],
+  title: string,
+  subtitle?: string,
+) {
+  if (!rows.length) return;
+  const cols = Object.keys(rows[0]),
+    esc = (x: unknown) =>
+      String(x ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;"),
+    win = window.open("", "_blank");
+  if (!win) return;
+  win.document.write(`<!doctype html><html><head><title>${esc(title)}</title>
+<meta charset="utf-8">
+<style>
+  body { font-family: Arial, Helvetica, sans-serif; padding: 24px; color: #1a1a1a; }
+  h1 { font-size: 16px; margin: 0 0 4px; }
+  p.meta { font-size: 11px; color: #666; margin: 0 0 16px; }
+  table { border-collapse: collapse; width: 100%; font-size: 9.5px; }
+  th, td { border: 1px solid #ccc; padding: 4px 6px; text-align: left; white-space: nowrap; }
+  th { background: #e5e7eb; }
+  tr:nth-child(even) td { background: #fafafa; }
+  @media print { body { padding: 0; } }
+</style>
+</head><body>
+<h1>${esc(title)}</h1>
+<p class="meta">${subtitle ? esc(subtitle) + " · " : ""}Generado el ${new Date().toLocaleString("es-AR")} · ${rows.length} registro${rows.length === 1 ? "" : "s"}</p>
+<table>
+<thead><tr>${cols.map((c) => `<th>${esc(c)}</th>`).join("")}</tr></thead>
+<tbody>${rows.map((r) => `<tr>${cols.map((c) => `<td>${esc(r[c])}</td>`).join("")}</tr>`).join("")}</tbody>
+</table>
+<script>window.onload = function () { window.print(); };</script>
+</body></html>`);
+  win.document.close();
+}
+
+/* ---------- NUEVO (ADITIVO): botón de exportar con selector de formato
+   (Excel / PDF), reemplaza a los botones que exportaban CSV directo ---------- */
+function ExportButton({
+  rows,
+  fileBaseName,
+  pdfTitle,
+  pdfSubtitle,
+  label = "Exportar",
+  className = "h-10 px-sm rounded bg-primary-container text-on-primary-container font-label-md text-label-md flex items-center gap-2 hover:bg-primary hover:text-on-primary transition-colors",
+}: {
+  rows: () => Record<string, unknown>[];
+  fileBaseName: string;
+  pdfTitle: string;
+  pdfSubtitle?: string;
+  label?: string;
+  className?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const h = (e: MouseEvent) =>
+      ref.current && !ref.current.contains(e.target as Node) && setOpen(false);
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+  return (
+    <div className="relative" ref={ref}>
+      <button type="button" className={className} onClick={() => setOpen(!open)}>
+        <Icon name="download" className="text-[18px]" />
+        {label}
+        <Icon name="expand_more" className="text-[16px]" />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 z-30 bg-surface-container-lowest rounded-lg card-shadow border border-outline-variant/30 overflow-hidden min-w-[200px] flex flex-col">
+          <button
+            type="button"
+            className="flex items-center gap-2 px-md py-sm text-left font-body-md text-body-md text-on-surface hover:bg-surface-container-low transition-colors"
+            onClick={() => {
+              exportExcel(rows(), `${fileBaseName}.xls`);
+              setOpen(false);
+            }}
+          >
+            <Icon name="table_view" className="text-[18px] text-tertiary" />
+            Planilla de Excel
+          </button>
+          <button
+            type="button"
+            className="flex items-center gap-2 px-md py-sm text-left font-body-md text-body-md text-on-surface hover:bg-surface-container-low transition-colors border-t border-outline-variant/20"
+            onClick={() => {
+              exportPdf(rows(), pdfTitle, pdfSubtitle);
+              setOpen(false);
+            }}
+          >
+            <Icon name="picture_as_pdf" className="text-[18px] text-error" />
+            Documento PDF
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ---------- Navegación lateral ---------- */
 const NAV_ITEMS: { page: Page; label: string; icon: string }[] = [
   { page: "metrics", label: "Métricas de Trackeo", icon: "analytics" },
@@ -1539,19 +1685,15 @@ export default function App() {
                     <h2 className="font-display-lg text-display-lg text-on-surface">
                       Métricas de Trackeo
                     </h2>
-                    <button
+                    <ExportButton
+                      label="Exportar Reporte"
                       className="bg-primary-container text-on-primary-container px-sm py-xs rounded-lg font-label-md text-label-md hover:bg-primary hover:text-on-primary transition-colors flex items-center gap-2"
-                      onClick={() =>
-                        summary &&
-                        csv(
-                          [summary as unknown as Record<string, unknown>],
-                          "resumen-trackeo.csv",
-                        )
+                      rows={() =>
+                        summary ? [summary as unknown as Record<string, unknown>] : []
                       }
-                    >
-                      <Icon name="download" className="text-[18px]" />
-                      Exportar Reporte
-                    </button>
+                      fileBaseName="resumen-trackeo"
+                      pdfTitle="Resumen de métricas de trackeo"
+                    />
                   </div>
                 )}
                 <div className="bg-surface-container-lowest p-md rounded-xl card-shadow border border-outline-variant/20 flex flex-wrap items-end gap-md">
@@ -2551,18 +2693,13 @@ export default function App() {
                       />
                     </div>
                   </div>
-                  <button
-                    className="h-10 px-sm rounded bg-primary-container text-on-primary-container font-label-md text-label-md flex items-center gap-2 hover:bg-primary hover:text-on-primary transition-colors"
-                    onClick={() =>
-                      csv(
-                        displayedProviders as unknown as Record<string, unknown>[],
-                        "prestadores.csv",
-                      )
+                  <ExportButton
+                    rows={() =>
+                      displayedProviders as unknown as Record<string, unknown>[]
                     }
-                  >
-                    <Icon name="download" className="text-[18px]" />
-                    Exportar
-                  </button>
+                    fileBaseName="prestadores"
+                    pdfTitle="Detalle por prestador"
+                  />
                 </div>
                 <div className="overflow-x-auto px-md pb-md">
                   <table className="w-full text-body-md font-body-md">
@@ -2711,18 +2848,11 @@ export default function App() {
                   </div>
                 </header>
                 <div className="flex justify-end px-md py-sm">
-                  <button
-                    className="h-10 px-sm rounded bg-primary-container text-on-primary-container font-label-md text-label-md flex items-center gap-2 hover:bg-primary hover:text-on-primary transition-colors"
-                    onClick={() =>
-                      csv(
-                        cross as unknown as Record<string, unknown>[],
-                        "campana-prestador.csv",
-                      )
-                    }
-                  >
-                    <Icon name="download" className="text-[18px]" />
-                    Exportar
-                  </button>
+                  <ExportButton
+                    rows={() => cross as unknown as Record<string, unknown>[]}
+                    fileBaseName="campana-prestador"
+                    pdfTitle="Campaña × prestador"
+                  />
                 </div>
                 <div className="overflow-x-auto px-md pb-md">
                   <table className="w-full text-body-md font-body-md">
@@ -2794,11 +2924,22 @@ export default function App() {
               <div className="flex flex-col gap-lg">
                 {/* ---------- Encabezado ---------- */}
                 <div className="flex flex-col gap-2">
-                  <div className="flex items-center gap-3">
-                    <Icon name="psychology" className="text-primary text-[32px]" filled />
-                    <h2 className="font-display-lg text-display-lg text-on-surface">
-                      Inteligencia Operativa
-                    </h2>
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div className="flex items-center gap-3">
+                      <Icon name="psychology" className="text-primary text-[32px]" filled />
+                      <h2 className="font-display-lg text-display-lg text-on-surface">
+                        Inteligencia Operativa
+                      </h2>
+                    </div>
+                    <ExportButton
+                      rows={() =>
+                        (inteligencia?.prestadores ||
+                          []) as unknown as Record<string, unknown>[]
+                      }
+                      fileBaseName="inteligencia-prestadores"
+                      pdfTitle="Inteligencia Operativa — Prestadores"
+                      pdfSubtitle="Motor de reglas sobre datos históricos, sin modelos predictivos"
+                    />
                   </div>
                   <div className="flex items-start gap-2 bg-primary-container/50 border border-primary/30 rounded-xl px-md py-sm">
                     <Icon name="info" className="text-primary text-[20px] mt-0.5 shrink-0" />
