@@ -195,6 +195,29 @@
           display: none !important;
           position: static !important;
         }
+        /* EL AJUSTE CLAVE de esta vuelta: las secciones armadas como
+           grid de 2+ columnas lado a lado (ej. "Distribución de
+           servicios cumplidos" + "Calidad de información", cada una en
+           su propia columna con "lg:grid-cols-2") paginan mal, incluso
+           con todas las reglas de break-inside/break-after ya puestas:
+           el motor de impresión puede cortar cada columna en una altura
+           DISTINTA e independiente, dejando el título de una columna
+           solo al final de una hoja mientras su contenido salta a la
+           siguiente (confirmado visualmente en un PDF de prueba). Es un
+           problema conocido de layouts multi-columna en impresión, sin
+           relación con las reglas de break-inside que ya funcionan bien
+           para contenido en una sola columna. La solución: durante la
+           impresión, cualquier grid con columnas (selector por
+           coincidencia de clase, agarra "grid-cols-1", "lg:grid-cols-2",
+           "xl:grid-cols-12", etc. sin necesidad de listarlas todas)
+           colapsa a una sola columna -- así cada bloque se imprime de
+           punta a punta antes de pasar al siguiente, en vez de dos
+           columnas independientes compitiendo por el mismo salto de
+           página. Los hijos con "col-span-N" simplemente ocupan el
+           ancho completo de esa única columna, sin romper nada. */
+        [class*="grid-cols-"] {
+          grid-template-columns: 1fr !important;
+        }
         .ml-sidebar-width {
           margin-left: 0 !important;
           width: 100% !important;
