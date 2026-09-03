@@ -7,7 +7,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
-import { createPortal } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import {
   api,
   type CampanaImpacto,
@@ -1078,7 +1078,20 @@ function exportExcel(rows: Record<string, unknown>[], name: string) {
    se volvió a esa vía -- el ajuste real para el salto de página está en
    la hoja @media print de index.html (flex-col -> grid solo al
    imprimir). */
-function printCurrentView(title: string) {
+async function printCurrentView(title: string) {
+  // No alcanza con escuchar "beforeprint" para sacar el menú lateral del
+  // DOM: React 18 aplica ese setState de forma asíncrona, y window.print()
+  // puede seguir sincrónicamente y capturar la hoja ANTES de que React
+  // haya terminado de re-renderizar sin el <nav> -- volveríamos al mismo
+  // bug. Por eso acá se dispara el cambio de estado explícitamente, se
+  // espera a que el navegador pinte ese nuevo estado (dos
+  // requestAnimationFrame: el primero encola el commit de React, el
+  // segundo ya corre después de que el navegador pintó ese commit), y
+  // recién ahí se llama a window.print().
+  window.dispatchEvent(new Event("app:enter-print-mode"));
+  await new Promise<void>((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+  );
   const prevTitle = document.title;
   document.title = title;
   const restore = () => {
@@ -1211,7 +1224,41 @@ export default function App() {
     [inteligenciaLoading, setInteligenciaLoading] = useState(false),
     [inteligenciaPage, setInteligenciaPage] = useState(1),
     [modalClasificacion, setModalClasificacion] =
-      useState<Clasificacion | null>(null);
+      useState<Clasificacion | null>(null),
+    // NUEVO (ADITIVO): el menú lateral seguía apareciendo en el PDF pese
+    // a "display:none" en @media print, incluso probado y confirmado en
+    // el sitio en vivo (ver CONTEXTO.md, sexto/séptimo ajuste). El menú
+    // es "position: fixed", y hay un bug conocido de motores basados en
+    // Chromium/WebKit donde ese tipo de elementos se imprime igual pese
+    // al display:none (el motor de impresión pega la capa ya compuesta
+    // del elemento en cada hoja). La única forma 100% confiable de que
+    // no aparezca es que directamente no exista en el DOM mientras se
+    // imprime -- no ocultarlo por CSS, sacarlo del árbol de React.
+    [printing, setPrinting] = useState(false);
+  useEffect(() => {
+    // "app:enter-print-mode" lo dispara printCurrentView() ANTES de
+    // llamar a window.print(), esperando a que React haya terminado de
+    // re-renderizar sin el <nav> (ver el comentario en printCurrentView).
+    // "beforeprint" queda como red de respaldo (ej. si alguien usa
+    // Ctrl+P directo) -- no garantiza el mismo timing exacto, pero es
+    // mejor que nada. "afterprint" siempre restaura, sin apuro de timing.
+    // flushSync fuerza a React a aplicar el cambio al DOM real de forma
+    // sincrónica, ahí mismo, en vez de dejarlo para el siguiente ciclo
+    // -- importante en el fallback de "beforeprint" (Ctrl+P directo, sin
+    // pasar por printCurrentView), donde no hay margen para esperar dos
+    // requestAnimationFrame antes de que el navegador siga con la
+    // impresión.
+    const before = () => flushSync(() => setPrinting(true));
+    const after = () => setPrinting(false);
+    window.addEventListener("app:enter-print-mode", before);
+    window.addEventListener("beforeprint", before);
+    window.addEventListener("afterprint", after);
+    return () => {
+      window.removeEventListener("app:enter-print-mode", before);
+      window.removeEventListener("beforeprint", before);
+      window.removeEventListener("afterprint", after);
+    };
+  }, []);
   const load = useCallback(async (f: TrackeoFilters) => {
     setLoading(true);
     setError(null);
@@ -1618,49 +1665,61 @@ export default function App() {
 
   return (
     <div className="font-body-md text-body-md min-h-screen flex bg-background text-on-background">
-      {/* ---------- Sidebar ---------- */}
-      <nav className="fixed left-0 top-0 h-screen w-sidebar-width z-50 flex flex-col bg-on-primary-fixed">
-        <div className="px-md py-md flex flex-col gap-xs mb-sm">
-          <h1 className="text-headline-md font-headline-md font-bold text-on-primary">
-            Reportería
-          </h1>
-          <span className="text-label-sm font-label-sm text-primary-fixed-dim uppercase tracking-widest opacity-80">
-            Prestadores
-          </span>
-        </div>
-        <div className="flex flex-col flex-1">
-          {NAV_ITEMS.map((item) => (
-            <button
-              key={item.page}
-              type="button"
-              aria-current={page === item.page ? "page" : undefined}
-              onClick={() => setPage(item.page)}
-              className={`mx-2 my-1 px-4 py-3 rounded-lg flex items-center gap-3 text-left transition-colors ${
-                page === item.page
-                  ? "bg-primary-container text-on-primary-container"
-                  : "text-on-primary-fixed-variant hover:bg-white/10"
-              }`}
-            >
-              <Icon name={item.icon} filled={page === item.page} />
-              <span className="font-label-md text-label-md">{item.label}</span>
-            </button>
-          ))}
-        </div>
-        <div className="px-md py-md mt-auto">
-          <div className="text-on-primary-fixed-variant rounded-lg flex items-center gap-3 opacity-80">
-            <Icon name="dns" className="text-[16px]" />
-            <span className="font-label-sm text-label-sm flex flex-col">
-              Backend v{backend.version}
-              <b className={backend.ok ? "text-tertiary-fixed-dim" : "text-error-container"}>
-                {backend.ok ? "Conectado" : "Sin conexión"}
-              </b>
+      {/* ---------- Sidebar ----------
+          NO se oculta por CSS: se saca del DOM directamente cuando
+          "printing" es true (ver el useEffect de beforeprint/afterprint
+          más arriba), porque display:none en @media print no alcanzaba
+          a evitar que apareciera en el PDF (ver CONTEXTO.md). */}
+      {!printing && (
+        <nav className="fixed left-0 top-0 h-screen w-sidebar-width z-50 flex flex-col bg-on-primary-fixed">
+          <div className="px-md py-md flex flex-col gap-xs mb-sm">
+            <h1 className="text-headline-md font-headline-md font-bold text-on-primary">
+              Reportería
+            </h1>
+            <span className="text-label-sm font-label-sm text-primary-fixed-dim uppercase tracking-widest opacity-80">
+              Prestadores
             </span>
           </div>
-        </div>
-      </nav>
+          <div className="flex flex-col flex-1">
+            {NAV_ITEMS.map((item) => (
+              <button
+                key={item.page}
+                type="button"
+                aria-current={page === item.page ? "page" : undefined}
+                onClick={() => setPage(item.page)}
+                className={`mx-2 my-1 px-4 py-3 rounded-lg flex items-center gap-3 text-left transition-colors ${
+                  page === item.page
+                    ? "bg-primary-container text-on-primary-container"
+                    : "text-on-primary-fixed-variant hover:bg-white/10"
+                }`}
+              >
+                <Icon name={item.icon} filled={page === item.page} />
+                <span className="font-label-md text-label-md">{item.label}</span>
+              </button>
+            ))}
+          </div>
+          <div className="px-md py-md mt-auto">
+            <div className="text-on-primary-fixed-variant rounded-lg flex items-center gap-3 opacity-80">
+              <Icon name="dns" className="text-[16px]" />
+              <span className="font-label-sm text-label-sm flex flex-col">
+                Backend v{backend.version}
+                <b className={backend.ok ? "text-tertiary-fixed-dim" : "text-error-container"}>
+                  {backend.ok ? "Conectado" : "Sin conexión"}
+                </b>
+              </span>
+            </div>
+          </div>
+        </nav>
+      )}
 
       {/* ---------- Contenido principal ---------- */}
-      <div className="flex-1 flex flex-col ml-sidebar-width w-[calc(100%-260px)] min-h-screen">
+      <div
+        className={
+          printing
+            ? "flex-1 flex flex-col w-full min-h-screen"
+            : "flex-1 flex flex-col ml-sidebar-width w-[calc(100%-260px)] min-h-screen"
+        }
+      >
         <header className="flex justify-end items-center h-16 w-full px-md z-40 bg-surface shrink-0">
           <div className="flex items-center gap-sm text-on-surface-variant">
             <button className="p-2 hover:bg-surface-container-low transition-colors rounded-full flex items-center justify-center">
