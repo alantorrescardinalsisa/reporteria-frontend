@@ -63,13 +63,35 @@ type Drill = {
   exporting: boolean;
   error: string | null;
 };
+// NUEVO (ADITIVO): rango de fechas por defecto = "desde el mes anterior
+// al último mes cerrado, hasta el último mes cerrado" -- se calcula en
+// vivo contra la fecha de hoy (nunca hardcodeado), tomando como "último
+// mes cargado" el último mes calendario completo (el mes en curso se
+// excluye por estar incompleto, mismo criterio que /api/alertas en el
+// backend). Ej.: si hoy es 2026-09-03, el último mes cerrado es agosto
+// 2026 -> el rango por defecto queda 2026-07-01 a 2026-08-31.
+function rangoPorDefecto(): { fecha_desde: string; fecha_hasta: string } {
+  const hoy = new Date();
+  const finUltimoMesCerrado = new Date(hoy.getFullYear(), hoy.getMonth(), 0);
+  const inicioMesAnterior = new Date(
+    hoy.getFullYear(),
+    hoy.getMonth() - 2,
+    1,
+  );
+  const fmt = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return { fecha_desde: fmt(inicioMesAnterior), fecha_hasta: fmt(finUltimoMesCerrado) };
+}
 const DEFAULT: TrackeoFilters = {
-  fecha_desde: "2026-08-01",
-  fecha_hasta: "2026-08-24",
+  ...rangoPorDefecto(),
   campanas: [],
   prestador_ids: [],
-  estados: [],
-  tipos: [],
+  // NUEVO (ADITIVO): estados y tipos de servicio por defecto al iniciar
+  // la plataforma, pedidos explícitamente por el usuario. "CERRADO (V H)"
+  // es el valor real tal como está cargado en los datos (el usuario lo
+  // había escrito como "CERRADO (VH)", sin el espacio entre la V y la H).
+  estados: ["CERRADO", "CERRADO (V H)", "ENCUESTA FINAL"],
+  tipos: ["MECANICA LIGERA", "REMOLQUE", "REMOLQUE MOTOS"],
 };
 const nf = (v?: number | null) =>
   v == null ? "—" : new Intl.NumberFormat("es-AR").format(v);
@@ -2399,6 +2421,22 @@ export default function App() {
                     />
                   </div>
                 )}
+                {page === "providers" && (
+                  <div className="flex items-center gap-3">
+                    <Icon name="person_search" className="text-primary text-[32px]" filled />
+                    <h2 className="font-display-lg text-display-lg text-on-surface">
+                      Detalle por prestador
+                    </h2>
+                  </div>
+                )}
+                {page === "cross" && (
+                  <div className="flex items-center gap-3">
+                    <Icon name="campaign" className="text-primary text-[32px]" filled />
+                    <h2 className="font-display-lg text-display-lg text-on-surface">
+                      Campaña × prestador
+                    </h2>
+                  </div>
+                )}
                 <div className="bg-surface-container-lowest p-md rounded-xl card-shadow border border-outline-variant/20 flex flex-wrap items-end gap-md">
                   <div className="flex items-center gap-2">
                     <div className="flex flex-col gap-1">
@@ -3367,16 +3405,10 @@ export default function App() {
 
             {page === "providers" && (
               <section className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 flex flex-col overflow-hidden">
-                <header className="flex items-center gap-3 px-md py-md border-b border-outline-variant/20">
-                  <Icon name="person_search" className="text-primary text-[32px]" filled />
-                  <div>
-                    <h2 className="font-display-lg text-display-lg text-on-surface">
-                      Detalle por prestador
-                    </h2>
-                    <p className="font-label-sm text-label-sm text-on-surface-variant">
-                      {nf(displayedProviders.length)} prestadores
-                    </p>
-                  </div>
+                <header className="flex items-center px-md py-md border-b border-outline-variant/20">
+                  <p className="font-label-sm text-label-sm text-on-surface-variant">
+                    {nf(displayedProviders.length)} prestadores
+                  </p>
                 </header>
                 {prestadoresWarning && (
                   <div className="mx-md mt-md bg-[#f59e0b]/10 text-[#7a4a00] rounded-lg px-md py-sm flex items-start gap-2 font-body-md text-body-md">
@@ -3558,16 +3590,10 @@ export default function App() {
 
             {page === "cross" && (
               <section className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 flex flex-col overflow-hidden">
-                <header className="flex items-center gap-3 px-md py-md border-b border-outline-variant/20">
-                  <Icon name="campaign" className="text-primary text-[32px]" filled />
-                  <div>
-                    <h2 className="font-display-lg text-display-lg text-on-surface">
-                      Campaña × prestador
-                    </h2>
-                    <p className="font-label-sm text-label-sm text-on-surface-variant">
-                      {nf(sortCross.sorted.length)} combinaciones
-                    </p>
-                  </div>
+                <header className="flex items-center px-md py-md border-b border-outline-variant/20">
+                  <p className="font-label-sm text-label-sm text-on-surface-variant">
+                    {nf(sortCross.sorted.length)} combinaciones
+                  </p>
                 </header>
                 <div className="flex items-center justify-between gap-3 px-md py-sm flex-wrap">
                   <div className="form-input-styled flex items-center gap-2 min-w-[220px]">
