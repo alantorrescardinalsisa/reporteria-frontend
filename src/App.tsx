@@ -810,27 +810,50 @@ function HourlyBarChart({
   );
 }
 
-/* ---------- NUEVO (ADITIVO): paginado de a 10 para tablas largas ---------- */
+/* ---------- NUEVO (ADITIVO): paginado de a 10 (u otro tamaño) para
+   tablas largas. pageSize/onPageSizeChange son opcionales -- si se
+   pasan, aparece un selector "Mostrar: N" para ver más registros por
+   página sin tener que navegar tanto. ---------- */
 function Pager({
   page,
   setPage,
   total,
   pageSize = 10,
+  pageSizeOptions,
+  onPageSizeChange,
 }: {
   page: number;
   setPage: (p: number) => void;
   total: number;
   pageSize?: number;
+  pageSizeOptions?: number[];
+  onPageSizeChange?: (n: number) => void;
 }) {
   const totalPages = Math.max(1, Math.ceil(total / pageSize)),
     start = total === 0 ? 0 : (page - 1) * pageSize + 1,
     end = Math.min(page * pageSize, total);
   return (
-    <div className="flex items-center justify-between px-md py-sm border-t border-outline-variant/20">
+    <div className="flex items-center justify-between px-md py-sm border-t border-outline-variant/20 flex-wrap gap-2">
       <span className="font-label-sm text-label-sm text-on-surface-variant">
         {total === 0 ? "Sin registros" : `Mostrando ${nf(start)}–${nf(end)} de ${nf(total)}`}
       </span>
       <div className="flex items-center gap-2">
+        {pageSizeOptions && onPageSizeChange && (
+          <label className="flex items-center gap-1.5 font-label-sm text-label-sm text-on-surface-variant mr-1">
+            Mostrar
+            <select
+              className="form-input-styled font-body-md text-body-md text-on-surface h-8 py-0"
+              value={pageSize}
+              onChange={(e) => onPageSizeChange(Number(e.target.value))}
+            >
+              {pageSizeOptions.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <button
           type="button"
           className="h-8 px-sm rounded bg-surface-container-low text-on-surface font-label-md text-label-md disabled:opacity-40 disabled:cursor-not-allowed hover:bg-surface-variant transition-colors"
@@ -1773,6 +1796,13 @@ export default function App() {
     [uploadStatus, setUploadStatus] = useState<IngestStatus | null>(null),
     [uploadMessage, setUploadMessage] = useState(""),
     [providerSearch, setProviderSearch] = useState(""),
+    // NUEVO (ADITIVO): paginado + búsqueda en Detalle por prestador y
+    // Campaña × prestador (antes mostraban todas las filas sin cortar).
+    [providerPage, setProviderPage] = useState(1),
+    [providerPageSize, setProviderPageSize] = useState(20),
+    [crossSearch, setCrossSearch] = useState(""),
+    [crossPage, setCrossPage] = useState(1),
+    [crossPageSize, setCrossPageSize] = useState(20),
     [outlierTramo, setOutlierTramo] = useState<keyof Outliers>("demora_real"),
     [campanaImpactoPage, setCampanaImpactoPage] = useState(1),
     [outliersPage, setOutliersPage] = useState(1),
@@ -1834,6 +1864,8 @@ export default function App() {
     setError(null);
     setCampanaImpactoPage(1);
     setOutliersPage(1);
+    setProviderPage(1);
+    setCrossPage(1);
     setHoraPrestador("");
     setHoraCampana("");
     setHoraLocalDistribucion(null);
@@ -2143,8 +2175,15 @@ export default function App() {
       .filter((p) => p.clasificacion === "destacado")
       .slice(0, 3);
   const filteredProviders = providers.filter((x) =>
-    x.prestador.toLowerCase().includes(providerSearch.toLowerCase()),
-  );
+      x.prestador.toLowerCase().includes(providerSearch.toLowerCase()),
+    ),
+    filteredCross = cross.filter((x) => {
+      const q = crossSearch.toLowerCase();
+      return (
+        x.prestador.toLowerCase().includes(q) ||
+        x.campana.toLowerCase().includes(q)
+      );
+    });
   // ---------- NUEVO (ADITIVO): orden por columna en cada tabla ----------
   const sortCampanaImpacto = useSort(
       campanaImpacto,
@@ -2163,7 +2202,7 @@ export default function App() {
       "desc",
     ),
     sortProviders = useSort(filteredProviders, "total_general", "desc"),
-    sortCross = useSort(cross, "total_general", "desc"),
+    sortCross = useSort(filteredCross, "total_general", "desc"),
     sortInteligencia = useSort(
       inteligencia?.prestadores || [],
       "percentil_benchmark",
@@ -2194,6 +2233,20 @@ export default function App() {
       toggle: (k, d) => {
         sortInteligencia.toggle(k, d);
         setInteligenciaPage(1);
+      },
+    },
+    sortProvidersPageable: SortState = {
+      ...sortProviders,
+      toggle: (k, d) => {
+        sortProviders.toggle(k, d);
+        setProviderPage(1);
+      },
+    },
+    sortCrossPageable: SortState = {
+      ...sortCross,
+      toggle: (k, d) => {
+        sortCross.toggle(k, d);
+        setCrossPage(1);
       },
     };
   const displayedProviders = sortProviders.sorted;
@@ -3336,7 +3389,10 @@ export default function App() {
                         className="flex-1 outline-none bg-transparent font-body-md text-body-md text-on-surface"
                         placeholder="Buscar prestador…"
                         value={providerSearch}
-                        onChange={(e) => setProviderSearch(e.target.value)}
+                        onChange={(e) => {
+                          setProviderSearch(e.target.value);
+                          setProviderPage(1);
+                        }}
                       />
                     </div>
                   </div>
@@ -3355,54 +3411,54 @@ export default function App() {
                         <SortableTh
                           label="Prestador"
                           sortKey="prestador"
-                          sort={sortProviders}
+                          sort={sortProvidersPageable}
                           defaultDir="asc"
                         />
                         <SortableTh
                           label="Total"
                           sortKey="total_general"
-                          sort={sortProviders}
+                          sort={sortProvidersPageable}
                         />
                         <SortableTh
                           label="Con enviador"
                           sortKey="enviador_si"
-                          sort={sortProviders}
+                          sort={sortProvidersPageable}
                         />
-                        <SortableTh label="Uso" sortKey="uso_enviador" sort={sortProviders} />
+                        <SortableTh label="Uso" sortKey="uso_enviador" sort={sortProvidersPageable} />
                         <SortableTh
                           label="Asigna"
                           sortKey="asigna_movil"
-                          sort={sortProviders}
+                          sort={sortProvidersPageable}
                         />
                         <SortableTh
                           label="Efectividad"
                           sortKey="efectividad_enviador"
-                          sort={sortProviders}
+                          sort={sortProvidersPageable}
                         />
                         <SortableTh
                           label="Programados"
                           sortKey="servicios_programados"
-                          sort={sortProviders}
+                          sort={sortProvidersPageable}
                         />
                         <SortableTh
                           label="Cumple"
                           sortKey="servicios_cumplidos"
-                          sort={sortProviders}
+                          sort={sortProvidersPageable}
                         />
                         <SortableTh
                           label="No cumple"
                           sortKey="servicios_no_cumplidos"
-                          sort={sortProviders}
+                          sort={sortProvidersPageable}
                         />
                         <SortableTh
                           label="Cumplimiento"
                           sortKey="cumplimiento_demora"
-                          sort={sortProviders}
+                          sort={sortProvidersPageable}
                         />
                         <SortableTh
                           label="Índice calidad"
                           sortKey="indice_calidad_datos"
-                          sort={sortProviders}
+                          sort={sortProvidersPageable}
                           tooltip={{
                             leer: "Qué tan completos están, en promedio, los datos de los servicios de ese prestador.",
                             calculo: "Promedio de completitud de los campos clave, solo para ese prestador.",
@@ -3411,7 +3467,7 @@ export default function App() {
                         <SortableTh
                           label="Trazabilidad"
                           sortKey="porcentaje_trazabilidad_completa"
-                          sort={sortProviders}
+                          sort={sortProvidersPageable}
                           tooltip={{
                             leer: "Qué % de los servicios de ese prestador tiene la cadena completa de eventos (Alta→Despachador→Asignado→Envío OK→Llegó→Finalizó).",
                             calculo: "Filas con las 6 columnas de tiempo cargadas ÷ total de ese prestador.",
@@ -3420,7 +3476,7 @@ export default function App() {
                         <SortableTh
                           label="Volumen rel."
                           sortKey="volumen_relativo"
-                          sort={sortProviders}
+                          sort={sortProvidersPageable}
                           tooltip={{
                             leer: "Qué tan grande es ese prestador comparado con el más grande del listado filtrado. 100% es el que más servicios tiene.",
                             calculo: "Total de ese prestador ÷ total del prestador con más volumen.",
@@ -3429,7 +3485,7 @@ export default function App() {
                         <SortableTh
                           label="Score"
                           sortKey="score_ranking"
-                          sort={sortProviders}
+                          sort={sortProvidersPageable}
                           tooltip={{
                             leer: "Una nota de 0 a 100% que combina las 4 columnas anteriores. El ⚠ avisa que ese prestador tiene menos de 20 servicios — con tan poca muestra, el score es poco confiable.",
                             calculo: "37,5% Cumplimiento observado + 31,25% Efectividad asignación + 18,75% Índice calidad + 12,5% Volumen relativo (se renormaliza si falta algún componente).",
@@ -3438,7 +3494,12 @@ export default function App() {
                       </tr>
                     </thead>
                     <tbody>
-                      {displayedProviders.map((x) => (
+                      {displayedProviders
+                        .slice(
+                          (providerPage - 1) * providerPageSize,
+                          providerPage * providerPageSize,
+                        )
+                        .map((x) => (
                         <tr
                           key={x.prestador_id}
                           className="border-b border-outline-variant/10 hover:bg-surface-container-low"
@@ -3478,6 +3539,17 @@ export default function App() {
                     </tbody>
                   </table>
                 </div>
+                <Pager
+                  page={providerPage}
+                  setPage={setProviderPage}
+                  total={displayedProviders.length}
+                  pageSize={providerPageSize}
+                  pageSizeOptions={[10, 20, 50, 100]}
+                  onPageSizeChange={(n) => {
+                    setProviderPageSize(n);
+                    setProviderPage(1);
+                  }}
+                />
               </section>
             )}
 
@@ -3490,13 +3562,25 @@ export default function App() {
                       Campaña × prestador
                     </h2>
                     <p className="font-label-sm text-label-sm text-on-surface-variant">
-                      {nf(cross.length)} combinaciones
+                      {nf(sortCross.sorted.length)} combinaciones
                     </p>
                   </div>
                 </header>
-                <div className="flex justify-end px-md py-sm">
+                <div className="flex items-center justify-between gap-3 px-md py-sm flex-wrap">
+                  <div className="form-input-styled flex items-center gap-2 min-w-[220px]">
+                    <Icon name="search" className="text-[18px] text-outline" />
+                    <input
+                      className="flex-1 outline-none bg-transparent font-body-md text-body-md text-on-surface"
+                      placeholder="Buscar prestador o campaña…"
+                      value={crossSearch}
+                      onChange={(e) => {
+                        setCrossSearch(e.target.value);
+                        setCrossPage(1);
+                      }}
+                    />
+                  </div>
                   <ExportButton
-                    rows={() => cross as unknown as Record<string, unknown>[]}
+                    rows={() => sortCross.sorted as unknown as Record<string, unknown>[]}
                     fileBaseName="campana-prestador"
                     pdfTitle="Campaña × prestador"
                   />
@@ -3508,45 +3592,50 @@ export default function App() {
                         <SortableTh
                           label="Campaña"
                           sortKey="campana"
-                          sort={sortCross}
+                          sort={sortCrossPageable}
                           defaultDir="asc"
                         />
                         <SortableTh
                           label="Prestador"
                           sortKey="prestador"
-                          sort={sortCross}
+                          sort={sortCrossPageable}
                           defaultDir="asc"
                         />
-                        <SortableTh label="Total" sortKey="total_general" sort={sortCross} />
+                        <SortableTh label="Total" sortKey="total_general" sort={sortCrossPageable} />
                         <SortableTh
                           label="Con enviador"
                           sortKey="enviador_si"
-                          sort={sortCross}
+                          sort={sortCrossPageable}
                         />
                         <SortableTh
                           label="Efectividad"
                           sortKey="efectividad_enviador"
-                          sort={sortCross}
+                          sort={sortCrossPageable}
                         />
                         <SortableTh
                           label="Cumple"
                           sortKey="servicios_cumplidos"
-                          sort={sortCross}
+                          sort={sortCrossPageable}
                         />
                         <SortableTh
                           label="No cumple"
                           sortKey="servicios_no_cumplidos"
-                          sort={sortCross}
+                          sort={sortCrossPageable}
                         />
                         <SortableTh
                           label="Cumplimiento"
                           sortKey="cumplimiento_demora"
-                          sort={sortCross}
+                          sort={sortCrossPageable}
                         />
                       </tr>
                     </thead>
                     <tbody>
-                      {sortCross.sorted.map((x, i) => (
+                      {sortCross.sorted
+                        .slice(
+                          (crossPage - 1) * crossPageSize,
+                          crossPage * crossPageSize,
+                        )
+                        .map((x, i) => (
                         <tr
                           key={`${x.campana}-${x.prestador_id}-${i}`}
                           className="border-b border-outline-variant/10 hover:bg-surface-container-low"
@@ -3564,6 +3653,17 @@ export default function App() {
                     </tbody>
                   </table>
                 </div>
+                <Pager
+                  page={crossPage}
+                  setPage={setCrossPage}
+                  total={sortCross.sorted.length}
+                  pageSize={crossPageSize}
+                  pageSizeOptions={[10, 20, 50, 100]}
+                  onPageSizeChange={(n) => {
+                    setCrossPageSize(n);
+                    setCrossPage(1);
+                  }}
+                />
               </section>
             )}
 
