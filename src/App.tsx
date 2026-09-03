@@ -560,6 +560,22 @@ function TrendChart({ data }: { data: TrendPoint[] }) {
     }
   }, [periodo, zoom, data]);
 
+  // Al exportar a PDF (window.print), si el gráfico había quedado con zoom
+  // y desplazado (drag), el navegador imprimiría justo esa porción movida
+  // -- se ve "desfazado". Antes de imprimir, siempre volvemos a la vista
+  // completa (sin zoom) y con el scroll en el origen.
+  useEffect(() => {
+    const beforePrint = () => {
+      setZoom(false);
+      if (viewportRef.current) {
+        viewportRef.current.scrollLeft = 0;
+        viewportRef.current.scrollTop = 0;
+      }
+    };
+    window.addEventListener("beforeprint", beforePrint);
+    return () => window.removeEventListener("beforeprint", beforePrint);
+  }, []);
+
   if (!data.length)
     return (
       <div className="flex-1 min-h-[260px] flex items-center justify-center text-body-md font-body-md text-on-surface-variant">
@@ -625,7 +641,7 @@ function TrendChart({ data }: { data: TrendPoint[] }) {
         onMouseMove={onMouseMove}
         onMouseUp={stopDragging}
         onMouseLeave={stopDragging}
-        className={`w-full overflow-auto rounded-lg ${
+        className={`trend-chart-viewport w-full overflow-auto rounded-lg ${
           zoom ? (dragging ? "cursor-grabbing" : "cursor-grab") : ""
         }`}
         style={{ height: VIEWPORT_H }}

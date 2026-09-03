@@ -190,8 +190,46 @@
           overflow: visible !important;
           height: auto !important;
         }
+        /* Los contenedores con scroll propio (tablas anchas, el gráfico
+           de tendencia diaria) solo muestran, al imprimir, la porción que
+           estaba visible en pantalla -- se ven "cortados" o "desfazados".
+           Los liberamos para que se imprima todo el contenido. */
+        .overflow-x-auto,
+        .overflow-y-auto,
+        .overflow-auto {
+          overflow: visible !important;
+        }
+        /* El visor del gráfico de tendencia diaria tiene, además, una
+           altura fija en pixeles (para poder hacer scroll vertical al
+           pausearlo con zoom) -- con overflow visible sin esto, el
+           contenido se superpondría con lo que sigue debajo. */
+        .trend-chart-viewport {
+          height: auto !important;
+          overflow: visible !important;
+        }
         body {
           background: #ffffff !important;
+        }
+        /* Evitar que una tarjeta/indicador individual quede cortado justo
+           en el salto de página. A propósito NO se aplica a <section>
+           (agrupa varias tarjetas y puede ser más alta que una hoja
+           entera -- si se le pidiera "no cortar" ahí, el navegador
+           dejaría un hueco en blanco enorme en vez de simplemente
+           avanzar de página). */
+        .card-shadow,
+        table,
+        tr,
+        article {
+          break-inside: avoid;
+          page-break-inside: avoid;
+        }
+        /* Que un título no quede solo al final de una página, separado
+           del contenido que le sigue. */
+        h2,
+        h3,
+        h4 {
+          break-after: avoid-page;
+          page-break-after: avoid;
         }
       }
     </style>
