@@ -1079,11 +1079,11 @@ function exportExcel(rows: Record<string, unknown>[], name: string) {
    en casi todos los contenedores, y los motores de impresión de los
    navegadores fragmentan mal el contenido dentro de layouts flex. Ahora
    se genera con html2pdf.js (html2canvas + jsPDF): rasteriza el <main>
-   (todo menos el menú lateral, que ni siquiera es su hijo) y decide los
-   saltos de página por altura real de cada bloque, con el modo
-   "avoid-all" -- evita cortar cualquier elemento salvo que sea
-   imposible, y el modo "css" respeta las reglas break-inside/break-after
-   ya definidas en index.html sobre tarjetas, filas y títulos. */
+   (todo menos el menú lateral, que ni siquiera es su hijo) en orientación
+   horizontal (el dashboard es ancho) y decide los saltos de página según
+   las reglas break-inside/break-after ya definidas en index.html sobre
+   tarjetas, filas y títulos (pagebreak mode "css" -- ver el porqué de no
+   usar "avoid-all" en los comentarios de exportPdfSnapshot). */
 function waitForExportLayout(): Promise<void> {
   return new Promise((resolve) => {
     // Le avisamos a los componentes con estado propio (ej. el gráfico de
@@ -1105,9 +1105,24 @@ async function exportPdfSnapshot(title: string, fileBaseName: string) {
         margin: 10,
         filename: `${fileBaseName}.pdf`,
         image: { type: "jpeg", quality: 0.98 },
-        html2canvas: { scale: 2, useCORS: true, backgroundColor: "#f7f9fb" },
-        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-        pagebreak: { mode: ["avoid-all", "css"] },
+        // scale 3 (no 2): más nitidez de texto, ya que el ancho real de
+        // <main> en escritorio es bastante mayor al ancho útil de una
+        // hoja A4 y el contenido se reduce igual al encajarlo.
+        html2canvas: { scale: 3, useCORS: true, backgroundColor: "#f7f9fb" },
+        // landscape (no portrait): esta plataforma es un dashboard ancho
+        // (tablas de muchas columnas, gráficos anchos) -- en portrait el
+        // contenido se reducía demasiado para poder leerse.
+        jsPDF: { unit: "mm", format: "a4", orientation: "landscape" },
+        // SOLO "css": el modo "avoid-all" intenta no partir NINGÚN
+        // elemento del DOM (hasta el <span> más chico), y en un árbol
+        // tan anidado como el de esta plataforma (Tailwind + React)
+        // termina forzando un salto de página cada pocos elementos --
+        // por eso salían 30 páginas en vez de unas pocas, cada una con
+        // apenas una porción mínima de contenido estirada y borrosa.
+        // "css" respeta solo las reglas explícitas que escribimos
+        // (.card-shadow/table/tr/article/h2-h4 en index.html), que es
+        // justo el nivel de detalle que queremos.
+        pagebreak: { mode: ["css"] },
       })
       .from(el);
     const pdf = await worker.toPdf().get("pdf");
