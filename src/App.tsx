@@ -1664,7 +1664,9 @@ export default function App() {
     );
 
   return (
-    <div className="font-body-md text-body-md min-h-screen flex bg-background text-on-background">
+    <div
+      className={`font-body-md text-body-md min-h-screen flex bg-background text-on-background${printing ? " is-printing" : ""}`}
+    >
       {/* ---------- Sidebar ----------
           NO se oculta por CSS: se saca del DOM directamente cuando
           "printing" es true (ver el useEffect de beforeprint/afterprint

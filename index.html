@@ -171,116 +171,103 @@
       }
       /* NUEVO (ADITIVO): exportar a PDF = imprimir la vista actual tal
          cual se ve en la plataforma (mismos graficos, colores y datos) --
-         ver printCurrentView()/ExportButton en App.tsx. Se probo antes
-         con html2pdf.js (html2canvas + jsPDF), pero esa libreria
-         rasteriza el DOM con su propio motor de medicion, que no
-         entiende bien el layout con flexbox anidado de esta plataforma:
-         tarjetas enteras quedaban partidas al medio entre una hoja y la
-         siguiente pese a tener break-inside:avoid (confirmado
-         visualmente en un PDF de prueba). window.print() usa el mismo
-         motor de renderizado que ya pinta la pantalla -- no hay paso de
-         rasterizado intermedio que pueda mal-interpretar el layout. */
-      @media print {
-        * {
-          -webkit-print-color-adjust: exact !important;
-          print-color-adjust: exact !important;
-          color-adjust: exact !important;
-        }
-        /* display:none solo a veces no alcanza para un elemento
-           position:fixed en impresión (bug conocido de Chromium/WebKit:
-           el motor de paginación intenta repetir los elementos fixed en
-           cada hoja, y esa lógica puede ganarle al display:none) -- por
-           eso también se le saca el position:fixed acá. */
-        nav {
-          display: none !important;
-          position: static !important;
-        }
-        /* EL AJUSTE CLAVE de esta vuelta: las secciones armadas como
-           grid de 2+ columnas lado a lado (ej. "Distribución de
-           servicios cumplidos" + "Calidad de información", cada una en
-           su propia columna con "lg:grid-cols-2") paginan mal, incluso
-           con todas las reglas de break-inside/break-after ya puestas:
-           el motor de impresión puede cortar cada columna en una altura
-           DISTINTA e independiente, dejando el título de una columna
-           solo al final de una hoja mientras su contenido salta a la
-           siguiente (confirmado visualmente en un PDF de prueba). Es un
-           problema conocido de layouts multi-columna en impresión, sin
-           relación con las reglas de break-inside que ya funcionan bien
-           para contenido en una sola columna. La solución: durante la
-           impresión, cualquier grid con columnas (selector por
-           coincidencia de clase, agarra "grid-cols-1", "lg:grid-cols-2",
-           "xl:grid-cols-12", etc. sin necesidad de listarlas todas)
-           colapsa a una sola columna -- así cada bloque se imprime de
-           punta a punta antes de pasar al siguiente, en vez de dos
-           columnas independientes compitiendo por el mismo salto de
-           página. Los hijos con "col-span-N" simplemente ocupan el
-           ancho completo de esa única columna, sin romper nada. */
-        [class*="grid-cols-"] {
-          grid-template-columns: 1fr !important;
-        }
-        .ml-sidebar-width {
-          margin-left: 0 !important;
-          width: 100% !important;
-        }
-        main {
-          overflow: visible !important;
-          height: auto !important;
-        }
-        /* Los contenedores con scroll propio (tablas anchas, el visor
-           del gráfico de tendencia diaria) solo mostrarían, al imprimir,
-           la porción que estaba visible en pantalla -- se ven "cortados"
-           o "desfazados". Los liberamos para que se imprima todo. */
-        .overflow-x-auto,
-        .overflow-y-auto,
-        .overflow-auto {
-          overflow: visible !important;
-        }
-        .trend-chart-viewport {
-          height: auto !important;
-          overflow: visible !important;
-        }
-        body {
-          background: #ffffff !important;
-        }
-        /* Evitar que una tarjeta/indicador individual quede cortado
-           justo en el salto de página. A propósito NO se aplica a
-           <section> (agrupa varias tarjetas y puede ser más alta que
-           una hoja entera -- forzar "no cortar" ahí dejaría un hueco en
-           blanco enorme en vez de simplemente avanzar de página). */
-        .card-shadow,
-        table,
-        tr,
-        article {
-          break-inside: avoid;
-          page-break-inside: avoid;
-        }
-        /* Que un título no quede solo al final de una página, separado
-           del contenido que le sigue. */
-        h2,
-        h3,
-        h4 {
-          break-after: avoid-page;
-          page-break-after: avoid;
-        }
-        /* EL AJUSTE CLAVE para que los saltos de página no queden
-           "desfazados": los navegadores fragmentan de forma confiable
-           un layout de bloques (cada hijo, uno debajo del otro), pero
-           fragmentan mal el contenido DENTRO de un contenedor flex
-           (que es como está armada casi toda esta plataforma:
-           "flex flex-col" para apilar título + tarjeta + tarjeta...).
-           Ese es justo el motivo por el que break-inside:avoid en las
-           tarjetas no alcanzaba a evitar los cortes. Durante la
-           impresión, los contenedores que apilan verticalmente
-           (".flex-col") pasan a grid de una sola columna implícita --
-           mismo espaciado (gap funciona igual en grid que en flex) y
-           mismo apilado visual, pero el motor de paginación del
-           navegador sí sabe fragmentar bien un grid. No se toca ".flex"
-           a secas (sin "-col"), que es lo que usan las filas
-           horizontales -- ícono + texto, badges, botones -- para no
-           romper esa alineación lado a lado. */
-        .flex-col {
-          display: grid !important;
-        }
+         ver printCurrentView()/ExportButton en App.tsx.
+
+         IMPORTANTE -- por que estas reglas NO estan dentro de
+         "@media print": se probo así primero (ocultar el nav, colapsar
+         los grids de 2 columnas, forzar flex-col a grid, etc., todo
+         gateado por @media print) y, pese a que cada regla se verificó
+         syntacticamente correcta y hasta se probó por separado que SI
+         funciona cuando se fuerza de forma incondicional, NINGUNA de
+         esas reglas se aplicaba en el PDF real -- @media print
+         simplemente no se estaba evaluando como verdadero en el
+         mecanismo que genera el PDF del usuario. La UNICA corrección
+         que sí funcionó de punta a punta fue la que saca el <nav> del
+         DOM con React (estado "printing" en App.tsx), que no depende en
+         absoluto de @media print. Por eso TODAS las reglas de esta
+         sección ahora estan gateadas por la clase ".is-printing", que
+         App.tsx agrega/saca de un contenedor de nivel superior usando
+         ese mismo estado "printing" -- son reglas CSS comunes y
+         corrientes (sin media query), activadas por una clase real en
+         el DOM, exactamente el mismo mecanismo ya comprobado con el
+         menú lateral. break-inside/break-after no necesitan estar dentro
+         de @media print para funcionar: son propiedades que solo tienen
+         efecto durante la paginación real (imprimir), sin importar si la
+         regla que les da valor está adentro o afuera de un media query. */
+      .is-printing * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        color-adjust: exact !important;
+      }
+      .is-printing .ml-sidebar-width {
+        margin-left: 0 !important;
+        width: 100% !important;
+      }
+      .is-printing main {
+        overflow: visible !important;
+        height: auto !important;
+      }
+      /* Los contenedores con scroll propio (tablas anchas, el visor del
+         gráfico de tendencia diaria) solo mostrarían, al imprimir, la
+         porción que estaba visible en pantalla -- se ven "cortados" o
+         "desfazados". Los liberamos para que se imprima todo. */
+      .is-printing .overflow-x-auto,
+      .is-printing .overflow-y-auto,
+      .is-printing .overflow-auto {
+        overflow: visible !important;
+      }
+      .is-printing .trend-chart-viewport {
+        height: auto !important;
+        overflow: visible !important;
+      }
+      .is-printing {
+        background: #ffffff !important;
+      }
+      /* Evitar que una tarjeta/indicador individual quede cortado justo
+         en el salto de página. A propósito NO se aplica a <section>
+         (agrupa varias tarjetas y puede ser más alta que una hoja
+         entera -- forzar "no cortar" ahí dejaría un hueco en blanco
+         enorme en vez de simplemente avanzar de página). */
+      .is-printing .card-shadow,
+      .is-printing table,
+      .is-printing tr,
+      .is-printing article {
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+      /* Que un título no quede solo al final de una página, separado del
+         contenido que le sigue. */
+      .is-printing h2,
+      .is-printing h3,
+      .is-printing h4 {
+        break-after: avoid-page;
+        page-break-after: avoid;
+      }
+      /* Los navegadores fragmentan de forma confiable un layout de
+         bloques (cada hijo, uno debajo del otro), pero fragmentan mal el
+         contenido DENTRO de un contenedor flex (que es como está armada
+         casi toda esta plataforma). Durante la impresión, los
+         contenedores que apilan verticalmente (".flex-col") pasan a
+         grid de una sola columna implícita -- mismo espaciado, mismo
+         apilado visual, pero el motor de paginación sí sabe fragmentar
+         bien un grid. No se toca ".flex" a secas (sin "-col"), que es lo
+         que usan las filas horizontales -- ícono + texto, badges,
+         botones -- para no romper esa alineación lado a lado. */
+      .is-printing .flex-col {
+        display: grid !important;
+      }
+      /* Las secciones armadas como grid de 2+ columnas lado a lado (ej.
+         "Distribución de servicios cumplidos" + "Calidad de
+         información") paginan mal: el motor de impresión puede cortar
+         cada columna en una altura DISTINTA e independiente, dejando el
+         título de una columna solo al final de una hoja mientras su
+         contenido salta a la siguiente. Selector por coincidencia de
+         clase: agarra "grid-cols-1", "lg:grid-cols-2",
+         "xl:grid-cols-12", etc. sin necesidad de listarlas todas. Los
+         hijos con "col-span-N" simplemente ocupan el ancho completo de
+         esa única columna, sin romper nada. */
+      .is-printing [class*="grid-cols-"] {
+        grid-template-columns: 1fr !important;
       }
     </style>
   </head>
