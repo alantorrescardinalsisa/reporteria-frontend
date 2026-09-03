@@ -2382,9 +2382,12 @@ export default function App() {
               <section className="flex flex-col gap-md">
                 {page === "metrics" && (
                   <div className="flex justify-between items-end flex-wrap gap-2">
-                    <h2 className="font-display-lg text-display-lg text-on-surface">
-                      Métricas de Trackeo
-                    </h2>
+                    <div className="flex items-center gap-3">
+                      <Icon name="analytics" className="text-primary text-[32px]" filled />
+                      <h2 className="font-display-lg text-display-lg text-on-surface">
+                        Métricas de Trackeo
+                      </h2>
+                    </div>
                     <ExportButton
                       label="Exportar Reporte"
                       className="bg-primary-container text-on-primary-container px-sm py-xs rounded-lg font-label-md text-label-md hover:bg-primary hover:text-on-primary transition-colors flex items-center gap-2"
@@ -3365,9 +3368,9 @@ export default function App() {
             {page === "providers" && (
               <section className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 flex flex-col overflow-hidden">
                 <header className="flex items-center gap-3 px-md py-md border-b border-outline-variant/20">
-                  <Icon name="person_search" className="text-primary" />
+                  <Icon name="person_search" className="text-primary text-[32px]" filled />
                   <div>
-                    <h2 className="font-title-lg text-title-lg text-on-surface">
+                    <h2 className="font-display-lg text-display-lg text-on-surface">
                       Detalle por prestador
                     </h2>
                     <p className="font-label-sm text-label-sm text-on-surface-variant">
@@ -3556,9 +3559,9 @@ export default function App() {
             {page === "cross" && (
               <section className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 flex flex-col overflow-hidden">
                 <header className="flex items-center gap-3 px-md py-md border-b border-outline-variant/20">
-                  <Icon name="campaign" className="text-primary" />
+                  <Icon name="campaign" className="text-primary text-[32px]" filled />
                   <div>
-                    <h2 className="font-title-lg text-title-lg text-on-surface">
+                    <h2 className="font-display-lg text-display-lg text-on-surface">
                       Campaña × prestador
                     </h2>
                     <p className="font-label-sm text-label-sm text-on-surface-variant">
@@ -4053,9 +4056,9 @@ export default function App() {
             {page === "upload" && (
               <section className="max-w-xl mx-auto w-full bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 flex flex-col gap-md p-lg">
                 <header className="flex items-center gap-3">
-                  <Icon name="upload_file" className="text-primary" />
+                  <Icon name="upload_file" className="text-primary text-[32px]" filled />
                   <div>
-                    <h2 className="font-title-lg text-title-lg text-on-surface">
+                    <h2 className="font-display-lg text-display-lg text-on-surface">
                       Cargar reportes
                     </h2>
                     <p className="font-label-sm text-label-sm text-on-surface-variant">
