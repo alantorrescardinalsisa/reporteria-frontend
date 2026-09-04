@@ -164,6 +164,17 @@ export type Trazabilidad = {
   servicios_trazabilidad_completa: number;
   porcentaje_trazabilidad_completa: number;
 };
+// NUEVO v4.25.0 (Poka-Yoke, ADITIVO): valores estructuralmente
+// imposibles (demoras negativas, eventos fuera de orden cronológico).
+// Ver /api/metricas-trackeo/calidad-datos.
+export type Anomalias = {
+  total: number;
+  demora_real_negativa: number;
+  demora_prometida_negativa: number;
+  eventos_fuera_de_orden_cronologico: { tramo: string; cantidad: number }[];
+  servicios_con_alguna_anomalia: number;
+  porcentaje_servicios_con_alguna_anomalia: number;
+};
 // NUEVO v4.17.0 (ADITIVO): coordenadas y MovilRegistrado como
 // habilitadores del proceso de asignación.
 export type ResumenAsignacion = {
@@ -390,11 +401,20 @@ export type CampanaAlerta = {
   variacion_pp: number;
   total_mes_actual: number;
 };
+// NUEVO v4.25.0 (Jidoka, ADITIVO): caída de trazabilidad mes a mes.
+export type CalidadDatosAlerta = {
+  trazabilidad_mes_anterior: number;
+  trazabilidad_mes_actual: number;
+  variacion_pp: number;
+  total_mes_actual: number;
+  mensaje: string;
+};
 export type Alertas = {
   mes_actual: string | null;
   mes_anterior: string | null;
   prestadores_alerta: PrestadorAlerta[];
   campanas_alerta: CampanaAlerta[];
+  calidad_datos_alerta: CalidadDatosAlerta | null;
   total_alertas: number;
   mensaje?: string;
 };
@@ -563,9 +583,11 @@ export const api = {
       "/api/metricas-trackeo/tendencia" + qs(fp(f)),
     ),
   trackeoCalidadDatos: (f: TrackeoFilters) =>
-    request<{ calidad: DataQuality; trazabilidad: Trazabilidad }>(
-      "/api/metricas-trackeo/calidad-datos" + qs(fp(f)),
-    ),
+    request<{
+      calidad: DataQuality;
+      trazabilidad: Trazabilidad;
+      anomalias: Anomalias;
+    }>("/api/metricas-trackeo/calidad-datos" + qs(fp(f))),
   trackeoHabilitadoresAsignacion: (f: TrackeoFilters) =>
     request<HabilitadoresAsignacion>(
       "/api/metricas-trackeo/habilitadores-asignacion" + qs(fp(f)),

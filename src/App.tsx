@@ -11,6 +11,7 @@ import { createPortal, flushSync } from "react-dom";
 import {
   api,
   type Alertas,
+  type Anomalias,
   type CampanaImpacto,
   type CampanaMetric,
   type CampanaPrestadorMetric,
@@ -96,6 +97,17 @@ const DEFAULT: TrackeoFilters = {
   // NUEVO v4.24.0 (ADITIVO): sin poliza preseleccionada por defecto (se
   // incluyen todas, igual que campañas/prestadores).
   polizas: [],
+};
+// NUEVO v4.25.0 (Poka-Yoke, ADITIVO): nombres legibles de los tramos
+// T1-T6 (mismos que usa el backend en TRAMOS_FUNNEL), para la tarjeta
+// de "Anomalías detectadas".
+const TRAMO_LABELS: Record<string, string> = {
+  t1_alta_a_despachador: "Alta → Despachador",
+  t2_despachador_a_asignacion: "Despachador → Asignación",
+  t3_alta_a_asignacion: "Alta → Asignación",
+  t4_asignacion_a_arribo: "Envío → Llegada",
+  t5_ejecucion: "Llegada → Finalización",
+  t6_end_to_end: "Alta → Finalización",
 };
 const nf = (v?: number | null) =>
   v == null ? "—" : new Intl.NumberFormat("es-AR").format(v);
@@ -1468,6 +1480,30 @@ function NotificationBell({
                 ))}
               </div>
             )}
+            {alertas?.calidad_datos_alerta && (
+              <div className="p-md flex flex-col gap-2 border-t border-outline-variant/20">
+                <span className="font-label-md text-label-md text-on-surface-variant uppercase tracking-wide">
+                  Calidad de datos cayendo
+                </span>
+                <button
+                  type="button"
+                  onClick={() => irA("metrics")}
+                  className="text-left flex items-center justify-between gap-2 bg-[#f59e0b]/5 hover:bg-[#f59e0b]/10 rounded-lg px-sm py-2 transition-colors"
+                >
+                  <div className="min-w-0">
+                    <div className="font-body-md text-body-md font-medium text-on-surface truncate">
+                      Trazabilidad completa de los servicios
+                    </div>
+                    <div className="font-label-sm text-label-sm text-on-surface-variant">
+                      {pct(alertas.calidad_datos_alerta.trazabilidad_mes_anterior)} →{" "}
+                      {pct(alertas.calidad_datos_alerta.trazabilidad_mes_actual)} (
+                      {alertas.calidad_datos_alerta.variacion_pp} pp)
+                    </div>
+                  </div>
+                  <Icon name="report" className="text-[#f59e0b] shrink-0" />
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1957,6 +1993,8 @@ export default function App() {
     [estadosCategorizados, setEstadosCategorizados] =
       useState<EstadosCategorizados | null>(null),
     [trazabilidad, setTrazabilidad] = useState<Trazabilidad | null>(null),
+    // NUEVO v4.25.0 (Poka-Yoke, ADITIVO): valores imposibles detectados.
+    [anomalias, setAnomalias] = useState<Anomalias | null>(null),
     [habilitadores, setHabilitadores] =
       useState<HabilitadoresAsignacion | null>(null),
     [programadosFunnel, setProgramadosFunnel] =
@@ -2086,9 +2124,14 @@ export default function App() {
     );
     take<{ estados: EstadoOption[] }>(5, (x) => setStates(x.estados));
     take<{ tendencia: TrendPoint[] }>(6, (x) => setTrend(x.tendencia));
-    take<{ calidad: DataQuality; trazabilidad: Trazabilidad }>(7, (x) => {
+    take<{
+      calidad: DataQuality;
+      trazabilidad: Trazabilidad;
+      anomalias: Anomalias;
+    }>(7, (x) => {
       setQuality(x.calidad);
       setTrazabilidad(x.trazabilidad);
+      setAnomalias(x.anomalias);
     });
     take<{ resultados: CampanaPrestadorMetric[] }>(8, (x) =>
       setCross(x.resultados),
@@ -2986,6 +3029,58 @@ export default function App() {
                     </div>
                   </div>
                 </section>
+
+                {/* ---------- NUEVO v4.25.0 (Poka-Yoke, ADITIVO): valores
+                    estructuralmente imposibles -- no "muy altos" (eso ya
+                    lo cubre Outliers), sino matemáticamente inválidos:
+                    demoras negativas y eventos fuera de orden
+                    cronológico. ---------- */}
+                {anomalias && anomalias.total > 0 && (
+                  <section className="flex flex-col gap-sm">
+                    <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs flex items-center gap-1">
+                      Anomalías detectadas (Poka-Yoke)
+                      <InfoTip
+                        leer="Valores que no deberían poder existir sin importar el umbral: demoras negativas o eventos registrados fuera de orden (ej. 'Finaliza' antes que 'Llega'). Señal de un problema en la captura de datos, no en la performance del prestador."
+                        calculo="Filas con DemoraReal o DemoraPrometida < 0, o con la resta entre dos marcas horarias consecutivas dando negativo."
+                      />
+                    </h3>
+                    <p className="font-label-sm text-label-sm text-on-surface-variant -mt-2">
+                      {nf(anomalias.servicios_con_alguna_anomalia)} de{" "}
+                      {nf(anomalias.total)} servicios (
+                      {pct(anomalias.porcentaje_servicios_con_alguna_anomalia)})
+                      con al menos una anomalía.
+                    </p>
+                    <div className="bg-surface-container-lowest rounded-xl p-md card-shadow border border-outline-variant/20 flex flex-col gap-4">
+                      {anomalias.demora_real_negativa > 0 && (
+                        <ProgressBar
+                          label="Demora real negativa"
+                          valueLabel={nf(anomalias.demora_real_negativa)}
+                          ratio={anomalias.demora_real_negativa / anomalias.total}
+                          color="#dc2626"
+                        />
+                      )}
+                      {anomalias.demora_prometida_negativa > 0 && (
+                        <ProgressBar
+                          label="Demora prometida negativa"
+                          valueLabel={nf(anomalias.demora_prometida_negativa)}
+                          ratio={anomalias.demora_prometida_negativa / anomalias.total}
+                          color="#dc2626"
+                        />
+                      )}
+                      {anomalias.eventos_fuera_de_orden_cronologico
+                        .filter((e) => e.cantidad > 0)
+                        .map((e) => (
+                          <ProgressBar
+                            key={e.tramo}
+                            label={`Fuera de orden: ${TRAMO_LABELS[e.tramo] || e.tramo}`}
+                            valueLabel={nf(e.cantidad)}
+                            ratio={e.cantidad / anomalias.total}
+                            color="#dc2626"
+                          />
+                        ))}
+                    </div>
+                  </section>
+                )}
 
                 {/* ---------- NUEVO (ADITIVO): Funnel de tiempos, en lenguaje simple ---------- */}
                 <section className="flex flex-col gap-sm">
