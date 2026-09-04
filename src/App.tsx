@@ -25,6 +25,7 @@ import {
   type InteligenciaPrestadores,
   type MetricaTrackeo,
   type Outliers,
+  type PolizaOption,
   type PrestadorMetric,
   type PrestadorOption,
   type ProgramadosFunnel,
@@ -92,6 +93,9 @@ const DEFAULT: TrackeoFilters = {
   // había escrito como "CERRADO (VH)", sin el espacio entre la V y la H).
   estados: ["CERRADO", "CERRADO (V H)", "ENCUESTA FINAL"],
   tipos: ["MECANICA LIGERA", "REMOLQUE", "REMOLQUE MOTOS"],
+  // NUEVO v4.24.0 (ADITIVO): sin poliza preseleccionada por defecto (se
+  // incluyen todas, igual que campañas/prestadores).
+  polizas: [],
 };
 const nf = (v?: number | null) =>
   v == null ? "—" : new Intl.NumberFormat("es-AR").format(v);
@@ -111,7 +115,8 @@ function initial(): TrackeoFilters {
   const campanas = p.getAll("campana"),
     prestador_ids = p.getAll("prestador_id"),
     estados = p.getAll("estado"),
-    tipos = p.getAll("tipo");
+    tipos = p.getAll("tipo"),
+    polizas = p.getAll("poliza");
   return {
     fecha_desde: p.get("desde") || DEFAULT.fecha_desde,
     fecha_hasta: p.get("hasta") || DEFAULT.fecha_hasta,
@@ -119,6 +124,7 @@ function initial(): TrackeoFilters {
     prestador_ids: prestador_ids.length ? prestador_ids : DEFAULT.prestador_ids,
     estados: estados.length ? estados : DEFAULT.estados,
     tipos: tipos.length ? tipos : DEFAULT.tipos,
+    polizas: polizas.length ? polizas : DEFAULT.polizas,
   };
 }
 
@@ -1504,18 +1510,22 @@ const HELP_SECTIONS: HelpSection[] = [
       <>
         <p>
           En la parte de arriba de cada pantalla (menos en Inteligencia
-          Operativa y Cargar reportes) hay 5 filtros: <b>Desde</b> /{" "}
+          Operativa y Cargar reportes) hay 6 filtros: <b>Desde</b> /{" "}
           <b>Hasta</b> (rango de fechas), <b>Campañas</b>, <b>Prestadores</b>
-          , <b>Estados</b> y <b>Tipo de servicio</b>. Estos 5 filtros
-          mandan en toda la plataforma — cada indicador que ves ya está
-          calculado solo sobre los servicios que cumplen lo que
+          , <b>Estados</b>, <b>Tipo de servicio</b> y <b>Tipo de póliza</b>.
+          Estos 6 filtros mandan en toda la plataforma — cada indicador que
+          ves ya está calculado solo sobre los servicios que cumplen lo que
           seleccionaste ahí arriba.
         </p>
         <p>
-          <b>Estado y Tipo de servicio son 100% manuales</b>: si no
-          elegís nada en esos dos, se incluyen TODOS los valores — igual
+          <b>Estado, Tipo de servicio y Tipo de póliza son 100% manuales</b>:
+          si no elegís nada en esos, se incluyen TODOS los valores — igual
           que si en Excel no filtraras esa columna. No hay ningún filtro
-          escondido aplicándose sin que lo elijas vos.
+          escondido aplicándose sin que lo elijas vos. <b>Tipo de póliza</b>{" "}
+          agrupa los servicios por tipo de cobertura (Vehículos, AP, Hogar,
+          Viajeros) a partir del Tipo de servicio — es un dato temporal
+          mientras la plataforma se conecta a la base de datos de la
+          empresa.
         </p>
         <ul>
           <li>
@@ -1939,6 +1949,8 @@ export default function App() {
     [providerOptions, setProviderOptions] = useState<PrestadorOption[]>([]),
     [states, setStates] = useState<EstadoOption[]>([]),
     [types, setTypes] = useState<TipoOption[]>([]),
+    // NUEVO v4.24.0 (ADITIVO): opciones del filtro global "Tipo de poliza".
+    [polizaOptions, setPolizaOptions] = useState<PolizaOption[]>([]),
     [trend, setTrend] = useState<TrendPoint[]>([]),
     [quality, setQuality] = useState<DataQuality | null>(null),
     [funnel, setFunnel] = useState<FunnelTiempos | null>(null),
@@ -2052,6 +2064,7 @@ export default function App() {
       api.trackeoHabilitadoresAsignacion(f),
       api.trackeoProgramadosFunnel(f),
       api.trackeoOutliers(f),
+      api.trackeoTiposPoliza(f),
     ]);
     const errs: string[] = [];
     const take = <T,>(i: number, fn: (x: T) => void) =>
@@ -2089,6 +2102,9 @@ export default function App() {
     take<HabilitadoresAsignacion>(13, (x) => setHabilitadores(x));
     take<ProgramadosFunnel>(14, (x) => setProgramadosFunnel(x));
     take<Outliers>(15, (x) => setOutliers(x));
+    take<{ tipos_poliza: PolizaOption[] }>(16, (x) =>
+      setPolizaOptions(x.tipos_poliza),
+    );
     if (errs.length) setError(errs.join(" | "));
     setLoading(false);
   }, []);
@@ -2187,6 +2203,7 @@ export default function App() {
     filters.prestador_ids.forEach((x) => p.append("prestador_id", x));
     filters.estados.forEach((x) => p.append("estado", x));
     filters.tipos.forEach((x) => p.append("tipo", x));
+    filters.polizas.forEach((x) => p.append("poliza", x));
     history.replaceState(null, "", `?${p}`);
   }, [filters, page]);
   const campOpts = campaigns.map((x) => ({
@@ -2204,6 +2221,11 @@ export default function App() {
     typeOpts = types.map((x) => ({
       value: x.tipo_normalizado,
       label: `${x.tipo_de_servicio} (${nf(x.cantidad)})`,
+    })),
+    // NUEVO v4.24.0 (ADITIVO): opciones del filtro global "Tipo de poliza".
+    polizaOpts = polizaOptions.map((x) => ({
+      value: x.tipo_poliza_normalizado,
+      label: `${x.tipo_poliza} (${nf(x.cantidad)})`,
     })),
     // NUEVO (ADITIVO): opciones de campaña para el filtro local del
     // gráfico "Servicios por hora del día", derivadas de `cross`
@@ -2641,6 +2663,13 @@ export default function App() {
                     placeholder="Todos los tipos"
                     onChange={(tipos) => setDraft({ ...draft, tipos })}
                   />
+                  <MultiSelect
+                    label="Tipo de póliza"
+                    values={draft.polizas}
+                    options={polizaOpts}
+                    placeholder="Todas las pólizas"
+                    onChange={(polizas) => setDraft({ ...draft, polizas })}
+                  />
                   <div className="flex items-center gap-2 ml-auto">
                     <button
                       className="form-input-styled font-label-md text-label-md text-on-surface-variant hover:bg-surface-container-low transition-colors"
@@ -2661,8 +2690,9 @@ export default function App() {
                   </div>
                 </div>
                 <p className="font-label-sm text-label-sm text-on-surface-variant">
-                  Estado y Tipo de servicio 100% manuales. Sin selección se incluyen
-                  todos los valores, igual que sin filtrar esa columna en Excel.
+                  Estado, Tipo de servicio y Tipo de póliza 100% manuales. Sin
+                  selección se incluyen todos los valores, igual que sin filtrar
+                  esa columna en Excel.
                 </p>
               </section>
             )}

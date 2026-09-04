@@ -9,6 +9,7 @@ export type TrackeoFilters = {
   prestador_ids: string[];
   estados: string[];
   tipos: string[];
+  polizas: string[];
 };
 export type EstadoOption = {
   estado: string;
@@ -20,6 +21,14 @@ export type TipoOption = {
   tipo_normalizado: string;
   cantidad: number;
   pertenece_universo_operativo_historico: boolean;
+  tipo_poliza?: string | null;
+};
+// NUEVO v4.24.0 (ADITIVO): filtro global "Tipo de poliza". Ver nota en
+// TIPO_SERVICIO_A_POLIZA (backend, app.py) sobre su caracter temporal.
+export type PolizaOption = {
+  tipo_poliza: string;
+  tipo_poliza_normalizado: string;
+  cantidad: number;
 };
 export type CampanaMetric = {
   campana: string;
@@ -437,6 +446,7 @@ function fp(f: TrackeoFilters) {
     prestador_id: f.prestador_ids,
     estado: f.estados,
     tipo: f.tipos,
+    poliza: f.polizas,
   };
 }
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -484,6 +494,7 @@ export const api = {
         prestador_id: f.prestador_ids,
         estado: f.estados,
         tipo: f.tipos,
+        poliza: f.polizas,
       }),
     ),
   trackeoListaPrestadores: (f: TrackeoFilters) =>
@@ -495,6 +506,7 @@ export const api = {
         campana: f.campanas,
         estado: f.estados,
         tipo: f.tipos,
+        poliza: f.polizas,
       }),
     ),
   trackeoEstados: (f: TrackeoFilters) =>
@@ -510,6 +522,7 @@ export const api = {
         campana: f.campanas,
         prestador_id: f.prestador_ids,
         tipo: f.tipos,
+        poliza: f.polizas,
       }),
     ),
   trackeoTiposServicio: (f: TrackeoFilters) =>
@@ -525,6 +538,24 @@ export const api = {
         campana: f.campanas,
         prestador_id: f.prestador_ids,
         estado: f.estados,
+        poliza: f.polizas,
+      }),
+    ),
+  trackeoTiposPoliza: (f: TrackeoFilters) =>
+    request<{
+      cantidad_tipos_poliza: number;
+      total_servicios: number;
+      tipos_poliza: PolizaOption[];
+      servicios_sin_tipo_poliza_mapeado: number;
+    }>(
+      "/api/metricas-trackeo/tipos-poliza" +
+      qs({
+        fecha_desde: f.fecha_desde,
+        fecha_hasta: f.fecha_hasta,
+        campana: f.campanas,
+        prestador_id: f.prestador_ids,
+        estado: f.estados,
+        tipo: f.tipos,
       }),
     ),
   trackeoTendencia: (f: TrackeoFilters) =>
@@ -552,6 +583,7 @@ export const api = {
         campana: f.campanas,
         prestador_id: f.prestador_ids,
         tipo: f.tipos,
+        poliza: f.polizas,
       }),
     ),
   trackeoProgramadosFunnel: (f: TrackeoFilters) =>
