@@ -1189,7 +1189,9 @@ function queHacer(c: Clasificacion): string {
     case "estable":
       return "Mantener como está";
     default:
-      return "Esperar más datos antes de decidir";
+      // "muestra_insuficiente": a propósito no se muestra ninguna
+      // recomendación -- no hay datos suficientes para sugerir nada.
+      return "";
   }
 }
 
@@ -3882,6 +3884,29 @@ export default function App() {
                     </span>
                   </div>
                 </div>
+
+                {/* NUEVO (ADITIVO): con un período filtrado muy corto,
+                    "primera vs segunda mitad" pierde sentido (todas las
+                    filas comparten fecha) y casi ningún prestador junta
+                    volumen para el ranking -- se avisa en vez de mostrar
+                    un número con apariencia de preciso que es ruido. */}
+                {inteligencia && !inteligencia.periodo_suficiente && (
+                  <div className="flex items-start gap-2 bg-[#f59e0b]/10 border border-[#f59e0b]/30 rounded-xl px-md py-sm">
+                    <Icon
+                      name="warning"
+                      filled
+                      className="text-[#f59e0b] text-[20px] mt-0.5 shrink-0"
+                    />
+                    <p className="font-body-md text-body-md text-on-surface">
+                      El período filtrado tiene {nf(inteligencia.periodo_dias)}{" "}
+                      día{inteligencia.periodo_dias !== 1 ? "s" : ""} — se necesitan al
+                      menos {nf(inteligencia.dias_minimo_recomendado)} días para que la
+                      tendencia y la comparación entre prestadores sean confiables.
+                      Mientras tanto, todos los prestadores se muestran como
+                      "Muestra insuficiente", sin ranking ni recomendación.
+                    </p>
+                  </div>
+                )}
 
                 {inteligenciaLoading && (
                   <div className="flex items-center justify-center py-xl">

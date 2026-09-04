@@ -360,6 +360,9 @@ export type InteligenciaPrestadores = {
   resumen: Record<Clasificacion, number>;
   prestadores: InteligenciaPrestador[];
   metodologia: string;
+  periodo_dias: number;
+  periodo_suficiente: boolean;
+  dias_minimo_recomendado: number;
 };
 // NUEVO v4.22.0 (ADITIVO): sistema de alertas (campanita del header).
 export type PrestadorAlerta = {
@@ -475,24 +478,24 @@ export const api = {
   trackeoCampanas: (f: TrackeoFilters) =>
     request<{ cantidad_campanas: number; campanas: CampanaMetric[] }>(
       "/api/metricas-trackeo/campanas" +
-        qs({
-          fecha_desde: f.fecha_desde,
-          fecha_hasta: f.fecha_hasta,
-          prestador_id: f.prestador_ids,
-          estado: f.estados,
-          tipo: f.tipos,
-        }),
+      qs({
+        fecha_desde: f.fecha_desde,
+        fecha_hasta: f.fecha_hasta,
+        prestador_id: f.prestador_ids,
+        estado: f.estados,
+        tipo: f.tipos,
+      }),
     ),
   trackeoListaPrestadores: (f: TrackeoFilters) =>
     request<{ cantidad_prestadores: number; prestadores: PrestadorOption[] }>(
       "/api/metricas-trackeo/lista-prestadores" +
-        qs({
-          fecha_desde: f.fecha_desde,
-          fecha_hasta: f.fecha_hasta,
-          campana: f.campanas,
-          estado: f.estados,
-          tipo: f.tipos,
-        }),
+      qs({
+        fecha_desde: f.fecha_desde,
+        fecha_hasta: f.fecha_hasta,
+        campana: f.campanas,
+        estado: f.estados,
+        tipo: f.tipos,
+      }),
     ),
   trackeoEstados: (f: TrackeoFilters) =>
     request<{
@@ -501,13 +504,13 @@ export const api = {
       estados: EstadoOption[];
     }>(
       "/api/metricas-trackeo/estados" +
-        qs({
-          fecha_desde: f.fecha_desde,
-          fecha_hasta: f.fecha_hasta,
-          campana: f.campanas,
-          prestador_id: f.prestador_ids,
-          tipo: f.tipos,
-        }),
+      qs({
+        fecha_desde: f.fecha_desde,
+        fecha_hasta: f.fecha_hasta,
+        campana: f.campanas,
+        prestador_id: f.prestador_ids,
+        tipo: f.tipos,
+      }),
     ),
   trackeoTiposServicio: (f: TrackeoFilters) =>
     request<{
@@ -516,13 +519,13 @@ export const api = {
       tipos: TipoOption[];
     }>(
       "/api/metricas-trackeo/tipos-servicio" +
-        qs({
-          fecha_desde: f.fecha_desde,
-          fecha_hasta: f.fecha_hasta,
-          campana: f.campanas,
-          prestador_id: f.prestador_ids,
-          estado: f.estados,
-        }),
+      qs({
+        fecha_desde: f.fecha_desde,
+        fecha_hasta: f.fecha_hasta,
+        campana: f.campanas,
+        prestador_id: f.prestador_ids,
+        estado: f.estados,
+      }),
     ),
   trackeoTendencia: (f: TrackeoFilters) =>
     request<{ tendencia: TrendPoint[] }>(
@@ -543,13 +546,13 @@ export const api = {
   trackeoEstadosCategorizados: (f: TrackeoFilters) =>
     request<EstadosCategorizados>(
       "/api/metricas-trackeo/estados-categorizados" +
-        qs({
-          fecha_desde: f.fecha_desde,
-          fecha_hasta: f.fecha_hasta,
-          campana: f.campanas,
-          prestador_id: f.prestador_ids,
-          tipo: f.tipos,
-        }),
+      qs({
+        fecha_desde: f.fecha_desde,
+        fecha_hasta: f.fecha_hasta,
+        campana: f.campanas,
+        prestador_id: f.prestador_ids,
+        tipo: f.tipos,
+      }),
     ),
   trackeoProgramadosFunnel: (f: TrackeoFilters) =>
     request<ProgramadosFunnel>(
@@ -575,7 +578,7 @@ export const api = {
   ) =>
     request<PaginatedServices>(
       "/api/metricas-trackeo/servicios-paginados" +
-        qs({ ...fp(f), metrica: m, pagina, tamano_pagina: tamanoPagina }),
+      qs({ ...fp(f), metrica: m, pagina, tamano_pagina: tamanoPagina }),
     ),
   ingest: async (file: File) => {
     const form = new FormData();
