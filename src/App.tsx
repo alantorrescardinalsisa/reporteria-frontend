@@ -4417,8 +4417,10 @@ export default function App() {
                     </h2>
                     <p className="font-label-sm text-label-sm text-on-surface-variant">
                       Excel de Trackeo (.xlsx/.xlsm) o archivo de despachador con
-                      origen/destino (.xls/.xlsx) — la plataforma detecta cuál es
-                      por el nombre del archivo.
+                      origen/destino (.xls/.xlsb/.xlsx) — la plataforma detecta
+                      cuál es por el nombre del archivo. Si el de despachador
+                      pesa más de 50 MB, exportalo como .xlsb (mucho más
+                      liviano que .xls).
                     </p>
                   </div>
                 </header>
@@ -4426,7 +4428,7 @@ export default function App() {
                   <input
                     className="hidden"
                     type="file"
-                    accept=".xlsx,.xlsm,.xls"
+                    accept=".xlsx,.xlsm,.xls,.xlsb"
                     onChange={(e) => setFile(e.target.files?.[0] || null)}
                   />
                   <Icon name="upload_file" className="text-[42px] text-outline" />
