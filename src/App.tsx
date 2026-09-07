@@ -11,7 +11,6 @@ import { createPortal, flushSync } from "react-dom";
 import {
   api,
   type Alertas,
-  type Anomalias,
   type CampanaImpacto,
   type CampanaMetric,
   type CampanaPrestadorMetric,
@@ -26,7 +25,6 @@ import {
   type InteligenciaPrestadores,
   type MetricaTrackeo,
   type Outliers,
-  type PolizaOption,
   type PrestadorMetric,
   type PrestadorOption,
   type ProgramadosFunnel,
@@ -94,20 +92,6 @@ const DEFAULT: TrackeoFilters = {
   // había escrito como "CERRADO (VH)", sin el espacio entre la V y la H).
   estados: ["CERRADO", "CERRADO (V H)", "ENCUESTA FINAL"],
   tipos: ["MECANICA LIGERA", "REMOLQUE", "REMOLQUE MOTOS"],
-  // NUEVO v4.24.0 (ADITIVO): sin poliza preseleccionada por defecto (se
-  // incluyen todas, igual que campañas/prestadores).
-  polizas: [],
-};
-// NUEVO v4.25.0 (Poka-Yoke, ADITIVO): nombres legibles de los tramos
-// T1-T6 (mismos que usa el backend en TRAMOS_FUNNEL), para la tarjeta
-// de "Anomalías detectadas".
-const TRAMO_LABELS: Record<string, string> = {
-  t1_alta_a_despachador: "Alta → Despachador",
-  t2_despachador_a_asignacion: "Despachador → Asignación",
-  t3_alta_a_asignacion: "Alta → Asignación",
-  t4_asignacion_a_arribo: "Envío → Llegada",
-  t5_ejecucion: "Llegada → Finalización",
-  t6_end_to_end: "Alta → Finalización",
 };
 const nf = (v?: number | null) =>
   v == null ? "—" : new Intl.NumberFormat("es-AR").format(v);
@@ -127,8 +111,7 @@ function initial(): TrackeoFilters {
   const campanas = p.getAll("campana"),
     prestador_ids = p.getAll("prestador_id"),
     estados = p.getAll("estado"),
-    tipos = p.getAll("tipo"),
-    polizas = p.getAll("poliza");
+    tipos = p.getAll("tipo");
   return {
     fecha_desde: p.get("desde") || DEFAULT.fecha_desde,
     fecha_hasta: p.get("hasta") || DEFAULT.fecha_hasta,
@@ -136,7 +119,6 @@ function initial(): TrackeoFilters {
     prestador_ids: prestador_ids.length ? prestador_ids : DEFAULT.prestador_ids,
     estados: estados.length ? estados : DEFAULT.estados,
     tipos: tipos.length ? tipos : DEFAULT.tipos,
-    polizas: polizas.length ? polizas : DEFAULT.polizas,
   };
 }
 
@@ -1480,30 +1462,6 @@ function NotificationBell({
                 ))}
               </div>
             )}
-            {alertas?.calidad_datos_alerta && (
-              <div className="p-md flex flex-col gap-2 border-t border-outline-variant/20">
-                <span className="font-label-md text-label-md text-on-surface-variant uppercase tracking-wide">
-                  Calidad de datos cayendo
-                </span>
-                <button
-                  type="button"
-                  onClick={() => irA("metrics")}
-                  className="text-left flex items-center justify-between gap-2 bg-[#f59e0b]/5 hover:bg-[#f59e0b]/10 rounded-lg px-sm py-2 transition-colors"
-                >
-                  <div className="min-w-0">
-                    <div className="font-body-md text-body-md font-medium text-on-surface truncate">
-                      Trazabilidad completa de los servicios
-                    </div>
-                    <div className="font-label-sm text-label-sm text-on-surface-variant">
-                      {pct(alertas.calidad_datos_alerta.trazabilidad_mes_anterior)} →{" "}
-                      {pct(alertas.calidad_datos_alerta.trazabilidad_mes_actual)} (
-                      {alertas.calidad_datos_alerta.variacion_pp} pp)
-                    </div>
-                  </div>
-                  <Icon name="report" className="text-[#f59e0b] shrink-0" />
-                </button>
-              </div>
-            )}
           </div>
         </div>
       )}
@@ -1546,22 +1504,18 @@ const HELP_SECTIONS: HelpSection[] = [
       <>
         <p>
           En la parte de arriba de cada pantalla (menos en Inteligencia
-          Operativa y Cargar reportes) hay 6 filtros: <b>Desde</b> /{" "}
+          Operativa y Cargar reportes) hay 5 filtros: <b>Desde</b> /{" "}
           <b>Hasta</b> (rango de fechas), <b>Campañas</b>, <b>Prestadores</b>
-          , <b>Estados</b>, <b>Tipo de servicio</b> y <b>Tipo de póliza</b>.
-          Estos 6 filtros mandan en toda la plataforma — cada indicador que
-          ves ya está calculado solo sobre los servicios que cumplen lo que
+          , <b>Estados</b> y <b>Tipo de servicio</b>. Estos 5 filtros
+          mandan en toda la plataforma — cada indicador que ves ya está
+          calculado solo sobre los servicios que cumplen lo que
           seleccionaste ahí arriba.
         </p>
         <p>
-          <b>Estado, Tipo de servicio y Tipo de póliza son 100% manuales</b>:
-          si no elegís nada en esos, se incluyen TODOS los valores — igual
+          <b>Estado y Tipo de servicio son 100% manuales</b>: si no
+          elegís nada en esos dos, se incluyen TODOS los valores — igual
           que si en Excel no filtraras esa columna. No hay ningún filtro
-          escondido aplicándose sin que lo elijas vos. <b>Tipo de póliza</b>{" "}
-          agrupa los servicios por tipo de cobertura (Vehículos, AP, Hogar,
-          Viajeros) a partir del Tipo de servicio — es un dato temporal
-          mientras la plataforma se conecta a la base de datos de la
-          empresa.
+          escondido aplicándose sin que lo elijas vos.
         </p>
         <ul>
           <li>
@@ -1985,16 +1939,12 @@ export default function App() {
     [providerOptions, setProviderOptions] = useState<PrestadorOption[]>([]),
     [states, setStates] = useState<EstadoOption[]>([]),
     [types, setTypes] = useState<TipoOption[]>([]),
-    // NUEVO v4.24.0 (ADITIVO): opciones del filtro global "Tipo de poliza".
-    [polizaOptions, setPolizaOptions] = useState<PolizaOption[]>([]),
     [trend, setTrend] = useState<TrendPoint[]>([]),
     [quality, setQuality] = useState<DataQuality | null>(null),
     [funnel, setFunnel] = useState<FunnelTiempos | null>(null),
     [estadosCategorizados, setEstadosCategorizados] =
       useState<EstadosCategorizados | null>(null),
     [trazabilidad, setTrazabilidad] = useState<Trazabilidad | null>(null),
-    // NUEVO v4.25.0 (Poka-Yoke, ADITIVO): valores imposibles detectados.
-    [anomalias, setAnomalias] = useState<Anomalias | null>(null),
     [habilitadores, setHabilitadores] =
       useState<HabilitadoresAsignacion | null>(null),
     [programadosFunnel, setProgramadosFunnel] =
@@ -2102,7 +2052,6 @@ export default function App() {
       api.trackeoHabilitadoresAsignacion(f),
       api.trackeoProgramadosFunnel(f),
       api.trackeoOutliers(f),
-      api.trackeoTiposPoliza(f),
     ]);
     const errs: string[] = [];
     const take = <T,>(i: number, fn: (x: T) => void) =>
@@ -2124,14 +2073,9 @@ export default function App() {
     );
     take<{ estados: EstadoOption[] }>(5, (x) => setStates(x.estados));
     take<{ tendencia: TrendPoint[] }>(6, (x) => setTrend(x.tendencia));
-    take<{
-      calidad: DataQuality;
-      trazabilidad: Trazabilidad;
-      anomalias: Anomalias;
-    }>(7, (x) => {
+    take<{ calidad: DataQuality; trazabilidad: Trazabilidad }>(7, (x) => {
       setQuality(x.calidad);
       setTrazabilidad(x.trazabilidad);
-      setAnomalias(x.anomalias);
     });
     take<{ resultados: CampanaPrestadorMetric[] }>(8, (x) =>
       setCross(x.resultados),
@@ -2145,9 +2089,6 @@ export default function App() {
     take<HabilitadoresAsignacion>(13, (x) => setHabilitadores(x));
     take<ProgramadosFunnel>(14, (x) => setProgramadosFunnel(x));
     take<Outliers>(15, (x) => setOutliers(x));
-    take<{ tipos_poliza: PolizaOption[] }>(16, (x) =>
-      setPolizaOptions(x.tipos_poliza),
-    );
     if (errs.length) setError(errs.join(" | "));
     setLoading(false);
   }, []);
@@ -2246,7 +2187,6 @@ export default function App() {
     filters.prestador_ids.forEach((x) => p.append("prestador_id", x));
     filters.estados.forEach((x) => p.append("estado", x));
     filters.tipos.forEach((x) => p.append("tipo", x));
-    filters.polizas.forEach((x) => p.append("poliza", x));
     history.replaceState(null, "", `?${p}`);
   }, [filters, page]);
   const campOpts = campaigns.map((x) => ({
@@ -2264,11 +2204,6 @@ export default function App() {
     typeOpts = types.map((x) => ({
       value: x.tipo_normalizado,
       label: `${x.tipo_de_servicio} (${nf(x.cantidad)})`,
-    })),
-    // NUEVO v4.24.0 (ADITIVO): opciones del filtro global "Tipo de poliza".
-    polizaOpts = polizaOptions.map((x) => ({
-      value: x.tipo_poliza_normalizado,
-      label: `${x.tipo_poliza} (${nf(x.cantidad)})`,
     })),
     // NUEVO (ADITIVO): opciones de campaña para el filtro local del
     // gráfico "Servicios por hora del día", derivadas de `cross`
@@ -2706,13 +2641,6 @@ export default function App() {
                     placeholder="Todos los tipos"
                     onChange={(tipos) => setDraft({ ...draft, tipos })}
                   />
-                  <MultiSelect
-                    label="Tipo de póliza"
-                    values={draft.polizas}
-                    options={polizaOpts}
-                    placeholder="Todas las pólizas"
-                    onChange={(polizas) => setDraft({ ...draft, polizas })}
-                  />
                   <div className="flex items-center gap-2 ml-auto">
                     <button
                       className="form-input-styled font-label-md text-label-md text-on-surface-variant hover:bg-surface-container-low transition-colors"
@@ -2733,9 +2661,8 @@ export default function App() {
                   </div>
                 </div>
                 <p className="font-label-sm text-label-sm text-on-surface-variant">
-                  Estado, Tipo de servicio y Tipo de póliza 100% manuales. Sin
-                  selección se incluyen todos los valores, igual que sin filtrar
-                  esa columna en Excel.
+                  Estado y Tipo de servicio 100% manuales. Sin selección se incluyen
+                  todos los valores, igual que sin filtrar esa columna en Excel.
                 </p>
               </section>
             )}
@@ -3029,58 +2956,6 @@ export default function App() {
                     </div>
                   </div>
                 </section>
-
-                {/* ---------- NUEVO v4.25.0 (Poka-Yoke, ADITIVO): valores
-                    estructuralmente imposibles -- no "muy altos" (eso ya
-                    lo cubre Outliers), sino matemáticamente inválidos:
-                    demoras negativas y eventos fuera de orden
-                    cronológico. ---------- */}
-                {anomalias && anomalias.total > 0 && (
-                  <section className="flex flex-col gap-sm">
-                    <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs flex items-center gap-1">
-                      Anomalías detectadas (Poka-Yoke)
-                      <InfoTip
-                        leer="Valores que no deberían poder existir sin importar el umbral: demoras negativas o eventos registrados fuera de orden (ej. 'Finaliza' antes que 'Llega'). Señal de un problema en la captura de datos, no en la performance del prestador."
-                        calculo="Filas con DemoraReal o DemoraPrometida < 0, o con la resta entre dos marcas horarias consecutivas dando negativo."
-                      />
-                    </h3>
-                    <p className="font-label-sm text-label-sm text-on-surface-variant -mt-2">
-                      {nf(anomalias.servicios_con_alguna_anomalia)} de{" "}
-                      {nf(anomalias.total)} servicios (
-                      {pct(anomalias.porcentaje_servicios_con_alguna_anomalia)})
-                      con al menos una anomalía.
-                    </p>
-                    <div className="bg-surface-container-lowest rounded-xl p-md card-shadow border border-outline-variant/20 flex flex-col gap-4">
-                      {anomalias.demora_real_negativa > 0 && (
-                        <ProgressBar
-                          label="Demora real negativa"
-                          valueLabel={nf(anomalias.demora_real_negativa)}
-                          ratio={anomalias.demora_real_negativa / anomalias.total}
-                          color="#dc2626"
-                        />
-                      )}
-                      {anomalias.demora_prometida_negativa > 0 && (
-                        <ProgressBar
-                          label="Demora prometida negativa"
-                          valueLabel={nf(anomalias.demora_prometida_negativa)}
-                          ratio={anomalias.demora_prometida_negativa / anomalias.total}
-                          color="#dc2626"
-                        />
-                      )}
-                      {anomalias.eventos_fuera_de_orden_cronologico
-                        .filter((e) => e.cantidad > 0)
-                        .map((e) => (
-                          <ProgressBar
-                            key={e.tramo}
-                            label={`Fuera de orden: ${TRAMO_LABELS[e.tramo] || e.tramo}`}
-                            valueLabel={nf(e.cantidad)}
-                            ratio={e.cantidad / anomalias.total}
-                            color="#dc2626"
-                          />
-                        ))}
-                    </div>
-                  </section>
-                )}
 
                 {/* ---------- NUEVO (ADITIVO): Funnel de tiempos, en lenguaje simple ---------- */}
                 <section className="flex flex-col gap-sm">
