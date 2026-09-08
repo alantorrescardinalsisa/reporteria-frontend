@@ -3103,7 +3103,7 @@ export default function App() {
                 {anomalias && anomalias.total > 0 && (
                   <section className="flex flex-col gap-sm">
                     <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs flex items-center gap-1">
-                      Anomalías detectadas (Poka-Yoke)
+                      Anomalías detectadas
                       <InfoTip
                         leer="Valores que no deberían poder existir sin importar el umbral: demoras negativas o eventos registrados fuera de orden (ej. 'Finaliza' antes que 'Llega'). Señal de un problema en la captura de datos, no en la performance del prestador."
                         calculo="Filas con DemoraReal o DemoraPrometida < 0, o con la resta entre dos marcas horarias consecutivas dando negativo."
