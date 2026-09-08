@@ -119,6 +119,35 @@ const pct = (v?: number | null) =>
     ? "—"
     : `${new Intl.NumberFormat("es-AR", { maximumFractionDigits: 1 }).format(v * 100)} %`;
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+// NUEVO v2.4.0 (memoria backend, ADITIVO). `load()` disparaba sus ~18
+// pedidos analiticos TODOS a la vez (Promise.allSettled), lo que hace
+// que el backend (Render plan free, 512MB, sin margen) reciba 18
+// conexiones simultaneas en cada carga de pantalla -- eso genera
+// presion real de memoria/recursos del lado del servidor (visto en
+// los logs de Render como "[Errno 11] Resource temporarily
+// unavailable" al intentar abrir mas conexiones hacia Supabase).
+// runInBatches ejecuta los pedidos en tandas de a BATCH_SIZE en vez de
+// todos juntos -- el backend nunca ve mas de esa cantidad en
+// simultaneo desde esta pantalla, a costa de que la carga inicial
+// tarda un poco mas (BATCH_SIZE tandas en secuencia en vez de una
+// sola). El orden de los resultados se preserva igual que con
+// Promise.allSettled, asi que el resto del codigo (los `take(i, ...)`
+// por indice) no necesita cambiar.
+const BATCH_SIZE = 4;
+async function runInBatches(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  factories: (() => Promise<any>)[],
+  batchSize = BATCH_SIZE,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+): Promise<PromiseSettledResult<any>[]> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const results: PromiseSettledResult<any>[] = [];
+  for (let i = 0; i < factories.length; i += batchSize) {
+    const tanda = factories.slice(i, i + batchSize).map((fn) => fn());
+    results.push(...(await Promise.allSettled(tanda)));
+  }
+  return results;
+}
 function initial(): TrackeoFilters {
   const p = new URLSearchParams(location.search);
   // BUGFIX: URLSearchParams.getAll(...) devuelve [] (nunca null) cuando
@@ -2100,25 +2129,25 @@ export default function App() {
     setHoraPrestador("");
     setHoraCampana("");
     setHoraLocalDistribucion(null);
-    const r = await Promise.allSettled([
-      api.trackeoResumen(f),
-      api.trackeoUniversos(f),
-      api.trackeoPrestadores(f),
-      api.trackeoCampanas(f),
-      api.trackeoListaPrestadores(f),
-      api.trackeoEstados(f),
-      api.trackeoTendencia(f),
-      api.trackeoCalidadDatos(f),
-      api.trackeoCampanaPrestador(f),
-      api.trackeoTiposServicio(f),
-      api.trackeoFunnelTiempos(f),
-      api.trackeoImpactoCampanas(f),
-      api.trackeoEstadosCategorizados(f),
-      api.trackeoHabilitadoresAsignacion(f),
-      api.trackeoProgramadosFunnel(f),
-      api.trackeoOutliers(f),
-      api.trackeoTiposPoliza(f),
-      api.trackeoProvinciasOrigen(f),
+    const r = await runInBatches([
+      () => api.trackeoResumen(f),
+      () => api.trackeoUniversos(f),
+      () => api.trackeoPrestadores(f),
+      () => api.trackeoCampanas(f),
+      () => api.trackeoListaPrestadores(f),
+      () => api.trackeoEstados(f),
+      () => api.trackeoTendencia(f),
+      () => api.trackeoCalidadDatos(f),
+      () => api.trackeoCampanaPrestador(f),
+      () => api.trackeoTiposServicio(f),
+      () => api.trackeoFunnelTiempos(f),
+      () => api.trackeoImpactoCampanas(f),
+      () => api.trackeoEstadosCategorizados(f),
+      () => api.trackeoHabilitadoresAsignacion(f),
+      () => api.trackeoProgramadosFunnel(f),
+      () => api.trackeoOutliers(f),
+      () => api.trackeoTiposPoliza(f),
+      () => api.trackeoProvinciasOrigen(f),
     ]);
     const errs: string[] = [];
     const take = <T,>(i: number, fn: (x: T) => void) =>
