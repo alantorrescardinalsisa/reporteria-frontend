@@ -18,6 +18,8 @@ import {
   type DataQuality,
   type EstadoOption,
   type EstadosCategorizados,
+  type EstadosEncuesta,
+  type EstadosEncuestaPunto,
   type FunnelTiempos,
   type Clasificacion,
   type HabilitadoresAsignacion,
@@ -743,6 +745,205 @@ function TrendSvg({
           gráfico (arriba de las líneas en el orden de pintado, para
           que el hover funcione aunque el cursor no esté exactamente
           sobre el trazo de una línea). */}
+      <rect
+        x={0}
+        y={0}
+        width={W}
+        height={H}
+        fill="transparent"
+        onMouseMove={moverHover}
+        onMouseLeave={() => setHoverIdx(null)}
+      />
+    </svg>
+  );
+}
+
+/* ---------- NUEVO (ADITIVO): serie diaria de "ENCUESTA FINAL" /
+   "ENCUESTA PENDIENTE" -- mismo lenguaje visual que TrendSvg (hover con
+   linea guia + tooltip, etiquetas de eje X que se salteen para no
+   amontonarse), pero con escala de CANTIDAD (eje Y dinamico segun el
+   maximo real de la serie) en vez de porcentaje 0-100% fijo. */
+const ENCUESTA_SERIES: {
+  key: "encuesta_final" | "encuesta_pendiente";
+  label: string;
+  stroke: string;
+  fill: string;
+}[] = [
+  {
+    key: "encuesta_final",
+    label: "Encuesta final",
+    stroke: "stroke-primary",
+    fill: "fill-primary",
+  },
+  {
+    key: "encuesta_pendiente",
+    label: "Encuesta pendiente",
+    stroke: "stroke-[#f59e0b]",
+    fill: "fill-[#f59e0b]",
+  },
+];
+function EncuestaTrendSvg({
+  data,
+  width,
+  height,
+}: {
+  data: EstadosEncuestaPunto[];
+  width: number;
+  height: number;
+}) {
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+  const W = width,
+    H = height,
+    P = 35,
+    maxValor = Math.max(1, ...data.map((d) => Math.max(d.encuesta_final, d.encuesta_pendiente))),
+    x = (i: number) => P + (i * (W - 2 * P)) / Math.max(1, data.length - 1),
+    y = (v: number) => H - P - (v / maxValor) * (H - 2 * P),
+    points = (k: "encuesta_final" | "encuesta_pendiente") =>
+      data.map((d, i) => `${x(i)},${y(Number(d[k] || 0))}`).join(" ");
+
+  const anchoUtil = W - 2 * P,
+    maxEtiquetas = Math.max(2, Math.floor(anchoUtil / 46)),
+    paso = Math.max(1, Math.ceil(data.length / maxEtiquetas)),
+    mostrarEtiqueta = (i: number) =>
+      i === 0 || i === data.length - 1 || i % paso === 0;
+
+  const moverHover = (e: ReactMouseEvent<SVGRectElement>) => {
+    const svg = svgRef.current;
+    if (!svg || data.length === 0) return;
+    const rect = svg.getBoundingClientRect();
+    const localX = ((e.clientX - rect.left) / rect.width) * W;
+    const ratio = (localX - P) / Math.max(1, anchoUtil);
+    const idx = Math.round(ratio * (data.length - 1));
+    setHoverIdx(Math.min(data.length - 1, Math.max(0, idx)));
+  };
+
+  const hover = hoverIdx != null ? data[hoverIdx] : null;
+  const TOOLTIP_W = 180,
+    TOOLTIP_PAD = 10;
+  const hoverX = hoverIdx != null ? x(hoverIdx) : 0,
+    tooltipHaciaLaIzquierda = hoverX + TOOLTIP_PAD + TOOLTIP_W > W,
+    tooltipX = tooltipHaciaLaIzquierda
+      ? hoverX - TOOLTIP_PAD - TOOLTIP_W
+      : hoverX + TOOLTIP_PAD,
+    tooltipY = 8,
+    tooltipH = 22 + ENCUESTA_SERIES.length * 16;
+
+  if (data.length === 0) {
+    return (
+      <div
+        className="flex items-center justify-center text-on-surface-variant font-body-md text-[13px]"
+        style={{ height }}
+      >
+        Sin datos en el período.
+      </div>
+    );
+  }
+
+  return (
+    <svg
+      ref={svgRef}
+      className="w-full block"
+      style={{ height: H }}
+      viewBox={`0 0 ${W} ${H}`}
+    >
+      {[0, 0.25, 0.5, 0.75, 1].map((v) => (
+        <g key={v}>
+          <line
+            x1={P}
+            x2={W - P}
+            y1={y(v * maxValor)}
+            y2={y(v * maxValor)}
+            className="stroke-outline-variant/30"
+            strokeWidth={1}
+          />
+          <text x="2" y={y(v * maxValor) + 4} className="fill-outline text-[10px]">
+            {Math.round(v * maxValor)}
+          </text>
+        </g>
+      ))}
+      {ENCUESTA_SERIES.map((s) => (
+        <polyline
+          key={s.key}
+          className={`fill-none ${s.stroke}`}
+          strokeWidth={2}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          points={points(s.key)}
+        />
+      ))}
+      {data.map(
+        (d, i) =>
+          mostrarEtiqueta(i) && (
+            <text
+              key={d.fecha}
+              x={x(i)}
+              y={H - 7}
+              textAnchor="middle"
+              className="fill-outline text-[10px]"
+            >
+              {d.fecha.slice(5)}
+            </text>
+          ),
+      )}
+
+      {hover && (
+        <g pointerEvents="none">
+          <line
+            x1={hoverX}
+            x2={hoverX}
+            y1={0}
+            y2={H - P}
+            className="stroke-outline"
+            strokeWidth={1}
+            strokeDasharray="3,3"
+          />
+          {ENCUESTA_SERIES.map((s) => (
+            <circle
+              key={s.key}
+              cx={hoverX}
+              cy={y(Number(hover[s.key] || 0))}
+              r={3.5}
+              className={`${s.fill} stroke-surface-container-lowest`}
+              strokeWidth={1.5}
+            />
+          ))}
+          <rect
+            x={tooltipX}
+            y={tooltipY}
+            width={TOOLTIP_W}
+            height={tooltipH}
+            rx={6}
+            className="fill-inverse-surface"
+            opacity={0.95}
+          />
+          <text
+            x={tooltipX + 10}
+            y={tooltipY + 16}
+            className="fill-inverse-on-surface text-[11px] font-semibold"
+          >
+            {hover.fecha}
+          </text>
+          {ENCUESTA_SERIES.map((s, i) => (
+            <g key={s.key}>
+              <circle
+                cx={tooltipX + 12}
+                cy={tooltipY + 30 + i * 16}
+                r={3}
+                className={s.fill}
+              />
+              <text
+                x={tooltipX + 20}
+                y={tooltipY + 34 + i * 16}
+                className="fill-inverse-on-surface text-[10px]"
+              >
+                {s.label}: {nf(Number(hover[s.key] || 0))}
+              </text>
+            </g>
+          ))}
+        </g>
+      )}
+
       <rect
         x={0}
         y={0}
@@ -2032,6 +2233,10 @@ export default function App() {
     // NUEVO v4.26.0 (ADITIVO): opciones del filtro global "Provincia de origen".
     [provinciaOptions, setProvinciaOptions] = useState<ProvinciaOption[]>([]),
     [trend, setTrend] = useState<TrendPoint[]>([]),
+    // NUEVO (ADITIVO): indicador de "ENCUESTA FINAL" / "ENCUESTA PENDIENTE".
+    [estadosEncuesta, setEstadosEncuesta] = useState<EstadosEncuesta | null>(
+      null,
+    ),
     [quality, setQuality] = useState<DataQuality | null>(null),
     [funnel, setFunnel] = useState<FunnelTiempos | null>(null),
     [estadosCategorizados, setEstadosCategorizados] =
@@ -2148,6 +2353,7 @@ export default function App() {
       () => api.trackeoOutliers(f),
       () => api.trackeoTiposPoliza(f),
       () => api.trackeoProvinciasOrigen(f),
+      () => api.trackeoEstadosEncuesta(f),
     ]);
     const errs: string[] = [];
     const take = <T,>(i: number, fn: (x: T) => void) =>
@@ -2196,6 +2402,7 @@ export default function App() {
     take<{ provincias: ProvinciaOption[] }>(17, (x) =>
       setProvinciaOptions(x.provincias),
     );
+    take<EstadosEncuesta>(18, (x) => setEstadosEncuesta(x));
     if (errs.length) setError(errs.join(" | "));
     setLoading(false);
   }, []);
@@ -3037,6 +3244,55 @@ export default function App() {
                         }}
                       />
                     </div>
+                  </div>
+                </section>
+
+                {/* ---------- NUEVO (ADITIVO): Encuesta post-servicio ---------- */}
+                <section className="flex flex-col gap-sm">
+                  <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs">
+                    Encuesta post-servicio
+                  </h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-md pt-xs">
+                    <Card
+                      icon={<Icon name="fact_check" filled />}
+                      title="Promedio diario · Encuesta final"
+                      value={nf(estadosEncuesta?.promedios_diarios.encuesta_final)}
+                      detail={`${nf(estadosEncuesta?.totales.encuesta_final)} servicios en total · ${nf(estadosEncuesta?.dias_en_rango)} días en el rango`}
+                      tooltip={{
+                        leer: "Cuántos servicios, en promedio por día, están en el estado 'ENCUESTA FINAL' dentro del período filtrado.",
+                        calculo: "Total de servicios con estado = 'ENCUESTA FINAL' ÷ cantidad de días del rango (Desde-Hasta inclusive).",
+                      }}
+                    />
+                    <Card
+                      icon={<Icon name="hourglass_empty" filled />}
+                      title="Promedio diario · Encuesta pendiente"
+                      value={nf(estadosEncuesta?.promedios_diarios.encuesta_pendiente)}
+                      detail={`${nf(estadosEncuesta?.totales.encuesta_pendiente)} servicios en total · ${nf(estadosEncuesta?.dias_en_rango)} días en el rango`}
+                      tone="amber"
+                      tooltip={{
+                        leer: "Cuántos servicios, en promedio por día, están en el estado 'ENCUESTA PENDIENTE' dentro del período filtrado.",
+                        calculo: "Total de servicios con estado = 'ENCUESTA PENDIENTE' ÷ cantidad de días del rango (Desde-Hasta inclusive).",
+                      }}
+                    />
+                  </div>
+                  <div className="bg-surface-container-lowest rounded-xl p-md card-shadow border border-outline-variant/20 flex flex-col gap-md">
+                    <div className="flex items-center gap-4 flex-wrap">
+                      {ENCUESTA_SERIES.map((s) => (
+                        <div key={s.key} className="flex items-center gap-2">
+                          <div
+                            className={`w-3 h-3 rounded-full ${s.fill}`}
+                          />
+                          <span className="font-label-md text-label-md text-on-surface-variant">
+                            {s.label}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    <EncuestaTrendSvg
+                      data={estadosEncuesta?.serie_diaria ?? []}
+                      width={900}
+                      height={260}
+                    />
                   </div>
                 </section>
 

@@ -154,6 +154,19 @@ export type TrendPoint = TrackeoSummary & {
   demora_prometida_promedio?: number | null;
   desvio_promedio?: number | null;
 };
+export type EstadosEncuestaPunto = {
+  fecha: string;
+  encuesta_final: number;
+  encuesta_pendiente: number;
+};
+export type EstadosEncuesta = {
+  fecha_desde: string;
+  fecha_hasta: string;
+  dias_en_rango: number;
+  totales: { encuesta_final: number; encuesta_pendiente: number };
+  promedios_diarios: { encuesta_final: number; encuesta_pendiente: number };
+  serie_diaria: EstadosEncuestaPunto[];
+};
 export type DataQuality = {
   total: number;
   tipo_servicio_completo: number;
@@ -624,6 +637,10 @@ export const api = {
   trackeoTendencia: (f: TrackeoFilters) =>
     request<{ tendencia: TrendPoint[] }>(
       "/api/metricas-trackeo/tendencia" + qs(fp(f)),
+    ),
+  trackeoEstadosEncuesta: (f: TrackeoFilters) =>
+    request<EstadosEncuesta>(
+      "/api/metricas-trackeo/estados-encuesta" + qs(fp(f)),
     ),
   trackeoCalidadDatos: (f: TrackeoFilters) =>
     request<{
