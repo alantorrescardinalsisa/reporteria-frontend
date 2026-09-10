@@ -4710,11 +4710,11 @@ export default function App() {
                       Cargar reportes
                     </h2>
                     <p className="font-label-sm text-label-sm text-on-surface-variant">
-                      Excel de Trackeo (.xlsx/.xlsm) o archivo de despachador con
-                      origen/destino (.xls/.xlsb/.xlsx) — la plataforma detecta
-                      cuál es por el nombre del archivo. Si el de despachador
-                      pesa más de 50 MB, exportalo como .xlsb (mucho más
-                      liviano que .xls).
+                      Excel de Trackeo (.xlsx/.xlsm), archivo de despachador con
+                      origen/destino (.xls/.xlsb/.xlsx), o Reporte de Métricas de
+                      Encuestas (.xlsx) — la plataforma detecta cuál es por el
+                      nombre del archivo. Si el de despachador pesa más de 50 MB,
+                      exportalo como .xlsb (mucho más liviano que .xls).
                     </p>
                   </div>
                 </header>
