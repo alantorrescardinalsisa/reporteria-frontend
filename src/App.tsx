@@ -2506,7 +2506,16 @@ export default function App() {
     history.replaceState(null, "", `?${p}`);
   }, [filters, page]);
   const campOpts = campaigns.map((x) => ({
-      value: x.campana,
+      // CORREGIDO (ADITIVO): antes usaba `x.campana` (crudo) como value,
+      // a diferencia de TODOS los demas filtros (estado_normalizado,
+      // tipo_normalizado, etc.), que ya usaban el campo normalizado.
+      // El backend compara contra `campana_normalizada` (sin acentos),
+      // pero `normalize_text()` del lado del filtro NO saca acentos --
+      // asi que cualquier campaña con tilde (o, como en este caso
+      // puntual, con un caracter corrupto por un problema de encoding
+      // en el Excel de origen) nunca podia matchear y devolvia 0
+      // resultados pese a que el backend SI tenia los datos.
+      value: x.campana_normalizada || x.campana,
       label: `${x.campana} (${nf(x.servicios)})`,
     })),
     provOpts = providerOptions.map((x) => ({
