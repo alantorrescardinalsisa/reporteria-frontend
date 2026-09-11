@@ -643,6 +643,7 @@ function TrendSvg({
         ? { className: "w-full block", style: { height: H } }
         : { width: W, height: H, className: "block" })}
       viewBox={`0 0 ${W} ${H}`}
+      preserveAspectRatio="none"
     >
       {[0, 0.25, 0.5, 0.75, 1].map((v) => (
         <g key={v}>
@@ -830,8 +831,14 @@ function EncuestaTrendSvg({
   const anchoUtil = W - 2 * P,
     maxEtiquetas = Math.max(2, Math.floor(anchoUtil / 46)),
     paso = Math.max(1, Math.ceil(data.length / maxEtiquetas)),
-    mostrarEtiqueta = (i: number) =>
-      i === 0 || i === data.length - 1 || i % paso === 0;
+    ultimoIdx = data.length - 1,
+    mostrarEtiqueta = (i: number) => {
+      if (i === 0 || i === ultimoIdx) return true;
+      if (i % paso !== 0) return false;
+      // Si la etiqueta regular cae muy cerca de la ultima (forzada),
+      // se saltea -- si no, se amontonan y se vuelven ilegibles.
+      return ultimoIdx - i >= Math.max(1, Math.ceil(paso / 2));
+    };
 
   const moverHover = (e: ReactMouseEvent<SVGRectElement>) => {
     const svg = svgRef.current;
@@ -871,6 +878,7 @@ function EncuestaTrendSvg({
       className="w-full block"
       style={{ height: H }}
       viewBox={`0 0 ${W} ${H}`}
+      preserveAspectRatio="none"
     >
       {[0, 0.25, 0.5, 0.75, 1].map((v) => (
         <g key={v}>
