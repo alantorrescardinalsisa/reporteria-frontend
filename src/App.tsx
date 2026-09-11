@@ -812,17 +812,19 @@ function EncuestaTrendSvg({
     points = (k: "encuesta_final" | "encuesta_pendiente") =>
       data.map((d, i) => `${x(i)},${y(Number(d[k] || 0))}`).join(" ");
 
-  // Limites de Control (Six Sigma): un punto fuera de la banda
-  // [LCI, LCS] es una variacion que ya no es "ruido normal" del
-  // proceso -- se marca en el grafico para saltar a la vista.
-  const fueraDeControl = (
+  // Limites de Control (Six Sigma). Aca solo interesa la caida: que
+  // se envien MAS encuestas que el limite superior no es un
+  // problema (es buena senal), lo que hay que detectar es cuando se
+  // envian MENOS que el limite inferior -- eso indica que el envio
+  // de encuestas se corto por algun motivo.
+  const pocasEncuestas = (
     d: EstadosEncuestaPunto,
     k: "encuesta_final" | "encuesta_pendiente",
   ) => {
     const l = limites?.[k];
     if (!l) return false;
     const v = Number(d[k] || 0);
-    return v > l.lcs || v < l.lci;
+    return v < l.lci;
   };
 
   const anchoUtil = W - 2 * P,
@@ -894,6 +896,16 @@ function EncuestaTrendSvg({
               <line
                 x1={P}
                 x2={W - P}
+                y1={y(l.media)}
+                y2={y(l.media)}
+                className={s.stroke}
+                strokeWidth={1}
+                strokeDasharray="2,3"
+                opacity={0.4}
+              />
+              <line
+                x1={P}
+                x2={W - P}
                 y1={y(l.lcs)}
                 y2={y(l.lcs)}
                 className={s.stroke}
@@ -928,9 +940,9 @@ function EncuestaTrendSvg({
         data.map((d, i) =>
           ENCUESTA_SERIES.map(
             (s) =>
-              fueraDeControl(d, s.key) && (
+              pocasEncuestas(d, s.key) && (
                 <circle
-                  key={`fuera-${s.key}-${d.fecha}`}
+                  key={`bajo-${s.key}-${d.fecha}`}
                   cx={x(i)}
                   cy={y(Number(d[s.key] || 0))}
                   r={4.5}
@@ -1006,7 +1018,7 @@ function EncuestaTrendSvg({
                 className="fill-inverse-on-surface text-[10px]"
               >
                 {s.label}: {nf(Number(hover[s.key] || 0))}
-                {fueraDeControl(hover, s.key) ? " ⚠" : ""}
+                {pocasEncuestas(hover, s.key) ? " ⚠" : ""}
               </text>
             </g>
           ))}
@@ -3376,7 +3388,7 @@ export default function App() {
                       })}
                       <span className="flex items-center gap-1 text-label-sm font-label-sm text-on-surface-variant/70">
                         <span className="inline-block w-2.5 h-2.5 rounded-full border-2 border-red-500" />
-                        Fuera de control (Six Sigma)
+                        Caída fuera de lo esperado (bajo LCI)
                       </span>
                     </div>
                     <EncuestaTrendSvg
