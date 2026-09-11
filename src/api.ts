@@ -158,12 +158,12 @@ export type EstadosEncuestaPunto = {
   fecha: string;
   encuesta_final: number;
   encuesta_pendiente: number;
+  encuesta_final_alerta?: boolean;
+  encuesta_pendiente_alerta?: boolean;
 };
 export type LimiteControlEncuesta = {
   media: number;
   desvio: number;
-  lcs: number;
-  lci: number;
 };
 export type EstadosEncuesta = {
   fecha_desde: string;

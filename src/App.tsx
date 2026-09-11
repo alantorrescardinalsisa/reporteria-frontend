@@ -806,27 +806,24 @@ function EncuestaTrendSvg({
     maxValor = Math.max(
       1,
       ...data.map((d) => Math.max(d.encuesta_final, d.encuesta_pendiente)),
-      ...ENCUESTA_SERIES.map((s) => limites?.[s.key]?.lcs ?? 0),
     ),
     x = (i: number) => P + (i * (W - 2 * P)) / Math.max(1, data.length - 1),
     y = (v: number) => H - P - (v / maxValor) * (H - 2 * P),
     points = (k: "encuesta_final" | "encuesta_pendiente") =>
       data.map((d, i) => `${x(i)},${y(Number(d[k] || 0))}`).join(" ");
 
-  // Limites de Control (Six Sigma). Aca solo interesa la caida: que
-  // se envien MAS encuestas que el limite superior no es un
-  // problema (es buena senal), lo que hay que detectar es cuando se
-  // envian MENOS que el limite inferior -- eso indica que el envio
-  // de encuestas se corto por algun motivo.
-  const pocasEncuestas = (
+  // El backend ya viene marcando, para cada dia, si dispara una
+  // alerta -- combina una regla puntual (residuo de ese dia contra su
+  // linea base esperada segun el dia de semana, mas de 3 sigma abajo)
+  // con CUSUM (caida mas lenta mantenida en el tiempo). Ver
+  // _residuos_ajustados_por_dia_semana / _alertas_cusum_caida en app.py.
+  const alertaCusum = (
     d: EstadosEncuestaPunto,
     k: "encuesta_final" | "encuesta_pendiente",
-  ) => {
-    const l = limites?.[k];
-    if (!l) return false;
-    const v = Number(d[k] || 0);
-    return v < l.lci;
-  };
+  ) =>
+    Boolean(
+      k === "encuesta_final" ? d.encuesta_final_alerta : d.encuesta_pendiente_alerta,
+    );
 
   const anchoUtil = W - 2 * P,
     maxEtiquetas = Math.max(2, Math.floor(anchoUtil / 46)),
@@ -900,38 +897,17 @@ function EncuestaTrendSvg({
           const l = limites[s.key];
           if (!l) return null;
           return (
-            <g key={`limites-${s.key}`}>
-              <line
-                x1={P}
-                x2={W - P}
-                y1={y(l.media)}
-                y2={y(l.media)}
-                className={s.stroke}
-                strokeWidth={1}
-                strokeDasharray="2,3"
-                opacity={0.4}
-              />
-              <line
-                x1={P}
-                x2={W - P}
-                y1={y(l.lcs)}
-                y2={y(l.lcs)}
-                className={s.stroke}
-                strokeWidth={1}
-                strokeDasharray="5,4"
-                opacity={0.55}
-              />
-              <line
-                x1={P}
-                x2={W - P}
-                y1={y(l.lci)}
-                y2={y(l.lci)}
-                className={s.stroke}
-                strokeWidth={1}
-                strokeDasharray="5,4"
-                opacity={0.55}
-              />
-            </g>
+            <line
+              key={`media-${s.key}`}
+              x1={P}
+              x2={W - P}
+              y1={y(l.media)}
+              y2={y(l.media)}
+              className={s.stroke}
+              strokeWidth={1}
+              strokeDasharray="4,3"
+              opacity={0.5}
+            />
           );
         })}
       {ENCUESTA_SERIES.map((s) => (
@@ -948,7 +924,7 @@ function EncuestaTrendSvg({
         data.map((d, i) =>
           ENCUESTA_SERIES.map(
             (s) =>
-              pocasEncuestas(d, s.key) && (
+              alertaCusum(d, s.key) && (
                 <circle
                   key={`bajo-${s.key}-${d.fecha}`}
                   cx={x(i)}
@@ -1026,7 +1002,7 @@ function EncuestaTrendSvg({
                 className="fill-inverse-on-surface text-[10px]"
               >
                 {s.label}: {nf(Number(hover[s.key] || 0))}
-                {pocasEncuestas(hover, s.key) ? " ⚠" : ""}
+                {alertaCusum(hover, s.key) ? " ⚠" : ""}
               </text>
             </g>
           ))}
@@ -3387,7 +3363,7 @@ export default function App() {
                               {l && (
                                 <span className="text-on-surface-variant/70">
                                   {" "}
-                                  · Media {nf(l.media)} · LCS {nf(l.lcs)} · LCI {nf(l.lci)}
+                                  · Media {nf(l.media)} · σ {nf(l.desvio)}
                                 </span>
                               )}
                             </span>
@@ -3396,7 +3372,7 @@ export default function App() {
                       })}
                       <span className="flex items-center gap-1 text-label-sm font-label-sm text-on-surface-variant/70">
                         <span className="inline-block w-2.5 h-2.5 rounded-full border-2 border-red-500" />
-                        Caída fuera de lo esperado (bajo LCI)
+                        Caída fuera de lo esperado
                       </span>
                     </div>
                     <EncuestaTrendSvg
