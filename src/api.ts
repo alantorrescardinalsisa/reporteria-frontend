@@ -159,12 +159,22 @@ export type EstadosEncuestaPunto = {
   encuesta_final: number;
   encuesta_pendiente: number;
 };
+export type LimiteControlEncuesta = {
+  media: number;
+  desvio: number;
+  lcs: number;
+  lci: number;
+};
 export type EstadosEncuesta = {
   fecha_desde: string;
   fecha_hasta: string;
   dias_en_rango: number;
   totales: { encuesta_final: number; encuesta_pendiente: number };
   promedios_diarios: { encuesta_final: number; encuesta_pendiente: number };
+  limites_control: {
+    encuesta_final: LimiteControlEncuesta;
+    encuesta_pendiente: LimiteControlEncuesta;
+  };
   serie_diaria: EstadosEncuestaPunto[];
 };
 export type DataQuality = {

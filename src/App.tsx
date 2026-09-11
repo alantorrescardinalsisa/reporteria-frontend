@@ -20,6 +20,7 @@ import {
   type EstadosCategorizados,
   type EstadosEncuesta,
   type EstadosEncuestaPunto,
+  type LimiteControlEncuesta,
   type FunnelTiempos,
   type Clasificacion,
   type HabilitadoresAsignacion,
@@ -784,10 +785,15 @@ const ENCUESTA_SERIES: {
 ];
 function EncuestaTrendSvg({
   data,
+  limites,
   width,
   height,
 }: {
   data: EstadosEncuestaPunto[];
+  limites?: {
+    encuesta_final: LimiteControlEncuesta;
+    encuesta_pendiente: LimiteControlEncuesta;
+  } | null;
   width: number;
   height: number;
 }) {
@@ -796,11 +802,28 @@ function EncuestaTrendSvg({
   const W = width,
     H = height,
     P = 35,
-    maxValor = Math.max(1, ...data.map((d) => Math.max(d.encuesta_final, d.encuesta_pendiente))),
+    maxValor = Math.max(
+      1,
+      ...data.map((d) => Math.max(d.encuesta_final, d.encuesta_pendiente)),
+      ...ENCUESTA_SERIES.map((s) => limites?.[s.key]?.lcs ?? 0),
+    ),
     x = (i: number) => P + (i * (W - 2 * P)) / Math.max(1, data.length - 1),
     y = (v: number) => H - P - (v / maxValor) * (H - 2 * P),
     points = (k: "encuesta_final" | "encuesta_pendiente") =>
       data.map((d, i) => `${x(i)},${y(Number(d[k] || 0))}`).join(" ");
+
+  // Limites de Control (Six Sigma): un punto fuera de la banda
+  // [LCI, LCS] es una variacion que ya no es "ruido normal" del
+  // proceso -- se marca en el grafico para saltar a la vista.
+  const fueraDeControl = (
+    d: EstadosEncuestaPunto,
+    k: "encuesta_final" | "encuesta_pendiente",
+  ) => {
+    const l = limites?.[k];
+    if (!l) return false;
+    const v = Number(d[k] || 0);
+    return v > l.lcs || v < l.lci;
+  };
 
   const anchoUtil = W - 2 * P,
     maxEtiquetas = Math.max(2, Math.floor(anchoUtil / 46)),
@@ -862,6 +885,35 @@ function EncuestaTrendSvg({
           </text>
         </g>
       ))}
+      {limites &&
+        ENCUESTA_SERIES.map((s) => {
+          const l = limites[s.key];
+          if (!l) return null;
+          return (
+            <g key={`limites-${s.key}`}>
+              <line
+                x1={P}
+                x2={W - P}
+                y1={y(l.lcs)}
+                y2={y(l.lcs)}
+                className={s.stroke}
+                strokeWidth={1}
+                strokeDasharray="5,4"
+                opacity={0.55}
+              />
+              <line
+                x1={P}
+                x2={W - P}
+                y1={y(l.lci)}
+                y2={y(l.lci)}
+                className={s.stroke}
+                strokeWidth={1}
+                strokeDasharray="5,4"
+                opacity={0.55}
+              />
+            </g>
+          );
+        })}
       {ENCUESTA_SERIES.map((s) => (
         <polyline
           key={s.key}
@@ -872,6 +924,22 @@ function EncuestaTrendSvg({
           points={points(s.key)}
         />
       ))}
+      {limites &&
+        data.map((d, i) =>
+          ENCUESTA_SERIES.map(
+            (s) =>
+              fueraDeControl(d, s.key) && (
+                <circle
+                  key={`fuera-${s.key}-${d.fecha}`}
+                  cx={x(i)}
+                  cy={y(Number(d[s.key] || 0))}
+                  r={4.5}
+                  className="fill-none stroke-red-500"
+                  strokeWidth={2}
+                />
+              ),
+          ),
+        )}
       {data.map(
         (d, i) =>
           mostrarEtiqueta(i) && (
@@ -938,6 +1006,7 @@ function EncuestaTrendSvg({
                 className="fill-inverse-on-surface text-[10px]"
               >
                 {s.label}: {nf(Number(hover[s.key] || 0))}
+                {fueraDeControl(hover, s.key) ? " ⚠" : ""}
               </text>
             </g>
           ))}
@@ -3286,19 +3355,33 @@ export default function App() {
                   </div>
                   <div className="bg-surface-container-lowest rounded-xl p-md card-shadow border border-outline-variant/20 flex flex-col gap-md">
                     <div className="flex items-center gap-4 flex-wrap">
-                      {ENCUESTA_SERIES.map((s) => (
-                        <div key={s.key} className="flex items-center gap-2">
-                          <div
-                            className={`w-3 h-3 rounded-full ${s.fill}`}
-                          />
-                          <span className="font-label-md text-label-md text-on-surface-variant">
-                            {s.label}
-                          </span>
-                        </div>
-                      ))}
+                      {ENCUESTA_SERIES.map((s) => {
+                        const l = estadosEncuesta?.limites_control?.[s.key];
+                        return (
+                          <div key={s.key} className="flex items-center gap-2">
+                            <div
+                              className={`w-3 h-3 rounded-full ${s.fill}`}
+                            />
+                            <span className="font-label-md text-label-md text-on-surface-variant">
+                              {s.label}
+                              {l && (
+                                <span className="text-on-surface-variant/70">
+                                  {" "}
+                                  · Media {nf(l.media)} · LCS {nf(l.lcs)} · LCI {nf(l.lci)}
+                                </span>
+                              )}
+                            </span>
+                          </div>
+                        );
+                      })}
+                      <span className="flex items-center gap-1 text-label-sm font-label-sm text-on-surface-variant/70">
+                        <span className="inline-block w-2.5 h-2.5 rounded-full border-2 border-red-500" />
+                        Fuera de control (Six Sigma)
+                      </span>
                     </div>
                     <EncuestaTrendSvg
                       data={estadosEncuesta?.serie_diaria ?? []}
+                      limites={estadosEncuesta?.limites_control}
                       width={900}
                       height={260}
                     />
