@@ -3408,7 +3408,8 @@ export default function App() {
                     />
                   </h3>
                   <p className="font-label-sm text-label-sm text-on-surface-variant -mt-2">
-                    Compañías incluidas: {(coberturaEncuestas?.companias_incluidas ?? []).join(", ") || "—"}
+                    Compañías con encuesta habilitada: {(coberturaEncuestas?.companias_incluidas ?? []).join(", ") || "—"}
+                    {" "}— aplica al conteo de "Se enviaron"; "Debieron enviarse" confía en que solo se suban archivos de Ficha de Seguimiento de estas compañías.
                   </p>
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-md pt-xs">
                     <Card
