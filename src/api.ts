@@ -182,6 +182,7 @@ export type CoberturaEncuestasPunto = {
   esperadas: number;
   enviadas: number;
   faltantes: number;
+  ids_faltantes: number[];
 };
 export type CoberturaEncuestas = {
   fecha_desde: string;

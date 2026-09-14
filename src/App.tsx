@@ -3459,7 +3459,8 @@ export default function App() {
                           .map((p) => (
                             <span
                               key={p.fecha}
-                              className="inline-flex items-center gap-1 rounded-full bg-red-500/10 border border-red-500/30 px-3 py-1 text-label-sm font-label-sm text-on-surface"
+                              title={`IdOrdenDeServicio sin encuesta: ${p.ids_faltantes.join(", ")}`}
+                              className="inline-flex items-center gap-1 rounded-full bg-red-500/10 border border-red-500/30 px-3 py-1 text-label-sm font-label-sm text-on-surface cursor-help"
                             >
                               {p.fecha}
                               <b>−{nf(p.faltantes)}</b>
