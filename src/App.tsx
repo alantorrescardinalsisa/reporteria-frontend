@@ -21,6 +21,7 @@ import {
   type EstadosEncuesta,
   type EstadosEncuestaPunto,
   type LimiteControlEncuesta,
+  type CoberturaEncuestas,
   type FunnelTiempos,
   type Clasificacion,
   type HabilitadoresAsignacion,
@@ -2302,6 +2303,11 @@ export default function App() {
     [estadosEncuesta, setEstadosEncuesta] = useState<EstadosEncuesta | null>(
       null,
     ),
+    // NUEVO (ADITIVO): cuantas encuestas DEBIERON enviarse (servicios
+    // finalizados de companias con encuesta automatica habilitada) vs
+    // cuantas se enviaron -- numero exacto, no una estimacion estadistica.
+    [coberturaEncuestas, setCoberturaEncuestas] =
+      useState<CoberturaEncuestas | null>(null),
     [quality, setQuality] = useState<DataQuality | null>(null),
     [funnel, setFunnel] = useState<FunnelTiempos | null>(null),
     [estadosCategorizados, setEstadosCategorizados] =
@@ -2419,6 +2425,7 @@ export default function App() {
       () => api.trackeoTiposPoliza(f),
       () => api.trackeoProvinciasOrigen(f),
       () => api.trackeoEstadosEncuesta(f),
+      () => api.trackeoCoberturaEncuestas(f),
     ]);
     const errs: string[] = [];
     const take = <T,>(i: number, fn: (x: T) => void) =>
@@ -2468,6 +2475,7 @@ export default function App() {
       setProvinciaOptions(x.provincias),
     );
     take<EstadosEncuesta>(18, (x) => setEstadosEncuesta(x));
+    take<CoberturaEncuestas>(19, (x) => setCoberturaEncuestas(x));
     if (errs.length) setError(errs.join(" | "));
     setLoading(false);
   }, []);
@@ -3382,6 +3390,86 @@ export default function App() {
                       height={260}
                     />
                   </div>
+                </section>
+
+                {/* ---------- NUEVO (ADITIVO): Cobertura real de encuestas
+                   -- cuantas DEBIERON enviarse (servicios finalizados de
+                   companias con encuesta automatica habilitada) vs cuantas
+                   se enviaron. Numero exacto, no una estimacion
+                   estadistica -- posible porque se confirmo empiricamente
+                   que "SERVICIO FINALIZADO" dispara la encuesta automatica
+                   en 1-2 segundos, en el 99%+ de los casos. ---------- */}
+                <section className="flex flex-col gap-sm">
+                  <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs flex items-center gap-1">
+                    Cobertura de encuestas automáticas
+                    <InfoTip
+                      leer="De los servicios que debieron disparar la encuesta automática (se finalizaron, en una compañía con la función habilitada), cuántos efectivamente la recibieron."
+                      calculo="Esperadas = servicios finalizados en el rango filtrado, de las compañías con encuesta automática confirmada. Enviadas = encuestas reales registradas en ese mismo rango. Faltantes = Esperadas − Enviadas."
+                    />
+                  </h3>
+                  <p className="font-label-sm text-label-sm text-on-surface-variant -mt-2">
+                    Compañías incluidas: {(coberturaEncuestas?.companias_incluidas ?? []).join(", ") || "—"}
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-md pt-xs">
+                    <Card
+                      icon={<Icon name="task_alt" filled />}
+                      title="Debieron enviarse"
+                      value={nf(coberturaEncuestas?.totales.esperadas)}
+                      detail="Servicios finalizados en el rango filtrado"
+                    />
+                    <Card
+                      icon={<Icon name="send" filled />}
+                      title="Se enviaron"
+                      value={nf(coberturaEncuestas?.totales.enviadas)}
+                      detail="Encuestas reales registradas"
+                    />
+                    <Card
+                      icon={<Icon name="report" filled />}
+                      title="Faltantes"
+                      value={nf(coberturaEncuestas?.totales.faltantes)}
+                      detail="Esperadas − Enviadas"
+                      tone={
+                        (coberturaEncuestas?.totales.faltantes ?? 0) > 0
+                          ? "amber"
+                          : undefined
+                      }
+                    />
+                    <Card
+                      icon={<Icon name="percent" filled />}
+                      title="Cobertura"
+                      value={
+                        coberturaEncuestas?.totales.cobertura_pct == null
+                          ? "—"
+                          : `${nf(coberturaEncuestas.totales.cobertura_pct)} %`
+                      }
+                      detail="Enviadas ÷ Esperadas"
+                    />
+                  </div>
+                  {(coberturaEncuestas?.serie_diaria ?? []).some(
+                    (p) => p.faltantes > 0,
+                  ) && (
+                    <div className="bg-surface-container-lowest rounded-xl p-md card-shadow border border-outline-variant/20">
+                      <p className="font-label-md text-label-md text-on-surface-variant mb-2">
+                        Días con encuestas faltantes:
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {(coberturaEncuestas?.serie_diaria ?? [])
+                          .filter((p) => p.faltantes > 0)
+                          .map((p) => (
+                            <span
+                              key={p.fecha}
+                              className="inline-flex items-center gap-1 rounded-full bg-red-500/10 border border-red-500/30 px-3 py-1 text-label-sm font-label-sm text-on-surface"
+                            >
+                              {p.fecha}
+                              <b>−{nf(p.faltantes)}</b>
+                              <span className="text-on-surface-variant/70">
+                                ({nf(p.enviadas)}/{nf(p.esperadas)})
+                              </span>
+                            </span>
+                          ))}
+                      </div>
+                    </div>
+                  )}
                 </section>
 
                 {/* ---------- Distribución + Calidad ---------- */}
@@ -4790,10 +4878,12 @@ export default function App() {
                     </h2>
                     <p className="font-label-sm text-label-sm text-on-surface-variant">
                       Excel de Trackeo (.xlsx/.xlsm), archivo de despachador con
-                      origen/destino (.xls/.xlsb/.xlsx), o Reporte de Métricas de
-                      Encuestas (.xlsx) — la plataforma detecta cuál es por el
-                      nombre del archivo. Si el de despachador pesa más de 50 MB,
-                      exportalo como .xlsb (mucho más liviano que .xls).
+                      origen/destino (.xls/.xlsb/.xlsx), Reporte de Métricas de
+                      Encuestas (.xlsx), o Reporte Ficha Seguimiento filtrado por
+                      Evento="USO DEL SISTEMA" y Acción="SERVICIO FINALIZADO"
+                      (.xlsx) — la plataforma detecta cuál es por el nombre del
+                      archivo. Si el de despachador pesa más de 50 MB, exportalo
+                      como .xlsb (mucho más liviano que .xls).
                     </p>
                   </div>
                 </header>

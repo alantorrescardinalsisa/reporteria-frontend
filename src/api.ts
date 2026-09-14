@@ -177,6 +177,25 @@ export type EstadosEncuesta = {
   };
   serie_diaria: EstadosEncuestaPunto[];
 };
+export type CoberturaEncuestasPunto = {
+  fecha: string;
+  esperadas: number;
+  enviadas: number;
+  faltantes: number;
+};
+export type CoberturaEncuestas = {
+  fecha_desde: string;
+  fecha_hasta: string;
+  dias_en_rango: number;
+  companias_incluidas: string[];
+  totales: {
+    esperadas: number;
+    enviadas: number;
+    faltantes: number;
+    cobertura_pct: number | null;
+  };
+  serie_diaria: CoberturaEncuestasPunto[];
+};
 export type DataQuality = {
   total: number;
   tipo_servicio_completo: number;
@@ -651,6 +670,10 @@ export const api = {
   trackeoEstadosEncuesta: (f: TrackeoFilters) =>
     request<EstadosEncuesta>(
       "/api/metricas-trackeo/estados-encuesta" + qs(fp(f)),
+    ),
+  trackeoCoberturaEncuestas: (f: TrackeoFilters) =>
+    request<CoberturaEncuestas>(
+      "/api/metricas-trackeo/cobertura-encuestas" + qs(fp(f)),
     ),
   trackeoCalidadDatos: (f: TrackeoFilters) =>
     request<{
