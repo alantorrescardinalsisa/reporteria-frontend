@@ -2355,6 +2355,11 @@ export default function App() {
     [inteligenciaPage, setInteligenciaPage] = useState(1),
     [modalClasificacion, setModalClasificacion] =
       useState<Clasificacion | null>(null),
+    // NUEVO (ADITIVO): detalle de IDs al hacer clic en las tarjetas de
+    // "Cobertura de encuestas automáticas".
+    [modalCobertura, setModalCobertura] = useState<
+      "esperadas" | "enviadas" | "faltantes" | null
+    >(null),
     // NUEVO (ADITIVO): sistema de alertas (campanita del header) --
     // visible en cualquier pantalla, así que se pide siempre (no
     // gateado por `page`, a diferencia de Inteligencia Operativa).
@@ -3417,12 +3422,16 @@ export default function App() {
                       title="Debieron enviarse"
                       value={nf(coberturaEncuestas?.totales.esperadas)}
                       detail="Servicios finalizados en el rango filtrado"
+                      onClick={() => setModalCobertura("esperadas")}
+                      linkText="Ver servicios"
                     />
                     <Card
                       icon={<Icon name="send" filled />}
                       title="Se enviaron"
                       value={nf(coberturaEncuestas?.totales.enviadas)}
                       detail="Encuestas reales registradas"
+                      onClick={() => setModalCobertura("enviadas")}
+                      linkText="Ver servicios"
                     />
                     <Card
                       icon={<Icon name="report" filled />}
@@ -3434,6 +3443,8 @@ export default function App() {
                           ? "amber"
                           : undefined
                       }
+                      onClick={() => setModalCobertura("faltantes")}
+                      linkText="Ver servicios"
                     />
                     <Card
                       icon={<Icon name="percent" filled />}
@@ -5209,6 +5220,96 @@ export default function App() {
                     ))}
                   </div>
                 ))}
+            </div>
+          </section>
+        </div>
+      )}
+
+      {/* ---------- NUEVO (ADITIVO): Modal de detalle de IDs al hacer
+         clic en las tarjetas de Cobertura de encuestas automáticas ---------- */}
+      {modalCobertura && (
+        <div
+          className="fixed inset-0 bg-on-surface/40 z-[100] flex items-center justify-center p-md"
+          onMouseDown={() => setModalCobertura(null)}
+        >
+          <section
+            className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <header className="flex items-center justify-between gap-3 px-md py-md border-b border-outline-variant/20">
+              <div className="flex items-center gap-2">
+                <span
+                  className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                    modalCobertura === "faltantes"
+                      ? "bg-red-500/15 text-red-600"
+                      : "bg-primary/15 text-primary"
+                  }`}
+                >
+                  <Icon
+                    name={
+                      modalCobertura === "esperadas"
+                        ? "task_alt"
+                        : modalCobertura === "enviadas"
+                          ? "send"
+                          : "report"
+                    }
+                    className="text-[18px]"
+                  />
+                </span>
+                <div>
+                  <h2 className="font-title-lg text-title-lg text-on-surface">
+                    {modalCobertura === "esperadas"
+                      ? "Debieron enviarse"
+                      : modalCobertura === "enviadas"
+                        ? "Se enviaron"
+                        : "Faltantes"}
+                  </h2>
+                  <p className="font-label-sm text-label-sm text-on-surface-variant">
+                    {nf(
+                      (coberturaEncuestas?.serie_diaria ?? []).reduce(
+                        (acc, p) => acc + p[`ids_${modalCobertura}`].length,
+                        0,
+                      ),
+                    )}{" "}
+                    servicios · IdOrdenDeServicio
+                  </p>
+                </div>
+              </div>
+              <button
+                className="w-9 h-9 rounded-full flex items-center justify-center text-on-surface-variant hover:bg-surface-container-low transition-colors"
+                onClick={() => setModalCobertura(null)}
+              >
+                <Icon name="close" />
+              </button>
+            </header>
+            <div className="overflow-auto px-md py-sm flex-1 flex flex-col gap-2">
+              {(coberturaEncuestas?.serie_diaria ?? [])
+                .filter((p) => p[`ids_${modalCobertura}`].length > 0)
+                .map((p) => (
+                  <div
+                    key={p.fecha}
+                    className="bg-surface-container-low rounded-lg px-sm py-2 flex flex-col gap-1"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-body-md text-body-md font-medium text-on-surface">
+                        {p.fecha}
+                      </span>
+                      <span className="font-label-md text-label-md text-on-surface-variant">
+                        {nf(p[`ids_${modalCobertura}`].length)} servicios
+                      </span>
+                    </div>
+                    <span className="font-label-sm text-label-sm text-on-surface-variant break-all">
+                      {p[`ids_${modalCobertura}`].join(", ")}
+                    </span>
+                  </div>
+                ))}
+              {(coberturaEncuestas?.serie_diaria ?? []).every(
+                (p) => p[`ids_${modalCobertura}`].length === 0,
+              ) && (
+                <p className="font-body-md text-body-md text-on-surface-variant text-center py-lg">
+                  No hay servicios en esta categoría para el rango filtrado.
+                </p>
+              )}
             </div>
           </section>
         </div>
