@@ -191,6 +191,7 @@ export type CoberturaEncuestas = {
   fecha_hasta: string;
   dias_en_rango: number;
   companias_incluidas: string[];
+  compania_filtrada: string | null;
   totales: {
     esperadas: number;
     enviadas: number;
@@ -674,9 +675,10 @@ export const api = {
     request<EstadosEncuesta>(
       "/api/metricas-trackeo/estados-encuesta" + qs(fp(f)),
     ),
-  trackeoCoberturaEncuestas: (f: TrackeoFilters) =>
+  trackeoCoberturaEncuestas: (f: TrackeoFilters, compania?: string | null) =>
     request<CoberturaEncuestas>(
-      "/api/metricas-trackeo/cobertura-encuestas" + qs(fp(f)),
+      "/api/metricas-trackeo/cobertura-encuestas" +
+        qs({ ...fp(f), compania: compania || undefined }),
     ),
   trackeoCalidadDatos: (f: TrackeoFilters) =>
     request<{

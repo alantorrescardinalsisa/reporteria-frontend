@@ -2308,6 +2308,10 @@ export default function App() {
     // cuantas se enviaron -- numero exacto, no una estimacion estadistica.
     [coberturaEncuestas, setCoberturaEncuestas] =
       useState<CoberturaEncuestas | null>(null),
+    // NUEVO (ADITIVO): filtro de compañía propio de la sección
+    // "Cobertura de encuestas automáticas" -- independiente de los
+    // filtros globales del resto del dashboard, "" == todas.
+    [coberturaCompania, setCoberturaCompania] = useState(""),
     [quality, setQuality] = useState<DataQuality | null>(null),
     [funnel, setFunnel] = useState<FunnelTiempos | null>(null),
     [estadosCategorizados, setEstadosCategorizados] =
@@ -2430,7 +2434,6 @@ export default function App() {
       () => api.trackeoTiposPoliza(f),
       () => api.trackeoProvinciasOrigen(f),
       () => api.trackeoEstadosEncuesta(f),
-      () => api.trackeoCoberturaEncuestas(f),
     ]);
     const errs: string[] = [];
     const take = <T,>(i: number, fn: (x: T) => void) =>
@@ -2480,13 +2483,32 @@ export default function App() {
       setProvinciaOptions(x.provincias),
     );
     take<EstadosEncuesta>(18, (x) => setEstadosEncuesta(x));
-    take<CoberturaEncuestas>(19, (x) => setCoberturaEncuestas(x));
     if (errs.length) setError(errs.join(" | "));
     setLoading(false);
   }, []);
   useEffect(() => {
     load(filters);
   }, [filters, load]);
+  useEffect(() => {
+    // NUEVO (ADITIVO): efecto independiente del batch grande de arriba
+    // -- así el selector de compañía de "Cobertura de encuestas
+    // automáticas" no dispara una recarga de todo el dashboard, solo
+    // re-pide este indicador puntual. Sigue reaccionando a los filtros
+    // globales de fecha (via `filters`) además de al filtro local de
+    // compañía.
+    let cancelado = false;
+    api
+      .trackeoCoberturaEncuestas(filters, coberturaCompania || null)
+      .then((x) => {
+        if (!cancelado) setCoberturaEncuestas(x);
+      })
+      .catch(() => {
+        /* el error general ya se reporta desde load() */
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, [filters, coberturaCompania]);
   useEffect(() => {
     // NUEVO (ADITIVO): filtros locales de "Distribución horaria" por
     // prestador y/o campaña. Siempre parten de `filters` (los filtros
@@ -3414,8 +3436,31 @@ export default function App() {
                   </h3>
                   <p className="font-label-sm text-label-sm text-on-surface-variant -mt-2">
                     Compañías con encuesta habilitada: {(coberturaEncuestas?.companias_incluidas ?? []).join(", ") || "—"}
-                    {" "}— aplica al conteo de "Se enviaron"; "Debieron enviarse" confía en que solo se suban archivos de Ficha de Seguimiento de estas compañías.
+                    {" "}— este filtro es propio de esta sección y no afecta al resto del dashboard.
                   </p>
+                  <div className="flex items-center gap-sm">
+                    <label className="font-label-md text-label-md text-on-surface-variant" htmlFor="cobertura-compania">
+                      Compañía
+                    </label>
+                    <select
+                      id="cobertura-compania"
+                      className="form-input-styled font-body-md text-body-md text-on-surface h-9"
+                      value={coberturaCompania}
+                      onChange={(e) => setCoberturaCompania(e.target.value)}
+                    >
+                      <option value="">Todas</option>
+                      {(coberturaEncuestas?.companias_incluidas ?? []).map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {coberturaCompania && (
+                    <p className="font-label-sm text-label-sm text-on-surface-variant -mt-1">
+                      "Debieron enviarse" solo refleja esta compañía en los archivos de Ficha de Seguimiento cargados desde el 2026-09-15 en adelante (antes de esa fecha ese dato no distinguía compañía real).
+                    </p>
+                  )}
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-md pt-xs">
                     <Card
                       icon={<Icon name="task_alt" filled />}
