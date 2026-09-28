@@ -2434,6 +2434,13 @@ export default function App() {
     // sla_llegada() en el backend). Independiente de los filtros
     // globales del resto del dashboard.
     [incluirProgramadosSla, setIncluirProgramadosSla] = useState(false),
+    // NUEVO (ADITIVO): toggle propio de "Tiempos del prestador" -- por
+    // defecto (false) EXCLUYE servicios programados de T4
+    // (asignacion_a_arribo) y T6 (end_to_end), que arrastran el hueco
+    // de dias entre el alta y la fecha programada. T1/T2/T3/T5 y
+    // sla_despacho no lo necesitan y siempre usan el universo completo
+    // (ver docstring de metricas_funnel_tiempos en el backend).
+    [incluirProgramadosTiempos, setIncluirProgramadosTiempos] = useState(false),
     [estadosCategorizados, setEstadosCategorizados] =
       useState<EstadosCategorizados | null>(null),
     [trazabilidad, setTrazabilidad] = useState<Trazabilidad | null>(null),
@@ -2629,15 +2636,20 @@ export default function App() {
   }, [filters, coberturaCompania]);
   useEffect(() => {
     // NUEVO (ADITIVO): efecto independiente del batch grande de arriba
-    // -- así el toggle de "Incluir servicios programados" de "SLA de
-    // llegada" no dispara una recarga de todo el dashboard, solo
-    // re-pide funnel-tiempos (que incluye tiempos T1-T6, sla_despacho,
-    // sla_llegada y distribucion_horaria juntos, por eso se reemplaza
-    // el objeto `funnel` completo). Sigue reaccionando a los filtros
-    // globales de fecha (via `filters`) además del toggle local.
+    // -- así los toggles de "Incluir servicios programados" (de "SLA
+    // de llegada" y de "Tiempos del prestador") no disparan una
+    // recarga de todo el dashboard, solo re-piden funnel-tiempos (que
+    // incluye tiempos T1-T6, sla_despacho, sla_llegada y
+    // distribucion_horaria juntos, por eso se reemplaza el objeto
+    // `funnel` completo). Sigue reaccionando a los filtros globales de
+    // fecha (via `filters`) además de ambos toggles locales.
     let cancelado = false;
     api
-      .trackeoFunnelTiempos(filters, incluirProgramadosSla)
+      .trackeoFunnelTiempos(
+        filters,
+        incluirProgramadosSla,
+        incluirProgramadosTiempos,
+      )
       .then((x) => {
         if (!cancelado) setFunnel(x);
       })
@@ -2647,7 +2659,7 @@ export default function App() {
     return () => {
       cancelado = true;
     };
-  }, [filters, incluirProgramadosSla]);
+  }, [filters, incluirProgramadosSla, incluirProgramadosTiempos]);
   useEffect(() => {
     // NUEVO (ADITIVO): filtros locales de "Distribución horaria" por
     // prestador y/o campaña. Siempre parten de `filters` (los filtros
@@ -3792,6 +3804,27 @@ export default function App() {
                     tiempo previo a la asignación, que es operativa interna
                     de Cardinal.
                   </p>
+                  <label className="flex items-center gap-2 font-label-md text-label-md text-on-surface-variant cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="rounded border-outline-variant text-primary focus:ring-primary"
+                      checked={incluirProgramadosTiempos}
+                      onChange={(e) =>
+                        setIncluirProgramadosTiempos(e.target.checked)
+                      }
+                    />
+                    Incluir servicios programados
+                  </label>
+                  {!incluirProgramadosTiempos && (
+                    <p className="font-label-sm text-label-sm text-on-surface-variant -mt-1">
+                      Por defecto se excluyen (EsProgramado = Sí) de "Cuánto tarda en
+                      llegar" y de "Cuánto dura todo el proceso" (más abajo): para un
+                      servicio programado, la asignación suele quedar registrada al
+                      crear el pedido, días antes de la fecha pactada — ese hueco infla
+                      esos dos tiempos artificialmente. No afecta a "Cuánto tarda en
+                      resolver el servicio", que no lo necesita.
+                    </p>
+                  )}
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-lg">
                     <TramoCard
                       label="Cuánto tarda en llegar"
@@ -3799,7 +3832,7 @@ export default function App() {
                       stats={funnel?.tiempos.t4_asignacion_a_arribo}
                       explicacion="Así de rápido llega el prestador al lugar una vez que le asignan el servicio."
                       tooltip={{
-                        leer: "Cuánto tarda el móvil en llegar al lugar, desde que se confirma el envío.",
+                        leer: `Cuánto tarda el móvil en llegar al lugar, desde que se confirma el envío.${incluirProgramadosTiempos ? " Incluye servicios programados." : " Excluye servicios programados por defecto (ver checkbox arriba)."}`,
                         calculo: "HoraQueLlegoADarServicio − FechaHoraEnvioOk, en minutos.",
                       }}
                     />
@@ -3871,7 +3904,7 @@ export default function App() {
                       stats={funnel?.tiempos.t6_end_to_end}
                       explicacion="Así de rápido es el recorrido completo del servicio, de punta a punta."
                       tooltip={{
-                        leer: "El viaje completo del servicio, de punta a punta, desde que se crea hasta que se cierra.",
+                        leer: `El viaje completo del servicio, de punta a punta, desde que se crea hasta que se cierra.${incluirProgramadosTiempos ? " Incluye servicios programados." : " Excluye servicios programados por defecto — mismo toggle que \"Tiempos del prestador\", más arriba."}`,
                         calculo: "HoraQueFinalizaServicio − AltaDelServicio.",
                       }}
                     />

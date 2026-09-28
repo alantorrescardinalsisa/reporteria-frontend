@@ -363,6 +363,7 @@ export type FunnelTiempos = {
     t4_asignacion_a_arribo: TiempoStats;
     t5_ejecucion: TiempoStats;
     t6_end_to_end: TiempoStats;
+    incluye_programados: boolean;
   };
   sla_despacho: {
     base_tiempo: string;
@@ -696,12 +697,19 @@ export const api = {
     request<HabilitadoresAsignacion>(
       "/api/metricas-trackeo/habilitadores-asignacion" + qs(fp(f)),
     ),
-  trackeoFunnelTiempos: (f: TrackeoFilters, incluirProgramadosSla?: boolean) =>
+  trackeoFunnelTiempos: (
+    f: TrackeoFilters,
+    incluirProgramadosSla?: boolean,
+    incluirProgramadosTiempos?: boolean,
+  ) =>
     request<FunnelTiempos>(
       "/api/metricas-trackeo/funnel-tiempos" +
         qs({
           ...fp(f),
           incluir_programados_sla: incluirProgramadosSla ? "true" : undefined,
+          incluir_programados_tiempos: incluirProgramadosTiempos
+            ? "true"
+            : undefined,
         }),
     ),
   trackeoEstadosCategorizados: (f: TrackeoFilters) =>
