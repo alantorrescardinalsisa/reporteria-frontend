@@ -411,6 +411,7 @@ export type ProgramadosFunnel = {
 };
 // NUEVO v4.18.0 (ADITIVO): outliers por tramo del funnel + demora real.
 export type OutlierItem = {
+  id_orden_de_servicio: number | null;
   id_servicio_prestado: number | null;
   prestador: string | null;
   campana: string | null;

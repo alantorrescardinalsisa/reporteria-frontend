@@ -4218,7 +4218,7 @@ export default function App() {
                           <tr className="text-label-md font-label-md text-on-surface-variant uppercase text-left border-b border-outline-variant/30">
                             <SortableTh
                               label="ID servicio"
-                              sortKey="id_servicio_prestado"
+                              sortKey="id_orden_de_servicio"
                               sort={sortOutliersPageable}
                               className="py-2 pl-md pr-3"
                             />
@@ -4256,7 +4256,7 @@ export default function App() {
                                 className="border-b border-outline-variant/10 hover:bg-surface-container-low"
                               >
                                 <td className="py-2 pl-md pr-3">
-                                  {o.id_servicio_prestado}
+                                  {o.id_orden_de_servicio}
                                 </td>
                                 <td className="py-2 pr-3 text-on-surface">
                                   {o.prestador}
@@ -5148,7 +5148,7 @@ export default function App() {
               <table className="w-full text-body-md font-body-md">
                 <thead>
                   <tr className="text-label-md font-label-md text-on-surface-variant uppercase text-left border-b border-outline-variant/30 sticky top-0 bg-surface-container-lowest">
-                    <SortableTh label="ID" sortKey="id_servicio_prestado" sort={sortDrill} />
+                    <SortableTh label="ID" sortKey="id_orden_de_servicio" sort={sortDrill} />
                     <SortableTh label="Fecha" sortKey="fecha" sort={sortDrill} />
                     <SortableTh
                       label="Estado"
@@ -5210,7 +5210,7 @@ export default function App() {
                       key={x.servicio_row_id}
                       className="border-b border-outline-variant/10 hover:bg-surface-container-low"
                     >
-                      <td className="py-2 pr-3">{x.id_servicio_prestado}</td>
+                      <td className="py-2 pr-3">{x.id_orden_de_servicio}</td>
                       <td className="py-2 pr-3">{x.fecha}</td>
                       <td className="py-2 pr-3">{x.estado}</td>
                       <td className="py-2 pr-3">{x.tipo_de_servicio}</td>
