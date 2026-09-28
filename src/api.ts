@@ -332,7 +332,10 @@ export type MetricaTrackeo =
   | "ENTRE_91_120"
   | "ENTRE_121_180"
   | "MAS_181"
-  | "NA";
+  | "NA"
+  | "ANOMALIA_DEMORA_REAL_NEGATIVA"
+  | "ANOMALIA_DEMORA_PROMETIDA_NEGATIVA"
+  | `ANOMALIA_FUERA_DE_ORDEN_${string}`;
 // NUEVO v4.14.0 (ADITIVO): funnel de tiempos T1-T6 + SLA de
 // despacho/llegada. Ver /api/metricas-trackeo/funnel-tiempos.
 export type TiempoStats = {

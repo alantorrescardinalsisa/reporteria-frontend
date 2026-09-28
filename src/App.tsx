@@ -3637,6 +3637,12 @@ export default function App() {
                           valueLabel={nf(anomalias.demora_real_negativa)}
                           ratio={anomalias.demora_real_negativa / anomalias.total}
                           color="#dc2626"
+                          onClick={() =>
+                            open(
+                              "ANOMALIA_DEMORA_REAL_NEGATIVA",
+                              "Demora real negativa",
+                            )
+                          }
                         />
                       )}
                       {anomalias.demora_prometida_negativa > 0 && (
@@ -3645,6 +3651,12 @@ export default function App() {
                           valueLabel={nf(anomalias.demora_prometida_negativa)}
                           ratio={anomalias.demora_prometida_negativa / anomalias.total}
                           color="#dc2626"
+                          onClick={() =>
+                            open(
+                              "ANOMALIA_DEMORA_PROMETIDA_NEGATIVA",
+                              "Demora prometida negativa",
+                            )
+                          }
                         />
                       )}
                       {anomalias.eventos_fuera_de_orden_cronologico
@@ -3656,6 +3668,12 @@ export default function App() {
                             valueLabel={nf(e.cantidad)}
                             ratio={e.cantidad / anomalias.total}
                             color="#dc2626"
+                            onClick={() =>
+                              open(
+                                `ANOMALIA_FUERA_DE_ORDEN_${e.tramo.toUpperCase()}`,
+                                `Fuera de orden: ${TRAMO_LABELS[e.tramo] || e.tramo}`,
+                              )
+                            }
                           />
                         ))}
                     </div>
