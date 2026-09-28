@@ -1231,18 +1231,47 @@ function TramoCard({
   );
 }
 
-/* ---------- NUEVO (ADITIVO): gráfico de barras "Servicios por hora del día" ---------- */
+/* ---------- NUEVO (ADITIVO): gráfico de barras "Servicios por hora del
+   día", apilado por tipo de servicio (top 8 + "Otros", ver
+   distribucion_horaria() en el backend -- el mismo orden/lista de tipos
+   se repite en todas las horas, así cada tipo tiene siempre el mismo
+   color). Con hover sobre un segmento se ve un tooltip (tipo, cantidad,
+   % de esa hora), mismo lenguaje visual que EncuestaTrendSvg. ---------- */
+const HOURLY_TIPO_COLORS = [
+  "#004ac6",
+  "#dc2626",
+  "#f59e0b",
+  "#059669",
+  "#7c3aed",
+  "#0891b2",
+  "#db2777",
+  "#65a30d",
+];
+const HOURLY_OTROS_COLOR = "#6b7280";
 function HourlyBarChart({
   data,
 }: {
-  data: { hora: number; servicios: number }[];
+  data: {
+    hora: number;
+    servicios: number;
+    por_tipo?: { tipo: string; cantidad: number }[];
+  }[];
 }) {
+  const [hover, setHover] = useState<{
+    horaIdx: number;
+    segIdx: number;
+  } | null>(null);
   if (!data.length)
     return (
       <div className="flex-1 min-h-[300px] flex items-center justify-center text-body-md font-body-md text-on-surface-variant">
         Sin datos
       </div>
     );
+  const tipos = data[0]?.por_tipo?.map((t) => t.tipo) || [];
+  const colorDe = (idx: number) =>
+    tipos[idx] === "Otros"
+      ? HOURLY_OTROS_COLOR
+      : HOURLY_TIPO_COLORS[idx % HOURLY_TIPO_COLORS.length];
   const W = 1000,
     H = 320,
     PT = 34,
@@ -1253,9 +1282,29 @@ function HourlyBarChart({
     slot = W / n,
     bw = slot * 0.55,
     barX = (i: number) => i * slot + (slot - bw) / 2,
-    barH = (v: number) => (v / max) * plotH,
-    barY = (v: number) => PT + (plotH - barH(v));
+    barH = (v: number) => (v / max) * plotH;
+  const TOOLTIP_W = 190,
+    TOOLTIP_H = 54;
+  const hoverDatum = hover ? data[hover.horaIdx] : null;
+  const hoverSeg = hoverDatum?.por_tipo?.[hover!.segIdx];
   return (
+    <div className="flex flex-col gap-sm">
+    {tipos.length > 0 && (
+      <div className="flex flex-wrap items-center gap-x-md gap-y-1 px-1">
+        {tipos.map((tipo, idx) => (
+          <span
+            key={tipo}
+            className="flex items-center gap-1.5 font-label-sm text-label-sm text-on-surface-variant"
+          >
+            <span
+              className="w-2.5 h-2.5 rounded-sm shrink-0"
+              style={{ backgroundColor: colorDe(idx) }}
+            />
+            {tipo}
+          </span>
+        ))}
+      </div>
+    )}
     <svg
       width={W}
       height={H}
@@ -1263,35 +1312,101 @@ function HourlyBarChart({
       className="w-full block"
       style={{ height: H }}
     >
-      {data.map((d, i) => (
-        <g key={d.hora}>
-          <text
-            x={barX(i) + bw / 2}
-            y={Math.max(12, barY(d.servicios) - 6)}
-            textAnchor="middle"
-            className="fill-on-surface text-[11px] font-semibold"
-          >
-            {nf(d.servicios)}
-          </text>
-          <rect
-            x={barX(i)}
-            y={barY(d.servicios)}
-            width={bw}
-            height={barH(d.servicios)}
-            rx={2}
-            className="fill-primary"
-          />
-          <text
-            x={barX(i) + bw / 2}
-            y={H - 8}
-            textAnchor="middle"
-            className="fill-outline text-[10px]"
-          >
-            {String(d.hora).padStart(2, "0")}:00
-          </text>
-        </g>
-      ))}
+      {data.map((d, i) => {
+        const segmentos = d.por_tipo && d.por_tipo.length ? d.por_tipo : [{ tipo: "", cantidad: d.servicios }];
+        let acumulado = 0;
+        return (
+          <g key={d.hora}>
+            <text
+              x={barX(i) + bw / 2}
+              y={Math.max(12, PT + (plotH - barH(d.servicios)) - 6)}
+              textAnchor="middle"
+              className="fill-on-surface text-[11px] font-semibold"
+            >
+              {nf(d.servicios)}
+            </text>
+            {segmentos.map((seg, segIdx) => {
+              const y0 = PT + (plotH - barH(acumulado + seg.cantidad));
+              const h = barH(seg.cantidad);
+              acumulado += seg.cantidad;
+              if (seg.cantidad <= 0) return null;
+              return (
+                <rect
+                  key={segIdx}
+                  x={barX(i)}
+                  y={y0}
+                  width={bw}
+                  height={h}
+                  fill={colorDe(segIdx)}
+                  onMouseEnter={() => setHover({ horaIdx: i, segIdx })}
+                  onMouseLeave={() =>
+                    setHover((h) =>
+                      h && h.horaIdx === i && h.segIdx === segIdx ? null : h,
+                    )
+                  }
+                />
+              );
+            })}
+            <text
+              x={barX(i) + bw / 2}
+              y={H - 8}
+              textAnchor="middle"
+              className="fill-outline text-[10px]"
+            >
+              {String(d.hora).padStart(2, "0")}:00
+            </text>
+          </g>
+        );
+      })}
+      {hover &&
+        hoverDatum &&
+        hoverSeg &&
+        (() => {
+          const total = hoverDatum.servicios || 1;
+          const porcentaje = hoverSeg.cantidad / total;
+          let tx = barX(hover.horaIdx) + bw / 2 - TOOLTIP_W / 2;
+          tx = Math.max(4, Math.min(W - TOOLTIP_W - 4, tx));
+          const ty = Math.max(
+            4,
+            PT + (plotH - barH(hoverDatum.servicios)) - TOOLTIP_H - 10,
+          );
+          return (
+            <g className="pointer-events-none">
+              <rect
+                x={tx}
+                y={ty}
+                width={TOOLTIP_W}
+                height={TOOLTIP_H}
+                rx={6}
+                className="fill-inverse-surface"
+                opacity={0.95}
+              />
+              <text
+                x={tx + 10}
+                y={ty + 18}
+                className="fill-inverse-on-surface text-[11px] font-semibold"
+              >
+                {hoverSeg.tipo || "Servicio"}
+              </text>
+              <text
+                x={tx + 10}
+                y={ty + 34}
+                className="fill-inverse-on-surface text-[10px]"
+              >
+                {nf(hoverSeg.cantidad)} servicios
+              </text>
+              <text
+                x={tx + 10}
+                y={ty + 48}
+                className="fill-inverse-on-surface text-[10px]"
+              >
+                {pct(porcentaje)} de esa hora
+              </text>
+            </g>
+          );
+        })()}
     </svg>
+    </div>
   );
 }
 

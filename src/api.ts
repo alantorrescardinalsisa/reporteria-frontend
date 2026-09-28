@@ -382,6 +382,7 @@ export type FunnelTiempos = {
     servicios: number;
     t3_promedio: number | null;
     t3_p90: number | null;
+    por_tipo: { tipo: string; cantidad: number }[];
   }[];
 };
 // NUEVO v4.16.0 (ADITIVO): categorizacion semantica de estados. Ver
