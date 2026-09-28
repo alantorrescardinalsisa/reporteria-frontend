@@ -2205,8 +2205,7 @@ const HELP_SECTIONS: HelpSection[] = [
         <p>
           Las tarjetas de arriba (Urgente / Atención / Destacado) se
           pueden clickear para ver el listado de prestadores de esa
-          categoría. Más abajo aparecen los 3 que más necesitan atención
-          y los 3 que más se destacan, y una tabla comparativa con todos.
+          categoría. Más abajo aparece una tabla comparativa con todos.
         </p>
       </>
     ),
@@ -4797,9 +4796,9 @@ export default function App() {
                           linkText="Ver prestadores"
                           tooltip={{
                             leer:
-                              "Prestadores que conviene monitorear de cerca: vienen bajando un poco su cumplimiento, o rinden por debajo del promedio comparados con sus pares dentro del período filtrado — sin llegar todavía al nivel de Urgente.",
+                              "Prestadores que conviene monitorear de cerca: vienen bajando un poco su cumplimiento, o rinden por debajo del promedio comparados con sus pares dentro del período filtrado — sin llegar todavía al nivel de Urgente. Nunca incluye a un prestador con más de 85% de cumplimiento.",
                             calculo:
-                              "Se clasifica como Atención cuando la caída entre la primera y la segunda mitad del período es de 5 a 10 puntos porcentuales, o cuando el percentil frente a los demás prestadores filtrados está entre 21 y 40.",
+                              "Se clasifica como Atención cuando (la caída entre la primera y la segunda mitad del período es de 5 a 10 puntos porcentuales, o el percentil frente a los demás prestadores filtrados está entre 21 y 40) Y ADEMÁS su cumplimiento actual es de 85% o menos.",
                           }}
                         />
                         <Card
@@ -4812,9 +4811,9 @@ export default function App() {
                           linkText="Ver prestadores"
                           tooltip={{
                             leer:
-                              "Prestadores que se están destacando: quedan entre el grupo con mejor cumplimiento dentro del período filtrado y, además, no muestran una caída reciente.",
+                              "Prestadores que se están destacando: quedan entre el grupo con mejor cumplimiento dentro del período filtrado y, además, no muestran una caída reciente. Nunca incluye a un prestador con 85% de cumplimiento o menos.",
                             calculo:
-                              "Se clasifica como Destacado cuando el percentil frente a los demás prestadores filtrados es 80 o mayor, y la variación entre la primera y la segunda mitad del período no bajó más de 2 puntos porcentuales.",
+                              "Se clasifica como Destacado cuando (el percentil frente a los demás prestadores filtrados es 80 o mayor, y la variación entre la primera y la segunda mitad del período no bajó más de 2 puntos porcentuales) Y ADEMÁS su cumplimiento actual es mayor a 85%.",
                           }}
                         />
                       </div>
@@ -4870,7 +4869,7 @@ export default function App() {
                                 defaultDir="asc"
                                 tooltip={{
                                   leer: "Resultado de combinar la tendencia reciente del prestador con su posición relativa frente a sus pares.",
-                                  calculo: "Urgente / Atención / Destacado / Estable, según umbrales fijos de tendencia (primera vs. segunda mitad del período) y percentil. Sin muestra suficiente de servicios con Demora Prometida y Real cargadas, queda como Muestra insuficiente.",
+                                  calculo: "Urgente / Atención / Destacado / Estable, según umbrales fijos de tendencia (primera vs. segunda mitad del período) y percentil. Atención y Destacado exigen además un cumplimiento actual de 85% o menos / más de 85% respectivamente. Sin muestra suficiente de servicios con Demora Prometida y Real cargadas, queda como Muestra insuficiente.",
                                 }}
                               />
                               <SortableTh
