@@ -2314,6 +2314,12 @@ export default function App() {
     [coberturaCompania, setCoberturaCompania] = useState(""),
     [quality, setQuality] = useState<DataQuality | null>(null),
     [funnel, setFunnel] = useState<FunnelTiempos | null>(null),
+    // NUEVO (ADITIVO): toggle propio de "SLA de llegada" -- por
+    // defecto (false) EXCLUYE servicios programados (EsProgramado=SI)
+    // del indicador, porque distorsionan "Mas de 120 min tarde" (ver
+    // sla_llegada() en el backend). Independiente de los filtros
+    // globales del resto del dashboard.
+    [incluirProgramadosSla, setIncluirProgramadosSla] = useState(false),
     [estadosCategorizados, setEstadosCategorizados] =
       useState<EstadosCategorizados | null>(null),
     [trazabilidad, setTrazabilidad] = useState<Trazabilidad | null>(null),
@@ -2425,7 +2431,6 @@ export default function App() {
       () => api.trackeoCalidadDatos(f),
       () => api.trackeoCampanaPrestador(f),
       () => api.trackeoTiposServicio(f),
-      () => api.trackeoFunnelTiempos(f),
       () => api.trackeoImpactoCampanas(f),
       () => api.trackeoEstadosCategorizados(f),
       () => api.trackeoHabilitadoresAsignacion(f),
@@ -2468,21 +2473,20 @@ export default function App() {
       setCross(x.resultados),
     );
     take<{ tipos: TipoOption[] }>(9, (x) => setTypes(x.tipos));
-    take<FunnelTiempos>(10, (x) => setFunnel(x));
-    take<{ campanas: CampanaImpacto[] }>(11, (x) =>
+    take<{ campanas: CampanaImpacto[] }>(10, (x) =>
       setCampanaImpacto(x.campanas),
     );
-    take<EstadosCategorizados>(12, (x) => setEstadosCategorizados(x));
-    take<HabilitadoresAsignacion>(13, (x) => setHabilitadores(x));
-    take<ProgramadosFunnel>(14, (x) => setProgramadosFunnel(x));
-    take<Outliers>(15, (x) => setOutliers(x));
-    take<{ tipos_poliza: PolizaOption[] }>(16, (x) =>
+    take<EstadosCategorizados>(11, (x) => setEstadosCategorizados(x));
+    take<HabilitadoresAsignacion>(12, (x) => setHabilitadores(x));
+    take<ProgramadosFunnel>(13, (x) => setProgramadosFunnel(x));
+    take<Outliers>(14, (x) => setOutliers(x));
+    take<{ tipos_poliza: PolizaOption[] }>(15, (x) =>
       setPolizaOptions(x.tipos_poliza),
     );
-    take<{ provincias: ProvinciaOption[] }>(17, (x) =>
+    take<{ provincias: ProvinciaOption[] }>(16, (x) =>
       setProvinciaOptions(x.provincias),
     );
-    take<EstadosEncuesta>(18, (x) => setEstadosEncuesta(x));
+    take<EstadosEncuesta>(17, (x) => setEstadosEncuesta(x));
     if (errs.length) setError(errs.join(" | "));
     setLoading(false);
   }, []);
@@ -2509,6 +2513,27 @@ export default function App() {
       cancelado = true;
     };
   }, [filters, coberturaCompania]);
+  useEffect(() => {
+    // NUEVO (ADITIVO): efecto independiente del batch grande de arriba
+    // -- así el toggle de "Incluir servicios programados" de "SLA de
+    // llegada" no dispara una recarga de todo el dashboard, solo
+    // re-pide funnel-tiempos (que incluye tiempos T1-T6, sla_despacho,
+    // sla_llegada y distribucion_horaria juntos, por eso se reemplaza
+    // el objeto `funnel` completo). Sigue reaccionando a los filtros
+    // globales de fecha (via `filters`) además del toggle local.
+    let cancelado = false;
+    api
+      .trackeoFunnelTiempos(filters, incluirProgramadosSla)
+      .then((x) => {
+        if (!cancelado) setFunnel(x);
+      })
+      .catch(() => {
+        /* el error general ya se reporta desde load() */
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, [filters, incluirProgramadosSla]);
   useEffect(() => {
     // NUEVO (ADITIVO): filtros locales de "Distribución horaria" por
     // prestador y/o campaña. Siempre parten de `filters` (los filtros
@@ -3686,6 +3711,25 @@ export default function App() {
                       {nf(funnel?.sla_llegada.cantidad_evaluable)} servicios con
                       trazabilidad completa.
                     </p>
+                    <label className="flex items-center gap-2 font-label-md text-label-md text-on-surface-variant cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="rounded border-outline-variant text-primary focus:ring-primary"
+                        checked={incluirProgramadosSla}
+                        onChange={(e) =>
+                          setIncluirProgramadosSla(e.target.checked)
+                        }
+                      />
+                      Incluir servicios programados
+                    </label>
+                    {!incluirProgramadosSla && (
+                      <p className="font-label-sm text-label-sm text-on-surface-variant -mt-1">
+                        Por defecto se excluyen (EsProgramado = Sí): para un servicio
+                        programado, DemoraPrometida se mide contra la fecha/hora
+                        programada (puede ser días después), no contra una promesa en
+                        minutos — eso infla artificialmente "Más de 120 min tarde".
+                      </p>
+                    )}
                     <div className="bg-surface-container-lowest rounded-xl p-md card-shadow border border-outline-variant/20 flex flex-col gap-4">
                       {(funnel?.sla_llegada.buckets || []).map((b) => (
                         <ProgressBar

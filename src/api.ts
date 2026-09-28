@@ -368,6 +368,7 @@ export type FunnelTiempos = {
   };
   sla_llegada: {
     cantidad_evaluable: number;
+    incluye_programados: boolean;
     buckets: SlaBucket[];
   };
   // NUEVO v4.16.0 (ADITIVO): volumen y SLA de despacho por hora del
@@ -690,9 +691,13 @@ export const api = {
     request<HabilitadoresAsignacion>(
       "/api/metricas-trackeo/habilitadores-asignacion" + qs(fp(f)),
     ),
-  trackeoFunnelTiempos: (f: TrackeoFilters) =>
+  trackeoFunnelTiempos: (f: TrackeoFilters, incluirProgramadosSla?: boolean) =>
     request<FunnelTiempos>(
-      "/api/metricas-trackeo/funnel-tiempos" + qs(fp(f)),
+      "/api/metricas-trackeo/funnel-tiempos" +
+        qs({
+          ...fp(f),
+          incluir_programados_sla: incluirProgramadosSla ? "true" : undefined,
+        }),
     ),
   trackeoEstadosCategorizados: (f: TrackeoFilters) =>
     request<EstadosCategorizados>(
