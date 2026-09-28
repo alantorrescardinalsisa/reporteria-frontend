@@ -2785,21 +2785,8 @@ export default function App() {
   // lista que ya trajo /api/inteligencia/prestadores -- no son
   // pedidos adicionales al backend.
   const prestadoresEvaluables = (inteligencia?.prestadores || []).filter(
-      (p) => p.clasificacion !== "muestra_insuficiente",
-    ),
-    top3Peores = [...prestadoresEvaluables]
-      .sort((a, b) => (a.percentil_benchmark ?? 0) - (b.percentil_benchmark ?? 0))
-      .slice(0, 3),
-    top3Mejores = [...prestadoresEvaluables]
-      .sort((a, b) => (b.percentil_benchmark ?? 0) - (a.percentil_benchmark ?? 0))
-      .slice(0, 3),
-    avisosImportantes = [...prestadoresEvaluables]
-      .filter((p) => p.clasificacion === "urgente" || p.clasificacion === "atencion")
-      .sort((a, b) => (a.percentil_benchmark ?? 0) - (b.percentil_benchmark ?? 0))
-      .slice(0, 6),
-    destacadosParaRecomendar = [...prestadoresEvaluables]
-      .filter((p) => p.clasificacion === "destacado")
-      .slice(0, 3);
+    (p) => p.clasificacion !== "muestra_insuficiente",
+  );
   const filteredProviders = providers.filter((x) =>
       x.prestador.toLowerCase().includes(providerSearch.toLowerCase()),
     ),
@@ -4718,92 +4705,6 @@ export default function App() {
                       </div>
                     </section>
 
-                    {/* ---------- Top 3 peores / mejores ---------- */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-lg">
-                      <section className="flex flex-col gap-sm">
-                        <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs flex items-center gap-1">
-                          Los 3 que más necesitan atención
-                          <InfoTip
-                            leer="Los 3 prestadores con menor cumplimiento relativo dentro del período filtrado, entre los que tienen datos suficientes para compararlos."
-                            calculo="Se ordena a todos los prestadores con muestra suficiente por su percentil de cumplimiento (de más bajo a más alto) y se muestran los 3 primeros."
-                          />
-                        </h3>
-                        <div className="flex flex-col gap-sm">
-                          {top3Peores.length === 0 && (
-                            <p className="font-body-md text-body-md text-on-surface-variant">
-                              No hay suficientes datos para armar este ranking.
-                            </p>
-                          )}
-                          {top3Peores.map((p) => (
-                            <div
-                              key={p.prestador_id}
-                              className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 flex items-center justify-between gap-3 p-md"
-                            >
-                              <div className="min-w-0">
-                                <div className="font-body-md text-body-md font-medium text-on-surface truncate">
-                                  {p.prestador}
-                                </div>
-                                <div className="font-label-sm text-label-sm text-on-surface-variant">
-                                  {p.factores[0]}
-                                </div>
-                              </div>
-                              <div className="flex flex-col items-end gap-1 shrink-0">
-                                <span className="font-headline-sm text-headline-sm text-on-surface">
-                                  {pct(p.cumplimiento_actual)}
-                                </span>
-                                <span
-                                  className={`font-label-md text-label-md rounded-full px-2 py-0.5 uppercase tracking-wide ${clasificacionInfo(p.clasificacion).tone}`}
-                                >
-                                  {clasificacionInfo(p.clasificacion).label}
-                                </span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </section>
-                      <section className="flex flex-col gap-sm">
-                        <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs flex items-center gap-1">
-                          Los 3 que más se destacan
-                          <InfoTip
-                            leer="Los 3 prestadores con mayor cumplimiento relativo dentro del período filtrado, entre los que tienen datos suficientes para compararlos."
-                            calculo="Se ordena a todos los prestadores con muestra suficiente por su percentil de cumplimiento (de más alto a más bajo) y se muestran los 3 primeros."
-                          />
-                        </h3>
-                        <div className="flex flex-col gap-sm">
-                          {top3Mejores.length === 0 && (
-                            <p className="font-body-md text-body-md text-on-surface-variant">
-                              No hay suficientes datos para armar este ranking.
-                            </p>
-                          )}
-                          {top3Mejores.map((p) => (
-                            <div
-                              key={p.prestador_id}
-                              className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 flex items-center justify-between gap-3 p-md"
-                            >
-                              <div className="min-w-0">
-                                <div className="font-body-md text-body-md font-medium text-on-surface truncate">
-                                  {p.prestador}
-                                </div>
-                                <div className="font-label-sm text-label-sm text-on-surface-variant">
-                                  {p.factores[0]}
-                                </div>
-                              </div>
-                              <div className="flex flex-col items-end gap-1 shrink-0">
-                                <span className="font-headline-sm text-headline-sm text-on-surface">
-                                  {pct(p.cumplimiento_actual)}
-                                </span>
-                                <span
-                                  className={`font-label-md text-label-md rounded-full px-2 py-0.5 uppercase tracking-wide ${clasificacionInfo(p.clasificacion).tone}`}
-                                >
-                                  {clasificacionInfo(p.clasificacion).label}
-                                </span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </section>
-                    </div>
-
                     {/* ---------- Comparativa entre prestadores ---------- */}
                     <section className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 flex flex-col">
                       <header className="flex items-center gap-3 p-md pb-0">
@@ -4909,80 +4810,6 @@ export default function App() {
                         total={inteligencia.prestadores.length}
                       />
                     </section>
-
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-lg">
-                      {/* ---------- Avisos importantes ---------- */}
-                      <section className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 flex flex-col gap-sm p-md">
-                        <header className="flex items-center gap-3">
-                          <Icon name="notifications_active" className="text-[#f59e0b]" />
-                          <h3 className="font-title-lg text-title-lg text-on-surface flex items-center gap-1">
-                            Avisos importantes
-                            <InfoTip
-                              leer="Prestadores clasificados como Urgente o Atención, ordenados del que peor está al que menos, con la razón puntual de por qué quedó en esa categoría."
-                              calculo="Se toman los prestadores con clasificación Urgente o Atención (excluyendo los de muestra insuficiente), se ordenan por percentil ascendente y se muestran hasta 6."
-                            />
-                          </h3>
-                        </header>
-                        <div className="flex flex-col gap-2">
-                          {avisosImportantes.length === 0 && (
-                            <p className="font-body-md text-body-md text-on-surface-variant">
-                              Sin avisos por ahora.
-                            </p>
-                          )}
-                          {avisosImportantes.map((p) => (
-                            <div
-                              key={p.prestador_id}
-                              className="flex items-start gap-2 bg-surface-container-low rounded-lg px-sm py-2"
-                            >
-                              <span
-                                className={`font-label-md text-label-md rounded px-1.5 py-0.5 uppercase tracking-wide shrink-0 ${clasificacionInfo(p.clasificacion).tone}`}
-                              >
-                                {clasificacionInfo(p.clasificacion).label}
-                              </span>
-                              <span className="font-body-md text-body-md text-on-surface">
-                                {p.prestador}: {p.factores.join(". ")}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </section>
-
-                      {/* ---------- Qué hacer con cada prestador ---------- */}
-                      <section className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 flex flex-col gap-sm p-md">
-                        <header className="flex items-center gap-3">
-                          <Icon name="auto_awesome" className="text-tertiary" />
-                          <h3 className="font-title-lg text-title-lg text-on-surface flex items-center gap-1">
-                            Qué hacer con cada prestador
-                            <InfoTip
-                              leer="Combina a los prestadores con avisos importantes (Urgente/Atención) con los que se destacaron, para tener en una sola lista a quién conviene prestarle atención primero."
-                              calculo="Une la lista de Avisos importantes con hasta 3 prestadores Destacados, y para cada uno muestra la acción sugerida según su clasificación (regla fija, no generada por un modelo)."
-                            />
-                          </h3>
-                        </header>
-                        <div className="flex flex-col gap-2">
-                          {[...avisosImportantes, ...destacadosParaRecomendar].length ===
-                            0 && (
-                            <p className="font-body-md text-body-md text-on-surface-variant">
-                              Sin recomendaciones por ahora.
-                            </p>
-                          )}
-                          {[...avisosImportantes, ...destacadosParaRecomendar].map((p) => (
-                            <div
-                              key={p.prestador_id}
-                              className="flex items-start gap-2 bg-tertiary/10 rounded-lg px-sm py-2"
-                            >
-                              <Icon
-                                name="arrow_forward"
-                                className="text-tertiary text-[18px] mt-0.5 shrink-0"
-                              />
-                              <span className="font-body-md text-body-md text-on-surface">
-                                {p.prestador} — {queHacer(p.clasificacion)}
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      </section>
-                    </div>
                   </>
                 )}
               </div>
