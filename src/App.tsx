@@ -4538,12 +4538,21 @@ export default function App() {
                           }}
                         />
                         <SortableTh
+                          label="Demora promedio"
+                          sortKey="demora_real_promedio"
+                          sort={sortProvidersPageable}
+                          tooltip={{
+                            leer: "El tiempo promedio (en minutos) que tarda ese prestador, según la Demora Real cargada en el reporte.",
+                            calculo: "Promedio de DemoraReal sobre los servicios de ese prestador que tienen ese dato cargado.",
+                          }}
+                        />
+                        <SortableTh
                           label="Score"
                           sortKey="score_ranking"
                           sort={sortProvidersPageable}
                           tooltip={{
-                            leer: "Una nota de 0 a 100% que combina las 4 columnas anteriores. El ⚠ avisa que ese prestador tiene menos de 20 servicios — con tan poca muestra, el score es poco confiable.",
-                            calculo: "37,5% Cumplimiento observado + 31,25% Efectividad asignación + 18,75% Índice calidad + 12,5% Volumen relativo (se renormaliza si falta algún componente).",
+                            leer: "Una nota de 0 a 100% que combina Cumplimiento observado, Trazabilidad, Reclamo de rotura y Reclamos por encuesta, con el mismo peso cada uno. El ⚠ avisa que ese prestador tiene menos de 20 servicios — con tan poca muestra, el score es poco confiable.",
+                            calculo: "37,5% Cumplimiento observado + 31,25% Trazabilidad + 18,75% (1 − % reclamos de rotura) + 12,5% (1 − % reclamos por encuesta, según la pregunta \"opinión sobre el profesional\" de la encuesta, ≤2 = reclamo) — se renormaliza si falta algún componente. Reclamo de rotura todavía no tiene dato en el reporte, y reclamos por encuesta solo se calcula para prestadores con encuestas respondidas en el período filtrado.",
                           }}
                         />
                       </tr>
@@ -4574,6 +4583,11 @@ export default function App() {
                             {pct(x.porcentaje_trazabilidad_completa)}
                           </td>
                           <td className="py-2 pr-3">{pct(x.volumen_relativo)}</td>
+                          <td className="py-2 pr-3">
+                            {x.demora_real_promedio != null
+                              ? `${nf(x.demora_real_promedio)} min`
+                              : "N/A"}
+                          </td>
                           <td className="py-2 pr-3">
                             <span className="font-medium text-on-surface">
                               {x.score_ranking != null

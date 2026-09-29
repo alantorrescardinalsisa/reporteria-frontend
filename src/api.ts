@@ -100,6 +100,8 @@ export type TrackeoSummary = {
   mas_181_porcentaje: number;
   na_cantidad: number;
   na_porcentaje: number;
+  demora_real_promedio?: number | null;
+  demora_prometida_promedio?: number | null;
 };
 export type TrackeoUniversos = {
   servicios_cargados: number;
@@ -113,11 +115,13 @@ export type TrackeoUniversos = {
   universo_excel_historico: number;
 };
 // NUEVO v4.15.0 (ADITIVO): score de ranking de prestadores.
+// CORREGIDO (2026-09-29): componentes reemplazados -- ver SCORE_PESOS
+// en app.py.
 export type ScoreComponentes = {
-  sla: number | null;
-  asignacion: number | null;
-  calidad_datos: number | null;
-  volumen: number | null;
+  cumplimiento: number | null;
+  trazabilidad: number | null;
+  reclamo_rotura: number | null;
+  reclamo_encuesta: number | null;
 };
 export type PrestadorMetric = TrackeoSummary & {
   prestador_id: string;
@@ -132,6 +136,10 @@ export type PrestadorMetric = TrackeoSummary & {
   cantidad_tipos_servicio?: number;
   // NUEVO v4.17.0 (ADITIVO): informativo, no forma parte del score.
   porcentaje_trazabilidad_completa?: number;
+  // NUEVO (2026-09-29): reclamo_encuesta, parte del score. Ver
+  // compute_reclamo_encuesta en app.py.
+  reclamo_encuesta_pct?: number | null;
+  encuestas_evaluadas_profesional?: number;
 };
 // NUEVO v4.15.0 (ADITIVO): impacto por campana (volumen x oportunidad
 // de mejora). Ver /api/metricas-trackeo/impacto-campanas.
