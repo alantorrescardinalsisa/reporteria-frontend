@@ -4823,7 +4823,7 @@ export default function App() {
                       Outliers por tramo
                       <InfoTip
                         leer="Los promedios y percentiles esconden los casos extremos. Acá se los ve uno por uno, con el prestador y el servicio puntual, para auditarlos."
-                        calculo="Top 20 valores más altos del tramo elegido; marcado como posible anomalía si supera 3× el P90 de ese tramo."
+                        calculo="Los 20 valores más altos del tramo elegido, y siempre todos los que superen 3× el P90 de ese tramo aunque sean más de 20."
                       />
                     </h3>
                     <select
@@ -4844,10 +4844,10 @@ export default function App() {
                     </select>
                   </div>
                   <p className="font-label-sm text-label-sm text-on-surface-variant">
-                    Top 20 valores más altos del tramo seleccionado, para
-                    auditar caso por caso (P90 de referencia:{" "}
-                    {nf(outliers?.[outlierTramo]?.p90_referencia)} min · marcado
-                    como posible anomalía si supera 3× ese P90).
+                    Los 20 valores más altos del tramo seleccionado, para
+                    auditar caso por caso, y siempre todos los que superen 3×
+                    el P90 aunque sean más de 20 (P90 de referencia:{" "}
+                    {nf(outliers?.[outlierTramo]?.p90_referencia)} min).
                   </p>
                   <div className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 flex flex-col overflow-hidden">
                     <div className="flex items-center justify-between px-md py-sm border-b border-outline-variant/20">

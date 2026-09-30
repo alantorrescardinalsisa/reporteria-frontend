@@ -1,0 +1,328 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Dashboard de reporteria de prestadores"
+    />
+    <title>Reporteria Prestadores</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+    <script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "surface-container-highest": "#dae2fd",
+              "primary-container": "#4f46e5",
+              "surface-bright": "#faf8ff",
+              "secondary-fixed-dim": "#89ceff",
+              tertiary: "#571ac0",
+              "tertiary-fixed-dim": "#d0bcff",
+              "on-error-container": "#93000a",
+              outline: "#777587",
+              surface: "#faf8ff",
+              secondary: "#006591",
+              "surface-dim": "#d2d9f4",
+              "error-container": "#ffdad6",
+              "primary-fixed": "#e2dfff",
+              "surface-container-lowest": "#ffffff",
+              "secondary-fixed": "#c9e6ff",
+              "surface-container-low": "#f2f3ff",
+              primary: "#3525cd",
+              "on-secondary": "#ffffff",
+              "on-primary-fixed-variant": "#3323cc",
+              "secondary-container": "#39b8fd",
+              "surface-tint": "#4d44e3",
+              "inverse-primary": "#c3c0ff",
+              "tertiary-fixed": "#e9ddff",
+              "on-tertiary-fixed": "#23005c",
+              "on-tertiary-fixed-variant": "#5516be",
+              "outline-variant": "#c7c4d8",
+              "on-secondary-fixed": "#001e2f",
+              "on-secondary-fixed-variant": "#004c6e",
+              "on-secondary-container": "#004666",
+              "on-surface": "#131b2e",
+              "inverse-surface": "#283044",
+              "on-primary-fixed": "#0f0069",
+              "on-primary-container": "#dad7ff",
+              "surface-variant": "#dae2fd",
+              "surface-container": "#eaedff",
+              "primary-fixed-dim": "#c3c0ff",
+              "on-tertiary": "#ffffff",
+              error: "#ba1a1a",
+              "on-surface-variant": "#464555",
+              "on-background": "#131b2e",
+              background: "#faf8ff",
+              "on-tertiary-container": "#e3d5ff",
+              "surface-container-high": "#e2e7ff",
+              "on-error": "#ffffff",
+              "on-primary": "#ffffff",
+              "tertiary-container": "#6f3dd9",
+              "inverse-on-surface": "#eef0ff",
+            },
+            borderRadius: {
+              DEFAULT: "0.25rem",
+              lg: "0.5rem",
+              xl: "0.75rem",
+              full: "9999px",
+            },
+            spacing: {
+              xl: "48px",
+              md: "24px",
+              "sidebar-width": "260px",
+              lg: "32px",
+              gutter: "24px",
+              xs: "8px",
+              sm: "16px",
+              "container-max": "1440px",
+              base: "4px",
+              /* NUEVO (ADITIVO, rediseño visual): tokens propios del
+                 mockup de referencia -- nombres nuevos, no pisan a
+                 ninguno de los de arriba. */
+              "space-xs": "0.25rem",
+              "space-sm": "0.5rem",
+              "space-md": "0.875rem",
+              "space-lg": "1.25rem",
+              "space-xl": "1.75rem",
+              "space-2xl": "2.5rem",
+              "gutter-lg": "1.5rem",
+              margin: "1.5rem",
+              "margin-mobile": "1rem",
+            },
+            fontFamily: {
+              "title-lg": ["Plus Jakarta Sans"],
+              "body-lg": ["Plus Jakarta Sans"],
+              "display-lg": ["Plus Jakarta Sans"],
+              "headline-sm": ["Plus Jakarta Sans"],
+              "label-sm": ["Plus Jakarta Sans"],
+              "body-md": ["Plus Jakarta Sans"],
+              "label-md": ["Plus Jakarta Sans"],
+              "headline-md": ["Plus Jakarta Sans"],
+              "display-lg-mobile": ["Plus Jakarta Sans"],
+              /* NUEVO (ADITIVO, rediseño visual): tokens propios del
+                 mockup de referencia, agregados sin tocar los de arriba
+                 (que siguen usando el resto del archivo sin cambios). */
+              "label-code": ["JetBrains Mono"],
+              "label-caps": ["Plus Jakarta Sans"],
+              "body-sm": ["Plus Jakarta Sans"],
+              "metric-display": ["Plus Jakarta Sans"],
+              "metric-sm": ["Plus Jakarta Sans"],
+              "headline-lg": ["Plus Jakarta Sans"],
+              "headline-xl": ["Plus Jakarta Sans"],
+            },
+            fontSize: {
+              "title-lg": ["18px", { lineHeight: "26px", fontWeight: "600" }],
+              "body-lg": ["16px", { lineHeight: "24px", fontWeight: "400" }],
+              "display-lg": [
+                "30px",
+                { lineHeight: "38px", letterSpacing: "-0.02em", fontWeight: "700" },
+              ],
+              "headline-sm": ["20px", { lineHeight: "28px", fontWeight: "600" }],
+              "label-sm": ["11px", { lineHeight: "14px", fontWeight: "400" }],
+              "body-md": ["14px", { lineHeight: "20px", fontWeight: "400" }],
+              "label-md": [
+                "12px",
+                { lineHeight: "16px", letterSpacing: "0.05em", fontWeight: "500" },
+              ],
+              "headline-md": [
+                "24px",
+                { lineHeight: "32px", letterSpacing: "-0.01em", fontWeight: "600" },
+              ],
+              "display-lg-mobile": ["24px", { lineHeight: "32px", fontWeight: "700" }],
+              /* NUEVO (ADITIVO, rediseño visual) */
+              "label-code": [
+                "11px",
+                { lineHeight: "14px", letterSpacing: "0.02em", fontWeight: "500" },
+              ],
+              "label-caps": [
+                "11px",
+                { lineHeight: "14px", letterSpacing: "0.06em", fontWeight: "700" },
+              ],
+              "body-sm": ["12px", { lineHeight: "16px", fontWeight: "400" }],
+              "metric-display": [
+                "32px",
+                { lineHeight: "36px", letterSpacing: "-0.04em", fontWeight: "700" },
+              ],
+              "metric-sm": [
+                "20px",
+                { lineHeight: "24px", letterSpacing: "-0.02em", fontWeight: "600" },
+              ],
+              "headline-lg": [
+                "22px",
+                { lineHeight: "28px", letterSpacing: "-0.02em", fontWeight: "600" },
+              ],
+              "headline-xl": [
+                "30px",
+                { lineHeight: "38px", letterSpacing: "-0.03em", fontWeight: "700" },
+              ],
+            },
+          },
+        },
+      };
+    </script>
+    <style>
+      body {
+        background-color: #faf8ff;
+        color: #131b2e;
+        font-family: "Plus Jakarta Sans", sans-serif;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+      .material-symbols-outlined {
+        font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+      }
+      .icon-filled {
+        font-variation-settings: "FILL" 1, "wght" 400, "GRAD" 0, "opsz" 24;
+      }
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: #c7c4d8;
+        border-radius: 9999px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: #777587;
+      }
+      .card-shadow {
+        box-shadow: 0px 4px 12px rgba(53, 37, 205, 0.08);
+      }
+      .form-input-styled {
+        height: 40px;
+        background-color: #ffffff;
+        border: 1px solid #c7c4d8;
+        border-radius: 0.25rem;
+        padding-left: 16px;
+        padding-right: 16px;
+        transition: all 0.2s ease;
+      }
+      .form-input-styled:focus {
+        border-color: #3525cd;
+        box-shadow: 0 0 0 2px #e2dfff;
+        outline: none;
+      }
+      /* NUEVO (ADITIVO): exportar a PDF = imprimir la vista actual tal
+         cual se ve en la plataforma (mismos graficos, colores y datos) --
+         ver printCurrentView()/ExportButton en App.tsx.
+
+         IMPORTANTE -- por que estas reglas NO estan dentro de
+         "@media print": se probo así primero (ocultar el nav, colapsar
+         los grids de 2 columnas, forzar flex-col a grid, etc., todo
+         gateado por @media print) y, pese a que cada regla se verificó
+         syntacticamente correcta y hasta se probó por separado que SI
+         funciona cuando se fuerza de forma incondicional, NINGUNA de
+         esas reglas se aplicaba en el PDF real -- @media print
+         simplemente no se estaba evaluando como verdadero en el
+         mecanismo que genera el PDF del usuario. La UNICA corrección
+         que sí funcionó de punta a punta fue la que saca el <nav> del
+         DOM con React (estado "printing" en App.tsx), que no depende en
+         absoluto de @media print. Por eso TODAS las reglas de esta
+         sección ahora estan gateadas por la clase ".is-printing", que
+         App.tsx agrega/saca de un contenedor de nivel superior usando
+         ese mismo estado "printing" -- son reglas CSS comunes y
+         corrientes (sin media query), activadas por una clase real en
+         el DOM, exactamente el mismo mecanismo ya comprobado con el
+         menú lateral. break-inside/break-after no necesitan estar dentro
+         de @media print para funcionar: son propiedades que solo tienen
+         efecto durante la paginación real (imprimir), sin importar si la
+         regla que les da valor está adentro o afuera de un media query. */
+      .is-printing * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        color-adjust: exact !important;
+      }
+      .is-printing .ml-sidebar-width {
+        margin-left: 0 !important;
+        width: 100% !important;
+      }
+      .is-printing main {
+        overflow: visible !important;
+        height: auto !important;
+      }
+      /* Los contenedores con scroll propio (tablas anchas, el visor del
+         gráfico de tendencia diaria) solo mostrarían, al imprimir, la
+         porción que estaba visible en pantalla -- se ven "cortados" o
+         "desfazados". Los liberamos para que se imprima todo. */
+      .is-printing .overflow-x-auto,
+      .is-printing .overflow-y-auto,
+      .is-printing .overflow-auto {
+        overflow: visible !important;
+      }
+      .is-printing .trend-chart-viewport {
+        height: auto !important;
+        overflow: visible !important;
+      }
+      .is-printing {
+        background: #ffffff !important;
+      }
+      /* Evitar que una tarjeta/indicador individual quede cortado justo
+         en el salto de página. A propósito NO se aplica a <section>
+         (agrupa varias tarjetas y puede ser más alta que una hoja
+         entera -- forzar "no cortar" ahí dejaría un hueco en blanco
+         enorme en vez de simplemente avanzar de página). */
+      .is-printing .card-shadow,
+      .is-printing table,
+      .is-printing tr,
+      .is-printing article {
+        break-inside: avoid;
+        page-break-inside: avoid;
+      }
+      /* Que un título no quede solo al final de una página, separado del
+         contenido que le sigue. */
+      .is-printing h2,
+      .is-printing h3,
+      .is-printing h4 {
+        break-after: avoid-page;
+        page-break-after: avoid;
+      }
+      /* Los navegadores fragmentan de forma confiable un layout de
+         bloques (cada hijo, uno debajo del otro), pero fragmentan mal el
+         contenido DENTRO de un contenedor flex (que es como está armada
+         casi toda esta plataforma). Durante la impresión, los
+         contenedores que apilan verticalmente (".flex-col") pasan a
+         grid de una sola columna implícita -- mismo espaciado, mismo
+         apilado visual, pero el motor de paginación sí sabe fragmentar
+         bien un grid. No se toca ".flex" a secas (sin "-col"), que es lo
+         que usan las filas horizontales -- ícono + texto, badges,
+         botones -- para no romper esa alineación lado a lado. */
+      .is-printing .flex-col {
+        display: grid !important;
+      }
+      /* Las secciones armadas como grid de 2+ columnas lado a lado (ej.
+         "Distribución de servicios cumplidos" + "Calidad de
+         información") paginan mal: el motor de impresión puede cortar
+         cada columna en una altura DISTINTA e independiente, dejando el
+         título de una columna solo al final de una hoja mientras su
+         contenido salta a la siguiente. Selector por coincidencia de
+         clase: agarra "grid-cols-1", "lg:grid-cols-2",
+         "xl:grid-cols-12", etc. sin necesidad de listarlas todas. Los
+         hijos con "col-span-N" simplemente ocupan el ancho completo de
+         esa única columna, sin romper nada. */
+      .is-printing [class*="grid-cols-"] {
+        grid-template-columns: 1fr !important;
+      }
+    </style>
+    <script type="module" crossorigin src="/assets/index-BjRGppXi.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-D_FPVm9j.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
