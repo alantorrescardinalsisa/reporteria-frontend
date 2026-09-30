@@ -633,6 +633,7 @@ function Card({
   tooltip,
   linkText = "Ver servicios",
   progress,
+  badge,
 }: {
   icon: ReactNode;
   title: string;
@@ -644,6 +645,7 @@ function Card({
   tooltip?: Tooltip;
   linkText?: string;
   progress?: number;
+  badge?: string;
 }) {
   return (
     <article
@@ -672,11 +674,24 @@ function Card({
         </div>
       </div>
       <div className="flex flex-col gap-space-xs">
-        <span
-          className={`font-metric-display text-metric-display leading-none ${highlight ? "text-on-primary" : "text-on-surface"}`}
-        >
-          {value}
-        </span>
+        <div className="flex items-baseline gap-space-sm">
+          <span
+            className={`font-metric-display text-metric-display leading-none ${highlight ? "text-on-primary" : "text-on-surface"}`}
+          >
+            {value}
+          </span>
+          {badge && (
+            <span
+              className={`font-label-code text-label-code px-2 py-0.5 rounded-full font-semibold ${
+                highlight
+                  ? "bg-surface-container-lowest/20 text-on-primary"
+                  : `${TONE_CLASSES[tone] || TONE_CLASSES.blue}`
+              }`}
+            >
+              {badge}
+            </span>
+          )}
+        </div>
         <small
           className={`font-body-sm text-body-sm leading-snug ${highlight ? "text-on-primary/90" : "text-on-surface-variant"}`}
         >
@@ -2864,6 +2879,13 @@ export default function App() {
     ),
     [inteligenciaLoading, setInteligenciaLoading] = useState(false),
     [inteligenciaPage, setInteligenciaPage] = useState(1),
+    // NUEVO (ADITIVO): búsqueda + tabs de clasificación en "Comparativa
+    // entre prestadores" -- filtran la misma lista que ya trae
+    // /api/inteligencia/prestadores, sin pedir nada nuevo al backend.
+    [inteligenciaSearch, setInteligenciaSearch] = useState(""),
+    [inteligenciaFilter, setInteligenciaFilter] = useState<Clasificacion | "todos">(
+      "todos",
+    ),
     [modalClasificacion, setModalClasificacion] =
       useState<Clasificacion | null>(null),
     // NUEVO (ADITIVO): detalle de IDs al hacer clic en las tarjetas de
@@ -3332,7 +3354,13 @@ export default function App() {
     sortProviders = useSort(filteredProviders, "total_general", "desc"),
     sortCross = useSort(filteredCross, "total_general", "desc"),
     sortInteligencia = useSort(
-      inteligencia?.prestadores || [],
+      (inteligencia?.prestadores || [])
+        .filter((p) =>
+          inteligenciaFilter === "todos" ? true : p.clasificacion === inteligenciaFilter,
+        )
+        .filter((p) =>
+          p.prestador.toLowerCase().includes(inteligenciaSearch.toLowerCase()),
+        ),
       "percentil_benchmark",
       "asc",
       {
@@ -4378,7 +4406,7 @@ export default function App() {
                   </p>
                   <div className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 flex flex-col">
                     <div className="overflow-x-auto">
-                      <table className="w-full text-body-md font-body-md border-collapse">
+                      <table className="w-full text-body-md font-body-md border-collapse whitespace-nowrap">
                         <thead>
                           <tr className="bg-surface-container-low text-on-surface-variant font-label-caps text-label-caps uppercase text-left">
                             <SortableTh
@@ -4821,11 +4849,24 @@ export default function App() {
                     {nf(outliers?.[outlierTramo]?.p90_referencia)} min · marcado
                     como posible anomalía si supera 3× ese P90).
                   </p>
-                  <div className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 flex flex-col">
+                  <div className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 flex flex-col overflow-hidden">
+                    <div className="flex items-center justify-between px-md py-sm border-b border-outline-variant/20">
+                      <span className="flex items-center gap-1.5 font-headline-md text-headline-md text-on-surface font-semibold">
+                        <Icon name="list_alt" className="text-primary text-[20px]" />
+                        Registro auditado de casos
+                        <span className="px-1.5 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant font-label-code text-label-code font-semibold normal-case">
+                          {nf((outliers?.[outlierTramo]?.top || []).length)} registros
+                        </span>
+                      </span>
+                      <span className="flex items-center gap-1.5 font-label-code text-label-code text-on-surface-variant uppercase">
+                        <span className="w-1.5 h-1.5 rounded-full bg-error" />
+                        Ordenado por: {sortOutliersPageable.key === "valor_minutos" ? "Minutos" : sortOutliersPageable.key}
+                      </span>
+                    </div>
                     <div className="overflow-x-auto">
-                      <table className="w-full text-body-md font-body-md">
+                      <table className="w-full text-body-md font-body-md whitespace-nowrap">
                         <thead>
-                          <tr className="text-label-md font-label-md text-on-surface-variant uppercase text-left border-b border-outline-variant/30">
+                          <tr className="bg-surface-container-low font-label-caps text-label-caps text-on-surface-variant uppercase text-left">
                             <SortableTh
                               label="ID servicio"
                               sortKey="id_orden_de_servicio"
@@ -4833,7 +4874,7 @@ export default function App() {
                               className="py-2 pl-md pr-3"
                             />
                             <SortableTh
-                              label="Prestador"
+                              label="Prestador / Razón social"
                               sortKey="prestador"
                               sort={sortOutliersPageable}
                               defaultDir="asc"
@@ -4853,39 +4894,82 @@ export default function App() {
                               label="Minutos"
                               sortKey="valor_minutos"
                               sort={sortOutliersPageable}
+                            />
+                            <SortableTh
+                              label="Factor desvío"
+                              sortKey="valor_minutos"
+                              sort={sortOutliersPageable}
                               className="py-2 pr-md"
+                              tooltip={{
+                                leer: "Cuántas veces el P90 del tramo representa este valor puntual — un factor más alto es un caso más extremo.",
+                                calculo: "Minutos del caso ÷ P90 de referencia del tramo elegido.",
+                              }}
                             />
                           </tr>
                         </thead>
                         <tbody>
                           {sortOutliers.sorted
                             .slice((outliersPage - 1) * 10, outliersPage * 10)
-                            .map((o, i) => (
+                            .map((o, i) => {
+                              const p90 = outliers?.[outlierTramo]?.p90_referencia;
+                              const factor = p90 ? o.valor_minutos / p90 : null;
+                              return (
                               <tr
                                 key={`${o.id_servicio_prestado}-${i}`}
-                                className="border-b border-outline-variant/10 hover:bg-surface-container-low"
+                                className="border-b border-outline-variant/10 hover:bg-surface-container-low transition-colors"
                               >
-                                <td className="py-2 pl-md pr-3">
+                                <td className="py-2 pl-md pr-3 font-label-code text-label-code text-on-surface-variant">
                                   {o.id_orden_de_servicio}
                                 </td>
-                                <td className="py-2 pr-3 text-on-surface">
-                                  {o.prestador}
+                                <td className="py-2 pr-3">
+                                  <div className="flex items-center gap-space-sm min-w-0">
+                                    <div
+                                      className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-[10px] shrink-0 ${
+                                        i % 2 === 0
+                                          ? "bg-surface-container text-primary"
+                                          : "bg-surface-container text-secondary"
+                                      }`}
+                                    >
+                                      {o.prestador.slice(0, 2).toUpperCase()}
+                                    </div>
+                                    <span className="font-semibold text-on-surface truncate">
+                                      {o.prestador}
+                                    </span>
+                                  </div>
                                 </td>
-                                <td className="py-2 pr-3">{o.campana}</td>
-                                <td className="py-2 pr-3">{o.fecha}</td>
-                                <td className="py-2 pr-md font-medium">
+                                <td className="py-2 pr-3">
+                                  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-surface-container-low text-on-surface font-label-code text-label-code">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-secondary shrink-0" />
+                                    {o.campana}
+                                  </span>
+                                </td>
+                                <td className="py-2 pr-3 font-label-code text-label-code text-on-surface-variant">
+                                  {o.fecha}
+                                </td>
+                                <td className="py-2 pr-3 font-label-code text-label-code font-bold text-error">
                                   {nf(o.valor_minutos)}
                                   {o.es_anomalia_probable && (
-                                    <span
-                                      className="ml-1 text-error"
-                                      title="Supera 3x el P90 del tramo"
-                                    >
-                                      ⚠
+                                    <span title="Supera 3x el P90 del tramo">
+                                      <Icon
+                                        name="warning"
+                                        filled
+                                        className="inline text-[14px] ml-1 align-text-bottom"
+                                      />
                                     </span>
                                   )}
                                 </td>
+                                <td className="py-2 pr-md">
+                                  {factor != null ? (
+                                    <span className="px-2 py-0.5 rounded-full bg-error-container/60 text-error font-label-code text-label-code font-semibold">
+                                      {factor.toFixed(1)}x P90
+                                    </span>
+                                  ) : (
+                                    <span className="text-on-surface-variant">—</span>
+                                  )}
+                                </td>
                               </tr>
-                            ))}
+                              );
+                            })}
                         </tbody>
                       </table>
                     </div>
@@ -4956,9 +5040,6 @@ export default function App() {
                         <div className="flex flex-col gap-0.5 min-w-0">
                           <span className="font-headline-md text-headline-md font-bold text-on-primary truncate">
                             {providerStats.lider.prestador}
-                          </span>
-                          <span className="font-body-sm text-body-sm text-on-primary/80 truncate">
-                            {providerStats.lider.prestador_id}
                           </span>
                         </div>
                         <div className="flex items-center justify-between font-label-code text-label-code">
@@ -5041,7 +5122,7 @@ export default function App() {
                   </div>
                 </div>
                 <div className="overflow-x-auto px-md pb-md">
-                  <table className="w-full text-body-md font-body-md">
+                  <table className="w-full text-body-md font-body-md whitespace-nowrap">
                     <thead>
                       <tr className="bg-surface-container-low font-label-caps text-label-caps text-on-surface-variant uppercase text-left rounded-lg">
                         <SortableTh
@@ -5163,14 +5244,9 @@ export default function App() {
                               >
                                 {x.prestador.slice(0, 2).toUpperCase()}
                               </div>
-                              <div className="flex flex-col min-w-0">
-                                <span className="font-headline-md text-[13px] font-bold text-on-surface truncate">
-                                  {x.prestador}
-                                </span>
-                                <span className="text-on-surface-variant text-[11px] truncate">
-                                  {x.prestador_id}
-                                </span>
-                              </div>
+                              <span className="font-headline-md text-[13px] font-bold text-on-surface truncate">
+                                {x.prestador}
+                              </span>
                             </div>
                           </td>
                           <td className="py-2 pr-3 font-label-code text-label-code font-bold text-on-surface">{nf(x.total_general)}</td>
@@ -5283,7 +5359,7 @@ export default function App() {
                   </div>
                 </div>
                 <div className="overflow-x-auto px-md pb-md">
-                  <table className="w-full text-body-md font-body-md">
+                  <table className="w-full text-body-md font-body-md whitespace-nowrap">
                     <thead>
                       <tr className="bg-surface-container-low font-label-caps text-label-caps text-on-surface-variant uppercase text-left">
                         <SortableTh
@@ -5381,45 +5457,86 @@ export default function App() {
             {page === "intelligence" && (
               <div className="flex flex-col gap-lg">
                 {/* ---------- Encabezado ---------- */}
-                <div className="flex flex-col gap-2">
-                  <div className="flex items-center justify-between gap-3 flex-wrap">
-                    <div className="flex items-center gap-3">
-                      <Icon name="psychology" className="text-primary text-[32px]" filled />
-                      <h2 className="font-display-lg text-display-lg text-on-surface">
-                        Inteligencia Operativa
-                      </h2>
+                <div className="flex flex-col gap-space-sm">
+                  <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-space-md">
+                    <div className="flex flex-col gap-space-xs">
+                      <div className="flex items-center gap-space-sm flex-wrap">
+                        <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary-container text-on-primary">
+                          <Icon name="psychology" className="text-[20px]" filled />
+                        </div>
+                        <h1 className="font-headline-lg text-headline-lg text-on-surface tracking-tight font-semibold">
+                          Inteligencia Operativa
+                        </h1>
+                        <div className="flex items-center gap-1.5 px-space-sm py-0.5 rounded-full bg-surface-container-high text-primary font-label-code text-label-code">
+                          <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                          <span>Heurística activa</span>
+                        </div>
+                      </div>
+                      <p className="font-body-md text-body-md text-on-surface-variant max-w-3xl">
+                        Evaluación histórica y segmentación heurística de prestadores para
+                        priorizar auditorías y acompañamiento operativo en campo.
+                      </p>
+                      <div className="flex items-center gap-space-md text-on-surface-variant font-label-code text-label-code pt-0.5 flex-wrap">
+                        <span className="flex items-center gap-1 text-on-surface font-semibold">
+                          <Icon name="groups" className="text-[15px] text-primary" />
+                          {nf(inteligencia?.total_prestadores)} prestadores evaluados
+                        </span>
+                        <span>•</span>
+                        <span className="flex items-center gap-1">
+                          <Icon name="rule" className="text-[15px]" />
+                          Reglas sobre datos históricos (sin modelos predictivos)
+                        </span>
+                        {filters.fecha_desde && filters.fecha_hasta && (
+                          <>
+                            <span>•</span>
+                            <span className="flex items-center gap-1">
+                              <Icon name="date_range" className="text-[15px]" />
+                              Corte: {filters.fecha_desde} — {filters.fecha_hasta}
+                            </span>
+                          </>
+                        )}
+                      </div>
                     </div>
-                    <ExportButton
-                      rows={() =>
-                        (inteligencia?.prestadores ||
-                          []) as unknown as Record<string, unknown>[]
-                      }
-                      fileBaseName="inteligencia-prestadores"
-                      pdfTitle="Inteligencia Operativa — Prestadores"
-                    />
+                    <div className="flex items-center gap-space-sm flex-wrap self-start lg:self-center">
+                      <button
+                        type="button"
+                        className="flex items-center gap-space-xs px-space-md py-2 rounded-lg bg-surface-container-lowest text-on-surface hover:bg-surface-container-low transition-colors shadow-sm font-body-md text-body-md"
+                        onClick={() => {
+                          setDraft(DEFAULT);
+                          setFilters(DEFAULT);
+                        }}
+                      >
+                        <Icon name="restart_alt" className="text-[17px] text-on-surface-variant" />
+                        Restablecer
+                      </button>
+                      <ExportButton
+                        label="Exportar diagnóstico"
+                        className="flex items-center gap-space-xs px-space-md py-2 rounded-lg bg-primary-container text-on-primary hover:bg-primary transition-all font-body-md text-body-md font-medium shadow-sm"
+                        rows={() =>
+                          (inteligencia?.prestadores ||
+                            []) as unknown as Record<string, unknown>[]
+                        }
+                        fileBaseName="inteligencia-prestadores"
+                        pdfTitle="Inteligencia Operativa — Prestadores"
+                      />
+                    </div>
                   </div>
-                  <div className="flex items-start gap-2 bg-primary-container/50 border border-primary/30 rounded-xl px-md py-sm">
-                    <Icon name="info" className="text-primary text-[20px] mt-0.5 shrink-0" />
-                    <p className="font-body-md text-body-md text-on-surface">
-                      Evalúa el comportamiento histórico de cada prestador para identificar
-                      rápido a quién revisar con urgencia, a quién prestarle atención, y
-                      quién se está destacando. Todo se calcula sobre datos que ya
-                      ocurrieron dentro de los filtros elegidos arriba — no hay pronósticos
-                      ni probabilidades de lo que podría pasar.
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-x-lg gap-y-1 bg-surface-container-low rounded-lg px-md py-2">
-                    <span className="font-label-sm text-label-sm text-on-surface-variant flex items-center gap-1">
-                      <Icon name="groups" className="text-[16px]" />
-                      <b className="text-on-surface">
-                        {nf(inteligencia?.total_prestadores)}
-                      </b>{" "}
-                      prestadores evaluados
-                    </span>
-                    <span className="font-label-sm text-label-sm text-on-surface-variant flex items-center gap-1">
-                      <Icon name="rule" className="text-[16px]" />
-                      Reglas sobre datos históricos, sin modelos predictivos
-                    </span>
+                  <div className="rounded-xl bg-surface-container-low p-space-md shadow-sm flex items-start gap-space-md">
+                    <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center shrink-0 text-primary">
+                      <Icon name="tips_and_updates" className="text-[22px]" />
+                    </div>
+                    <div className="flex flex-col gap-0.5">
+                      <span className="font-headline-md text-body-md text-on-surface font-semibold">
+                        Criterio de clasificación y gobierno operativo
+                      </span>
+                      <p className="font-body-md text-body-md text-on-surface-variant">
+                        Evalúa el comportamiento histórico de cada prestador para identificar
+                        rápido a quién revisar con urgencia, a quién prestarle atención, y
+                        quién se está destacando. Todo se calcula sobre datos que ya
+                        ocurrieron dentro de los filtros elegidos arriba — no hay pronósticos
+                        ni probabilidades de lo que podría pasar.
+                      </p>
+                    </div>
                   </div>
                 </div>
 
@@ -5462,14 +5579,20 @@ export default function App() {
                   <>
                     {/* ---------- Panorama general ---------- */}
                     <section className="flex flex-col gap-sm">
-                      <h3 className="font-title-lg text-title-lg text-on-surface">
-                        Panorama general de los prestadores
-                      </h3>
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <h3 className="font-headline-md text-headline-md text-on-surface">
+                          Panorama general de los prestadores
+                        </h3>
+                        <span className="font-label-code text-label-code text-on-surface-variant">
+                          Total: {nf(inteligencia.total_prestadores)} entidades auditadas
+                        </span>
+                      </div>
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-md">
                         <Card
                           icon={<Icon name="error" />}
                           title="Necesitan atención urgente"
                           value={nf(inteligencia.resumen.urgente)}
+                          badge={`${pct(inteligencia.resumen.urgente / Math.max(1, inteligencia.total_prestadores))} de la red`}
                           detail="Bajaron de forma sostenida o rinden muy por debajo de sus pares — clic para ver quiénes"
                           tone="red"
                           onClick={() => setModalClasificacion("urgente")}
@@ -5485,6 +5608,7 @@ export default function App() {
                           icon={<Icon name="warning" />}
                           title="Requieren atención"
                           value={nf(inteligencia.resumen.atencion)}
+                          badge={`${pct(inteligencia.resumen.atencion / Math.max(1, inteligencia.total_prestadores))} de la red`}
                           detail="Vienen bajando o rinden por debajo del promedio — clic para ver quiénes"
                           tone="amber"
                           onClick={() => setModalClasificacion("atencion")}
@@ -5500,6 +5624,7 @@ export default function App() {
                           icon={<Icon name="trending_up" />}
                           title="Se están destacando"
                           value={nf(inteligencia.resumen.destacado)}
+                          badge={`${pct(inteligencia.resumen.destacado / Math.max(1, inteligencia.total_prestadores))} benchmark`}
                           detail="Rinden muy bien y de forma estable — clic para ver quiénes"
                           tone="green"
                           onClick={() => setModalClasificacion("destacado")}
@@ -5516,27 +5641,75 @@ export default function App() {
 
                     {/* ---------- Comparativa entre prestadores ---------- */}
                     <section className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 flex flex-col">
-                      <header className="flex items-center gap-3 p-md pb-0">
-                        <Icon name="leaderboard" className="text-primary" />
-                        <div>
-                          <h3 className="font-title-lg text-title-lg text-on-surface">
-                            Comparativa entre prestadores
-                          </h3>
-                          <p className="font-label-sm text-label-sm text-on-surface-variant">
-                            Cómo viene cada uno y qué conviene hacer, ordenados del que más
-                            necesita atención al que mejor está
-                          </p>
+                      <div className="p-md flex flex-col gap-space-md">
+                        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-space-sm">
+                          <div className="flex flex-col">
+                            <div className="flex items-center gap-space-xs">
+                              <Icon name="table_rows" className="text-primary text-[22px]" />
+                              <h3 className="font-headline-md text-headline-md text-on-surface font-semibold">
+                                Comparativa entre prestadores
+                              </h3>
+                            </div>
+                            <p className="font-body-sm text-body-sm text-on-surface-variant">
+                              Cómo viene cada prestador y qué conviene hacer, ordenados del que
+                              más necesita atención al que mejor está.
+                            </p>
+                          </div>
+                          <div className="relative w-full lg:w-80">
+                            <Icon
+                              name="search"
+                              className="absolute left-3 top-2.5 text-[18px] text-on-surface-variant"
+                            />
+                            <input
+                              className="w-full pl-9 pr-3 py-1.5 rounded-lg bg-surface-container-low text-on-surface placeholder:text-on-surface-variant font-body-sm text-body-sm focus:outline-none focus:bg-surface-container-lowest focus:shadow-sm transition-all"
+                              placeholder="Buscar por prestador…"
+                              value={inteligenciaSearch}
+                              onChange={(e) => {
+                                setInteligenciaSearch(e.target.value);
+                                setInteligenciaPage(1);
+                              }}
+                            />
+                          </div>
                         </div>
-                      </header>
-                      <div className="overflow-x-auto p-md">
-                        <table className="w-full text-body-md font-body-md">
+                        <div className="flex items-center gap-1 p-1 rounded-lg bg-surface-container-low font-body-sm text-body-sm flex-wrap">
+                          {(
+                            [
+                              ["todos", `Todos (${nf(inteligencia.total_prestadores)})`, null],
+                              ["urgente", `Urgentes (${nf(inteligencia.resumen.urgente)})`, "bg-error"],
+                              ["atencion", `En atención (${nf(inteligencia.resumen.atencion)})`, "bg-tertiary"],
+                              ["destacado", `Destacados (${nf(inteligencia.resumen.destacado)})`, "bg-primary"],
+                              ["estable", `Estables (${nf(inteligencia.resumen.estable)})`, null],
+                            ] as [Clasificacion | "todos", string, string | null][]
+                          ).map(([key, label, dot]) => (
+                            <button
+                              key={key}
+                              type="button"
+                              onClick={() => {
+                                setInteligenciaFilter(key);
+                                setInteligenciaPage(1);
+                              }}
+                              className={`px-3 py-1 rounded-md transition-colors flex items-center gap-1.5 ${
+                                inteligenciaFilter === key
+                                  ? "bg-surface-container-lowest text-on-surface font-medium shadow-xs"
+                                  : "text-on-surface-variant hover:text-on-surface"
+                              }`}
+                            >
+                              {dot && <span className={`w-2 h-2 rounded-full ${dot}`} />}
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="overflow-x-auto p-md pt-0">
+                        <table className="w-full text-body-md font-body-md whitespace-nowrap">
                           <thead>
-                            <tr className="text-label-md font-label-md text-on-surface-variant uppercase text-left border-b border-outline-variant/30">
+                            <tr className="bg-surface-container-low font-label-caps text-label-caps text-on-surface-variant uppercase text-left">
                               <SortableTh
-                                label="Prestador"
+                                label="Prestador / Razón social"
                                 sortKey="prestador"
                                 sort={sortInteligenciaPageable}
                                 defaultDir="asc"
+                                className="py-2 pl-md pr-3"
                               />
                               <SortableTh
                                 label="Puntualidad actual"
@@ -5584,28 +5757,59 @@ export default function App() {
                                 (inteligenciaPage - 1) * 10,
                                 inteligenciaPage * 10,
                               )
-                              .map((p) => (
+                              .map((p, i) => (
                                 <tr
                                   key={p.prestador_id}
-                                  className="border-b border-outline-variant/10 hover:bg-surface-container-low"
+                                  className="border-b border-outline-variant/10 hover:bg-surface-container-low transition-colors"
                                 >
-                                  <td className="py-2 pr-3 text-on-surface font-medium">
-                                    {p.prestador}
+                                  <td className="py-2 pl-md pr-3">
+                                    <div className="flex items-center gap-space-sm min-w-0">
+                                      <div
+                                        className={`w-8 h-8 rounded-full flex items-center justify-center font-label-code text-label-code font-bold shrink-0 ${
+                                          p.clasificacion === "urgente"
+                                            ? "bg-error-container text-on-error-container"
+                                            : i % 2 === 0
+                                              ? "bg-surface-container text-primary"
+                                              : "bg-surface-container text-secondary"
+                                        }`}
+                                      >
+                                        {p.prestador.slice(0, 2).toUpperCase()}
+                                      </div>
+                                      <span className="font-semibold text-on-surface truncate">
+                                        {p.prestador}
+                                      </span>
+                                    </div>
                                   </td>
-                                  <td className="py-2 pr-3">
-                                    {pct(p.cumplimiento_actual)}
+                                  <td className="py-2 pr-3 min-w-[130px]">
+                                    <div className="flex flex-col gap-1 w-28">
+                                      <div className="flex items-baseline justify-between font-label-code text-label-code">
+                                        <span
+                                          className={`font-bold ${p.clasificacion === "urgente" ? "text-error" : "text-on-surface"}`}
+                                        >
+                                          {pct(p.cumplimiento_actual)}
+                                        </span>
+                                      </div>
+                                      <div className="w-full h-1.5 rounded-full bg-surface-container-highest overflow-hidden">
+                                        <div
+                                          className={`h-full rounded-full ${p.clasificacion === "urgente" ? "bg-error" : "bg-primary"}`}
+                                          style={{
+                                            width: `${Math.max(0, Math.min(100, ratioPct(p.cumplimiento_actual) ?? 0))}%`,
+                                          }}
+                                        />
+                                      </div>
+                                    </div>
                                   </td>
-                                  <td className="py-2 pr-3">
+                                  <td className="py-2 pr-3 font-body-sm text-body-sm text-on-surface-variant">
                                     {comparadoConSimilares(p.percentil_benchmark)}
                                   </td>
                                   <td className="py-2 pr-3">
                                     <span
-                                      className={`font-label-md text-label-md rounded-full px-2 py-0.5 uppercase tracking-wide ${clasificacionInfo(p.clasificacion).tone}`}
+                                      className={`font-label-caps text-label-caps rounded-md px-2.5 py-0.5 uppercase font-bold ${clasificacionInfo(p.clasificacion).tone}`}
                                     >
                                       {clasificacionInfo(p.clasificacion).label}
                                     </span>
                                   </td>
-                                  <td className="py-2 pr-3">
+                                  <td className="py-2 pr-3 font-body-md text-body-md text-on-surface">
                                     {queHacer(p.clasificacion)}
                                   </td>
                                 </tr>
@@ -5616,7 +5820,7 @@ export default function App() {
                       <Pager
                         page={inteligenciaPage}
                         setPage={setInteligenciaPage}
-                        total={inteligencia.prestadores.length}
+                        total={sortInteligencia.sorted.length}
                       />
                     </section>
                   </>
@@ -5781,7 +5985,7 @@ export default function App() {
               </div>
             )}
             <div className="overflow-auto px-md py-sm flex-1">
-              <table className="w-full text-body-md font-body-md">
+              <table className="w-full text-body-md font-body-md whitespace-nowrap">
                 <thead>
                   <tr className="text-label-md font-label-md text-on-surface-variant uppercase text-left border-b border-outline-variant/30 sticky top-0 bg-surface-container-lowest">
                     <SortableTh label="ID" sortKey="id_orden_de_servicio" sort={sortDrill} />
