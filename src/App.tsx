@@ -5870,6 +5870,11 @@ export default function App() {
                               ["atencion", `En atención (${nf(inteligencia.resumen.atencion)})`, "bg-tertiary"],
                               ["destacado", `Destacados (${nf(inteligencia.resumen.destacado)})`, "bg-primary"],
                               ["estable", `Estables (${nf(inteligencia.resumen.estable)})`, null],
+                              [
+                                "muestra_insuficiente",
+                                `Muestra insuficiente (${nf(inteligencia.resumen.muestra_insuficiente)})`,
+                                "bg-outline",
+                              ],
                             ] as [Clasificacion | "todos", string, string | null][]
                           ).map(([key, label, dot]) => (
                             <button
