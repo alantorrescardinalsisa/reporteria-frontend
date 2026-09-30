@@ -243,8 +243,8 @@ function Spinner({ className = "" }: { className?: string }) {
    adentro de ellos (se veia como una franja negra cortada). Al vivir
    en document.body con position:fixed, el popover ya no depende del
    overflow de ningun ancestro. */
-type Tooltip = { leer: string; calculo?: string };
-function InfoTip({ leer, calculo }: Tooltip) {
+type Tooltip = { leer: string; calculo?: string; titulo?: string };
+function InfoTip({ leer, calculo, titulo }: Tooltip) {
   const triggerRef = useRef<HTMLSpanElement>(null);
   const [pos, setPos] = useState<{
     top: number;
@@ -298,6 +298,11 @@ function InfoTip({ leer, calculo }: Tooltip) {
             }}
           >
             <span className="block rounded-lg bg-inverse-surface text-inverse-on-surface p-3 shadow-lg">
+              {titulo && (
+                <span className="block font-label-caps text-label-caps uppercase tracking-wide text-primary-fixed-dim mb-1.5 pb-1.5 border-b border-inverse-on-surface/20">
+                  {titulo}
+                </span>
+              )}
               <span className="block font-body-md text-[12.5px] leading-snug">
                 {leer}
               </span>
@@ -682,7 +687,7 @@ function Card({
           }`}
         >
           <span className="truncate">{title}</span>
-          {tooltip && <InfoTip {...tooltip} />}
+          {tooltip && <InfoTip {...tooltip} titulo={title} />}
         </span>
         <div
           className={`w-8 h-8 shrink-0 rounded-lg flex items-center justify-center ${
@@ -770,7 +775,7 @@ function IndicatorRow({
           <div className="min-w-0">
             <div className="font-body-md text-body-md font-semibold text-on-surface flex items-center gap-1 min-w-0">
               <span className="truncate">{label}</span>
-              {tooltip && <InfoTip {...tooltip} />}
+              {tooltip && <InfoTip {...tooltip} titulo={label} />}
             </div>
             {detail && (
               <div className="font-label-code text-label-code text-on-surface-variant truncate">
@@ -869,7 +874,7 @@ function ProgressBar({
         <span className="text-on-surface flex items-center gap-2 min-w-0">
           {icon}
           <span className="truncate">{label}</span>
-          {tooltip && <InfoTip {...tooltip} />}
+          {tooltip && <InfoTip {...tooltip} titulo={label} />}
         </span>
         <span className="text-on-surface-variant font-bold shrink-0">{valueLabel}</span>
       </div>
@@ -1579,7 +1584,7 @@ function TramoCard({
         <Icon name={icon} className="text-primary" />
         <h4 className="font-title-lg text-title-lg text-on-surface flex items-center gap-1">
           {label}
-          {tooltip && <InfoTip {...tooltip} />}
+          {tooltip && <InfoTip {...tooltip} titulo={label} />}
         </h4>
       </header>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -2002,7 +2007,7 @@ function SortableTh({
             className={`text-[14px] ${active ? "text-primary" : "text-on-surface-variant/40"}`}
           />
         </button>
-        {tooltip && <InfoTip {...tooltip} />}
+        {tooltip && <InfoTip {...tooltip} titulo={label} />}
       </span>
     </th>
   );
@@ -4204,6 +4209,7 @@ export default function App() {
                   <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs flex items-center gap-1">
                     Cobertura de encuestas automáticas
                     <InfoTip
+                      titulo="Cobertura de encuestas automáticas"
                       leer="De los servicios que debieron disparar la encuesta automática (se finalizaron, en una compañía con la función habilitada), cuántos efectivamente la recibieron."
                       calculo="Esperadas = servicios finalizados en el rango filtrado, de las compañías con encuesta automática confirmada. Enviadas = encuestas reales registradas en ese mismo rango. Faltantes = Esperadas − Enviadas."
                     />
@@ -4319,6 +4325,7 @@ export default function App() {
                     <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs flex items-center gap-1">
                       Distribución de servicios cumplidos
                       <InfoTip
+                        titulo="Distribución de servicios cumplidos"
                         leer="De los servicios que SÍ cumplieron la demora prometida, cuánto tiempo real tardaron — para distinguir un cumplimiento justo de uno con mucho margen."
                         calculo="Se agrupan las filas que cumplieron, usando el valor tal cual viene en RangoDemoraReal."
                       />
@@ -4343,6 +4350,7 @@ export default function App() {
                     <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs flex items-center gap-1">
                       Calidad de información
                       <InfoTip
+                        titulo="Calidad de información"
                         leer="No mide performance operativa — mide qué tan completo está el Excel cargado. Un dato faltante puede ser tan importante como un mal resultado."
                         calculo="Por cada campo: filas con esa columna no vacía ÷ total del universo filtrado."
                       />
@@ -4378,6 +4386,7 @@ export default function App() {
                     <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs flex items-center gap-1">
                       Anomalías detectadas
                       <InfoTip
+                        titulo="Anomalías detectadas"
                         leer="Valores que no deberían poder existir sin importar el umbral: demoras negativas o eventos registrados fuera de orden (ej. 'Finaliza' antes que 'Llega'). Señal de un problema en la captura de datos, no en la performance del prestador."
                         calculo="Filas con DemoraReal o DemoraPrometida < 0, o con la resta entre dos marcas horarias consecutivas dando negativo."
                       />
@@ -4508,6 +4517,7 @@ export default function App() {
                     <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs flex items-center gap-1">
                       SLA de llegada
                       <InfoTip
+                        titulo="SLA de llegada"
                         leer="De los servicios con tiempo prometido y real cargados, cuántos llegaron a tiempo, y cuánto se pasaron los que no."
                         calculo="Bandas sobre DemoraReal − DemoraPrometida."
                       />
@@ -4684,6 +4694,7 @@ export default function App() {
                     <h3 className="font-title-lg text-title-lg text-on-surface flex items-center gap-1">
                       Servicios por hora del día
                       <InfoTip
+                        titulo="Servicios por hora del día"
                         leer="A qué hora del día llega más trabajo — para pensar la dotación de personal según la demanda real, no contra el promedio del día entero."
                         calculo="Cuenta de servicios agrupados por la hora local (Argentina) de AltaDelServicio."
                       />
@@ -4746,6 +4757,7 @@ export default function App() {
                   <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs flex items-center gap-1">
                     Estados por categoría semántica
                     <InfoTip
+                      titulo="Estados por categoría semántica"
                       leer="El Excel trae docenas de estados distintos. Este panel los agrupa en familias (Finalizado, Cancelado, En proceso, Pendiente, Postservicio, Sin clasificar) para leerlos de un vistazo."
                       calculo="Cada estado crudo se asigna a una categoría por nombre exacto o por palabra clave."
                     />
@@ -4809,6 +4821,7 @@ export default function App() {
                   <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs flex items-center gap-1">
                     Trazabilidad completa del servicio
                     <InfoTip
+                      titulo="Trazabilidad completa del servicio"
                       leer="Distinto de “Calidad de información”: ahí se mide campo por campo; acá se mide si un mismo servicio tiene TODA la cadena de eventos registrada, de punta a punta."
                       calculo="Filas con las 6 columnas de tiempo cargadas ÷ total del universo filtrado."
                     />
@@ -4867,6 +4880,7 @@ export default function App() {
                     <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs flex items-center gap-1">
                       Coordenadas como habilitador de asignación
                       <InfoTip
+                        titulo="Coordenadas como habilitador de asignación"
                         leer="Compara la efectividad de asignación entre servicios con y sin coordenadas cargadas. Si “con coordenadas” asigna mejor, cargar la ubicación ayuda a conseguir el móvil."
                         calculo="AsignoMovil=SI ÷ ConEnvioOK=SI, separado por si tiene coordenadas o no."
                       />
@@ -4901,6 +4915,7 @@ export default function App() {
                     <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs flex items-center gap-1">
                       MóvilRegistrado como proxy de asignación
                       <InfoTip
+                        titulo="MóvilRegistrado como proxy de asignación"
                         leer="De los servicios que usaron el enviador, qué % terminó con el móvil concreto registrado en el sistema, y qué tan seguido eso coincide con AsignoMóvil."
                         calculo="MovilRegistrado=SI ÷ ConEnvioOK=SI."
                       />
@@ -4940,6 +4955,7 @@ export default function App() {
                   <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs flex items-center gap-1">
                     Gestión completa de servicios programados
                     <InfoTip
+                      titulo="Gestión completa de servicios programados"
                       leer="“Servicios programados” solo cuenta cuántos estaban agendados. Esto sigue ese mismo grupo paso a paso, hasta ver cuántos realmente se cumplieron en horario."
                       calculo="Funnel: EsProgramado=SI → con prestador → ConEnvioOK → AsignoMovil → ejecutado → finalizado."
                     />
@@ -4975,6 +4991,7 @@ export default function App() {
                       <span className="font-label-md text-label-md text-on-surface-variant uppercase flex items-center gap-1">
                         Llegada en horario
                         <InfoTip
+                          titulo="Llegada en horario"
                           leer="De los programados con horario y llegada cargados, qué % llegó puntual o antes de la hora acordada con el cliente."
                           calculo="HoraQueLlegoADarServicio ≤ FechaProgramada + HoraProgramada."
                         />
@@ -5012,6 +5029,7 @@ export default function App() {
                     <h3 className="font-title-lg text-title-lg text-on-surface flex items-center gap-1">
                       Outliers por tramo
                       <InfoTip
+                        titulo="Outliers por tramo"
                         leer="Los promedios y percentiles esconden los casos extremos. Acá se los ve uno por uno, con el prestador y el servicio puntual, para auditarlos."
                         calculo="Los 20 valores más altos del tramo elegido, y siempre todos los que superen 3× el P90 de ese tramo aunque sean más de 20."
                       />
