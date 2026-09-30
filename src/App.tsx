@@ -1631,7 +1631,7 @@ function HourlyBarChart({
         {tipos.map((tipo, idx) => (
           <span
             key={tipo}
-            className="flex items-center gap-1.5 font-label-sm text-label-sm text-on-surface-variant"
+            className="flex items-center gap-1.5 font-label-code text-label-code uppercase text-on-surface-variant"
           >
             <span
               className="w-2.5 h-2.5 rounded-sm shrink-0"
@@ -1672,8 +1672,20 @@ function HourlyBarChart({
       {data.map((d, i) => {
         const segmentos = d.por_tipo && d.por_tipo.length ? d.por_tipo : [{ tipo: "", cantidad: d.servicios }];
         let acumulado = 0;
+        const esColumnaActiva = hover?.horaIdx === i;
         return (
           <g key={d.hora}>
+            {esColumnaActiva && (
+              <rect
+                x={barX(i) - (slot - bw) / 2}
+                y={PT}
+                width={slot}
+                height={plotH}
+                rx={4}
+                className="fill-primary/10 stroke-primary/30"
+                strokeWidth={1}
+              />
+            )}
             <text
               x={barX(i) + bw / 2}
               y={Math.max(12, PT + (plotH - barH(d.servicios)) - 6)}
@@ -1708,7 +1720,11 @@ function HourlyBarChart({
               x={barX(i) + bw / 2}
               y={H - 8}
               textAnchor="middle"
-              className="fill-outline text-[10px]"
+              className={
+                esColumnaActiva
+                  ? "fill-primary text-[10px] font-bold"
+                  : "fill-outline text-[10px]"
+              }
             >
               {String(d.hora).padStart(2, "0")}:00
             </text>
@@ -2820,6 +2836,13 @@ export default function App() {
     [uploadStatus, setUploadStatus] = useState<IngestStatus | null>(null),
     [uploadMessage, setUploadMessage] = useState(""),
     [providerSearch, setProviderSearch] = useState(""),
+    // NUEVO (ADITIVO): filtro rápido por categoría en Detalle por
+    // prestador -- sobre los mismos campos que ya trae cada fila
+    // (cumplimiento_demora, total_general), sin pedir nada nuevo al
+    // backend.
+    [providerQuickFilter, setProviderQuickFilter] = useState<
+      "all" | "cumplen" | "alerta" | "alta"
+    >("all"),
     // NUEVO (ADITIVO): paginado + búsqueda en Detalle por prestador y
     // Campaña × prestador (antes mostraban todas las filas sin cortar).
     [providerPage, setProviderPage] = useState(1),
@@ -3270,9 +3293,18 @@ export default function App() {
   const prestadoresEvaluables = (inteligencia?.prestadores || []).filter(
     (p) => p.clasificacion !== "muestra_insuficiente",
   );
-  const filteredProviders = providers.filter((x) =>
-      x.prestador.toLowerCase().includes(providerSearch.toLowerCase()),
-    ),
+  const filteredProviders = providers
+      .filter((x) =>
+        x.prestador.toLowerCase().includes(providerSearch.toLowerCase()),
+      )
+      .filter((x) => {
+        if (providerQuickFilter === "cumplen")
+          return (x.cumplimiento_demora ?? 0) > 0.8;
+        if (providerQuickFilter === "alerta")
+          return (x.cumplimiento_demora ?? 1) < 0.7;
+        if (providerQuickFilter === "alta") return x.total_general > 200;
+        return true;
+      }),
     filteredCross = cross.filter((x) => {
       const q = crossSearch.toLowerCase();
       return (
@@ -3346,6 +3378,42 @@ export default function App() {
       },
     };
   const displayedProviders = sortProviders.sorted;
+  // NUEVO (ADITIVO): tarjetas KPI de "Detalle por prestador" -- todas
+  // derivadas de la misma lista `providers` que ya trae la tabla
+  // (respeta los filtros globales, no la búsqueda ni el filtro rápido
+  // locales), sin pedir nada nuevo al backend.
+  const providerStats = useMemo(() => {
+    const cumplidos = providers.reduce((a, x) => a + (x.servicios_cumplidos || 0), 0);
+    const noCumplidos = providers.reduce(
+      (a, x) => a + (x.servicios_no_cumplidos || 0),
+      0,
+    );
+    const conCalidad = providers.filter((x) => x.indice_calidad_datos != null);
+    const conTrazabilidad = providers.filter(
+      (x) => x.porcentaje_trazabilidad_completa != null,
+    );
+    const lider = providers.reduce<PrestadorMetric | null>((best, x) => {
+      if (x.score_ranking == null) return best;
+      if (!best || (best.score_ranking ?? -1) < x.score_ranking) return x;
+      return best;
+    }, null);
+    return {
+      total: providers.length,
+      cumplimientoPromedio:
+        cumplidos + noCumplidos > 0 ? cumplidos / (cumplidos + noCumplidos) : null,
+      indiceCalidadMedio: conCalidad.length
+        ? conCalidad.reduce((a, x) => a + (x.indice_calidad_datos || 0), 0) /
+          conCalidad.length
+        : null,
+      trazabilidadPromedio: conTrazabilidad.length
+        ? conTrazabilidad.reduce(
+            (a, x) => a + (x.porcentaje_trazabilidad_completa || 0),
+            0,
+          ) / conTrazabilidad.length
+        : null,
+      lider,
+    };
+  }, [providers]);
   const ranges: [
     string,
     number | undefined,
@@ -4832,45 +4900,150 @@ export default function App() {
             )}
 
             {page === "providers" && (
-              <section className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 flex flex-col overflow-hidden">
-                <header className="flex items-center px-md py-md border-b border-outline-variant/20">
-                  <p className="font-label-sm text-label-sm text-on-surface-variant">
-                    {nf(displayedProviders.length)} prestadores
-                  </p>
-                </header>
+              <div className="flex flex-col gap-xl">
+                {/* ---------- NUEVO (ADITIVO): tarjetas KPI ---------- */}
+                <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-md">
+                  <Card
+                    icon={<Icon name="domain" filled />}
+                    title="Total prestadores"
+                    value={nf(providerStats.total)}
+                    detail={`${nf(providers.reduce((a, x) => a + (x.total_general || 0), 0))} servicios auditados`}
+                  />
+                  <Card
+                    icon={<Icon name="timer" filled />}
+                    title="Cumplimiento de demora promedio"
+                    value={pct(providerStats.cumplimientoPromedio)}
+                    detail="Promedio ponderado del período filtrado"
+                    progress={ratioPct(providerStats.cumplimientoPromedio)}
+                    tooltip={{
+                      leer: "El cumplimiento de demora promedio de todos los prestadores del universo filtrado, ponderado por volumen (no es un promedio simple entre prestadores).",
+                      calculo: "Suma de servicios que cumplen ÷ (suma de servicios que cumplen + suma de los que no cumplen), sobre todos los prestadores filtrados.",
+                    }}
+                  />
+                  <Card
+                    icon={<Icon name="verified" filled />}
+                    title="Índice de calidad medio"
+                    value={pct(providerStats.indiceCalidadMedio)}
+                    detail="Completitud de datos cargados"
+                    tone="green"
+                    progress={ratioPct(providerStats.indiceCalidadMedio)}
+                    tooltip={{
+                      leer: "Qué tan completos están, en promedio, los datos de los servicios — promediado entre todos los prestadores del universo filtrado.",
+                      calculo: "Promedio simple del Índice de calidad de cada prestador.",
+                    }}
+                  />
+                  <Card
+                    icon={<Icon name="timeline" filled />}
+                    title="Trazabilidad promedio"
+                    value={pct(providerStats.trazabilidadPromedio)}
+                    detail="Cadena de eventos completa"
+                    tone="purple"
+                    progress={ratioPct(providerStats.trazabilidadPromedio)}
+                    tooltip={{
+                      leer: "Qué % de los servicios tiene la cadena completa de eventos, promediado entre todos los prestadores del universo filtrado.",
+                      calculo: "Promedio simple de la Trazabilidad de cada prestador.",
+                    }}
+                  />
+                  <div className="flex flex-col justify-between gap-space-sm p-space-lg rounded-xl bg-primary text-on-primary card-shadow">
+                    <div className="flex items-center justify-between gap-space-sm">
+                      <span className="font-label-caps text-label-caps uppercase text-on-primary/80">
+                        Top líder operativo
+                      </span>
+                      <Icon name="military_tech" className="text-on-primary text-[20px]" />
+                    </div>
+                    {providerStats.lider ? (
+                      <>
+                        <div className="flex flex-col gap-0.5 min-w-0">
+                          <span className="font-headline-md text-headline-md font-bold text-on-primary truncate">
+                            {providerStats.lider.prestador}
+                          </span>
+                          <span className="font-body-sm text-body-sm text-on-primary/80 truncate">
+                            {providerStats.lider.prestador_id}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between font-label-code text-label-code">
+                          <span className="font-bold text-on-primary">
+                            {nf(providerStats.lider.total_general)} servicios
+                          </span>
+                          <span className="px-1.5 py-0.5 rounded bg-surface-container-lowest text-on-surface font-semibold">
+                            {pct(providerStats.lider.score_ranking)} score
+                          </span>
+                        </div>
+                      </>
+                    ) : (
+                      <span className="font-body-sm text-body-sm text-on-primary/80">
+                        Sin datos suficientes
+                      </span>
+                    )}
+                  </div>
+                </section>
+
+                <section className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 flex flex-col overflow-hidden">
                 {prestadoresWarning && (
                   <div className="mx-md mt-md bg-[#f59e0b]/10 text-[#7a4a00] rounded-lg px-md py-sm flex items-start gap-2 font-body-md text-body-md">
                     <Icon name="warning" filled className="text-[#f59e0b] shrink-0 mt-0.5" />
                     {prestadoresWarning}
                   </div>
                 )}
-                <div className="flex items-center justify-between gap-3 px-md py-sm flex-wrap">
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <div className="form-input-styled flex items-center gap-2 min-w-[220px]">
-                      <Icon name="search" className="text-[18px] text-outline" />
-                      <input
-                        className="flex-1 outline-none bg-transparent font-body-md text-body-md text-on-surface"
-                        placeholder="Buscar prestador…"
-                        value={providerSearch}
-                        onChange={(e) => {
-                          setProviderSearch(e.target.value);
-                          setProviderPage(1);
-                        }}
-                      />
-                    </div>
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-space-sm p-space-md">
+                  <div className="relative w-full md:w-96">
+                    <Icon
+                      name="search"
+                      className="absolute left-3 top-2.5 text-on-surface-variant text-[18px]"
+                    />
+                    <input
+                      className="w-full pl-9 pr-3 py-2 rounded-lg bg-surface-container-low text-on-surface font-body-md text-body-md placeholder:text-on-surface-variant focus:outline-none focus:bg-surface-container transition-all"
+                      placeholder="Buscar prestador por razón social o ID…"
+                      value={providerSearch}
+                      onChange={(e) => {
+                        setProviderSearch(e.target.value);
+                        setProviderPage(1);
+                      }}
+                    />
                   </div>
-                  <ExportButton
-                    rows={() =>
-                      displayedProviders as unknown as Record<string, unknown>[]
-                    }
-                    fileBaseName="prestadores"
-                    pdfTitle="Detalle por prestador"
-                  />
+                  <div className="flex items-center gap-space-xs flex-wrap">
+                    <div className="inline-flex p-1 rounded-lg bg-surface-container-low flex-wrap">
+                      {(
+                        [
+                          ["all", `Todos (${nf(providers.length)})`],
+                          ["cumplen", "Cumplen >80%"],
+                          ["alerta", "Alerta SLA (<70%)"],
+                          ["alta", "Alta demanda (>200)"],
+                        ] as const
+                      ).map(([key, label]) => (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => {
+                            setProviderQuickFilter(key);
+                            setProviderPage(1);
+                          }}
+                          className={`px-2.5 py-1 rounded-md font-body-sm text-body-sm transition-colors flex items-center gap-1 ${
+                            providerQuickFilter === key
+                              ? "bg-surface-container-lowest text-on-surface font-semibold shadow-xs"
+                              : "text-on-surface-variant hover:text-on-surface"
+                          }`}
+                        >
+                          {key === "alerta" && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-error" />
+                          )}
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    <ExportButton
+                      rows={() =>
+                        displayedProviders as unknown as Record<string, unknown>[]
+                      }
+                      fileBaseName="prestadores"
+                      pdfTitle="Detalle por prestador"
+                    />
+                  </div>
                 </div>
                 <div className="overflow-x-auto px-md pb-md">
                   <table className="w-full text-body-md font-body-md">
                     <thead>
-                      <tr className="text-label-md font-label-md text-on-surface-variant uppercase text-left border-b border-outline-variant/30">
+                      <tr className="bg-surface-container-low font-label-caps text-label-caps text-on-surface-variant uppercase text-left rounded-lg">
                         <SortableTh
                           label="Prestador"
                           sortKey="prestador"
@@ -4971,33 +5144,86 @@ export default function App() {
                           (providerPage - 1) * providerPageSize,
                           providerPage * providerPageSize,
                         )
-                        .map((x) => (
+                        .map((x, i) => {
+                        const alerta = (x.cumplimiento_demora ?? 1) < 0.35;
+                        return (
                         <tr
                           key={x.prestador_id}
-                          className="border-b border-outline-variant/10 hover:bg-surface-container-low"
+                          className={`border-b border-outline-variant/10 transition-colors ${
+                            alerta
+                              ? "bg-error-container/20 hover:bg-error-container/30"
+                              : "hover:bg-surface-container-low"
+                          }`}
                         >
-                          <td className="py-2 pr-3 text-on-surface">{x.prestador}</td>
-                          <td className="py-2 pr-3">{nf(x.total_general)}</td>
-                          <td className="py-2 pr-3">{nf(x.enviador_si)}</td>
-                          <td className="py-2 pr-3">{pct(x.uso_enviador)}</td>
-                          <td className="py-2 pr-3">{nf(x.asigna_movil)}</td>
-                          <td className="py-2 pr-3">{pct(x.efectividad_enviador)}</td>
-                          <td className="py-2 pr-3">{nf(x.servicios_programados)}</td>
-                          <td className="py-2 pr-3">{nf(x.servicios_cumplidos)}</td>
-                          <td className="py-2 pr-3">{nf(x.servicios_no_cumplidos)}</td>
-                          <td className="py-2 pr-3">{pct(x.cumplimiento_demora)}</td>
-                          <td className="py-2 pr-3">{pct(x.indice_calidad_datos)}</td>
                           <td className="py-2 pr-3">
+                            <div className="flex items-center gap-space-sm min-w-0">
+                              <div
+                                className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-[11px] shrink-0 ${
+                                  alerta
+                                    ? "bg-error text-on-error"
+                                    : i % 2 === 0
+                                      ? "bg-surface-container text-primary"
+                                      : "bg-surface-container text-secondary"
+                                }`}
+                              >
+                                {x.prestador.slice(0, 2).toUpperCase()}
+                              </div>
+                              <div className="flex flex-col min-w-0">
+                                <span className="font-headline-md text-[13px] font-bold text-on-surface truncate">
+                                  {x.prestador}
+                                </span>
+                                <span className="text-on-surface-variant text-[11px] truncate">
+                                  {x.prestador_id}
+                                </span>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="py-2 pr-3 font-label-code text-label-code font-bold text-on-surface">{nf(x.total_general)}</td>
+                          <td className="py-2 pr-3 font-label-code text-label-code">{nf(x.enviador_si)}</td>
+                          <td className="py-2 pr-3">
+                            <span className="px-2 py-0.5 rounded-full bg-surface-container text-primary font-label-code text-[11px] font-semibold">
+                              {pct(x.uso_enviador)}
+                            </span>
+                          </td>
+                          <td className="py-2 pr-3 font-label-code text-label-code">{nf(x.asigna_movil)}</td>
+                          <td className="py-2 pr-3 font-label-code text-label-code font-semibold text-secondary">{pct(x.efectividad_enviador)}</td>
+                          <td className="py-2 pr-3 font-label-code text-label-code">{nf(x.servicios_programados)}</td>
+                          <td className="py-2 pr-3">
+                            <span className="inline-flex items-center gap-1 font-label-code text-label-code">
+                              <span className="text-primary font-semibold">{nf(x.servicios_cumplidos)}</span>
+                              <span className="text-on-surface-variant">/</span>
+                              <span className="text-error font-semibold">{nf(x.servicios_no_cumplidos)}</span>
+                            </span>
+                          </td>
+                          <td className="py-2 pr-3 min-w-[140px]">
+                            <div className="flex items-center gap-2">
+                              <div className="w-20 bg-surface-container rounded-full h-1.5 overflow-hidden shrink-0">
+                                <div
+                                  className={`h-full rounded-full ${alerta ? "bg-error" : "bg-primary"}`}
+                                  style={{
+                                    width: `${Math.max(0, Math.min(100, ratioPct(x.cumplimiento_demora) ?? 0))}%`,
+                                  }}
+                                />
+                              </div>
+                              <span
+                                className={`font-label-code text-label-code font-bold ${alerta ? "text-error" : "text-on-surface"}`}
+                              >
+                                {pct(x.cumplimiento_demora)}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="py-2 pr-3 font-label-code text-label-code">{pct(x.indice_calidad_datos)}</td>
+                          <td className="py-2 pr-3 font-label-code text-label-code">
                             {pct(x.porcentaje_trazabilidad_completa)}
                           </td>
-                          <td className="py-2 pr-3">{pct(x.volumen_relativo)}</td>
-                          <td className="py-2 pr-3">
+                          <td className="py-2 pr-3 font-label-code text-label-code">{pct(x.volumen_relativo)}</td>
+                          <td className="py-2 pr-3 font-label-code text-label-code">
                             {x.demora_real_promedio != null
                               ? `${nf(x.demora_real_promedio)} min`
                               : "N/A"}
                           </td>
                           <td className="py-2 pr-3">
-                            <span className="font-medium text-on-surface">
+                            <span className="font-label-code text-label-code font-bold text-on-surface">
                               {x.score_ranking != null
                                 ? pct(x.score_ranking)
                                 : "N/A"}
@@ -5012,7 +5238,8 @@ export default function App() {
                             )}
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -5027,21 +5254,20 @@ export default function App() {
                     setProviderPage(1);
                   }}
                 />
-              </section>
+                </section>
+              </div>
             )}
 
             {page === "cross" && (
               <section className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 flex flex-col overflow-hidden">
-                <header className="flex items-center px-md py-md border-b border-outline-variant/20">
-                  <p className="font-label-sm text-label-sm text-on-surface-variant">
-                    {nf(sortCross.sorted.length)} combinaciones
-                  </p>
-                </header>
-                <div className="flex items-center justify-between gap-3 px-md py-sm flex-wrap">
-                  <div className="form-input-styled flex items-center gap-2 min-w-[220px]">
-                    <Icon name="search" className="text-[18px] text-outline" />
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-space-sm p-space-md">
+                  <div className="relative w-full md:w-96">
+                    <Icon
+                      name="search"
+                      className="absolute left-3 top-2.5 text-on-surface-variant text-[18px]"
+                    />
                     <input
-                      className="flex-1 outline-none bg-transparent font-body-md text-body-md text-on-surface"
+                      className="w-full pl-9 pr-3 py-2 rounded-lg bg-surface-container-low text-on-surface font-body-md text-body-md placeholder:text-on-surface-variant focus:outline-none focus:bg-surface-container transition-all"
                       placeholder="Buscar prestador o campaña…"
                       value={crossSearch}
                       onChange={(e) => {
@@ -5050,16 +5276,21 @@ export default function App() {
                       }}
                     />
                   </div>
-                  <ExportButton
-                    rows={() => sortCross.sorted as unknown as Record<string, unknown>[]}
-                    fileBaseName="campana-prestador"
-                    pdfTitle="Campaña × prestador"
-                  />
+                  <div className="flex items-center gap-space-sm">
+                    <span className="font-label-caps text-label-caps uppercase text-on-surface-variant">
+                      {nf(sortCross.sorted.length)} combinaciones
+                    </span>
+                    <ExportButton
+                      rows={() => sortCross.sorted as unknown as Record<string, unknown>[]}
+                      fileBaseName="campana-prestador"
+                      pdfTitle="Campaña × prestador"
+                    />
+                  </div>
                 </div>
                 <div className="overflow-x-auto px-md pb-md">
                   <table className="w-full text-body-md font-body-md">
                     <thead>
-                      <tr className="text-label-md font-label-md text-on-surface-variant uppercase text-left border-b border-outline-variant/30">
+                      <tr className="bg-surface-container-low font-label-caps text-label-caps text-on-surface-variant uppercase text-left">
                         <SortableTh
                           label="Campaña"
                           sortKey="campana"
@@ -5109,16 +5340,35 @@ export default function App() {
                         .map((x, i) => (
                         <tr
                           key={`${x.campana}-${x.prestador_id}-${i}`}
-                          className="border-b border-outline-variant/10 hover:bg-surface-container-low"
+                          className="border-b border-outline-variant/10 hover:bg-surface-container-low transition-colors"
                         >
-                          <td className="py-2 pr-3 text-on-surface">{x.campana}</td>
+                          <td className="py-2 pr-3 font-semibold text-on-surface">{x.campana}</td>
                           <td className="py-2 pr-3 text-on-surface">{x.prestador}</td>
-                          <td className="py-2 pr-3">{nf(x.total_general)}</td>
-                          <td className="py-2 pr-3">{nf(x.enviador_si)}</td>
-                          <td className="py-2 pr-3">{pct(x.efectividad_enviador)}</td>
-                          <td className="py-2 pr-3">{nf(x.servicios_cumplidos)}</td>
-                          <td className="py-2 pr-3">{nf(x.servicios_no_cumplidos)}</td>
-                          <td className="py-2 pr-3">{pct(x.cumplimiento_demora)}</td>
+                          <td className="py-2 pr-3 font-label-code text-label-code font-bold text-on-surface">{nf(x.total_general)}</td>
+                          <td className="py-2 pr-3 font-label-code text-label-code">{nf(x.enviador_si)}</td>
+                          <td className="py-2 pr-3 font-label-code text-label-code font-semibold text-secondary">{pct(x.efectividad_enviador)}</td>
+                          <td className="py-2 pr-3">
+                            <span className="inline-flex items-center gap-1 font-label-code text-label-code">
+                              <span className="text-primary font-semibold">{nf(x.servicios_cumplidos)}</span>
+                              <span className="text-on-surface-variant">/</span>
+                              <span className="text-error font-semibold">{nf(x.servicios_no_cumplidos)}</span>
+                            </span>
+                          </td>
+                          <td className="py-2 pr-3 min-w-[140px]">
+                            <div className="flex items-center gap-2">
+                              <div className="w-20 bg-surface-container rounded-full h-1.5 overflow-hidden shrink-0">
+                                <div
+                                  className="bg-primary h-full rounded-full"
+                                  style={{
+                                    width: `${Math.max(0, Math.min(100, ratioPct(x.cumplimiento_demora) ?? 0))}%`,
+                                  }}
+                                />
+                              </div>
+                              <span className="font-label-code text-label-code font-bold text-on-surface">
+                                {pct(x.cumplimiento_demora)}
+                              </span>
+                            </div>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
