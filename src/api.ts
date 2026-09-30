@@ -11,6 +11,9 @@ export type TrackeoFilters = {
   tipos: string[];
   polizas: string[];
   provincias_origen: string[];
+  // NUEVO (ADITIVO, 2026-09-30): checkbox global "excluir outliers" --
+  // ver _umbral_outlier_campo/_umbral_outlier_tramo en el backend.
+  excluir_outliers: boolean;
 };
 export type EstadoOption = {
   estado: string;
@@ -548,6 +551,7 @@ function fp(f: TrackeoFilters) {
     tipo: f.tipos,
     poliza: f.polizas,
     provincia_origen: f.provincias_origen,
+    excluir_outliers: String(f.excluir_outliers),
   };
 }
 async function request<T>(path: string, init?: RequestInit): Promise<T> {

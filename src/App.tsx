@@ -105,6 +105,9 @@ const DEFAULT: TrackeoFilters = {
   polizas: [],
   // NUEVO v4.26.0 (ADITIVO): idem para provincia de origen.
   provincias_origen: [],
+  // NUEVO (ADITIVO, 2026-09-30): checkbox global "excluir outliers",
+  // arranca activado a pedido del usuario.
+  excluir_outliers: true,
 };
 // NUEVO v4.25.0 (Poka-Yoke, ADITIVO): nombres legibles de los tramos
 // T1-T6 (mismos que usa el backend en TRAMOS_FUNNEL), para la tarjeta
@@ -187,6 +190,10 @@ function initial(): TrackeoFilters {
     provincias_origen: provincias_origen.length
       ? provincias_origen
       : DEFAULT.provincias_origen,
+    excluir_outliers:
+      p.get("excluir_outliers") != null
+        ? p.get("excluir_outliers") === "true"
+        : DEFAULT.excluir_outliers,
   };
 }
 
@@ -3149,6 +3156,7 @@ export default function App() {
       desde: filters.fecha_desde,
       hasta: filters.fecha_hasta,
       page,
+      excluir_outliers: String(filters.excluir_outliers),
     });
     filters.campanas.forEach((x) => p.append("campana", x));
     filters.prestador_ids.forEach((x) => p.append("prestador_id", x));
@@ -3711,13 +3719,40 @@ export default function App() {
                       setDraft({ ...draft, provincias_origen })
                     }
                   />
+                  {/* NUEVO (ADITIVO): checkbox global "excluir outliers" --
+                      saca de todos los cálculos de cumplimiento/demora y
+                      tiempos del funnel los servicios marcados como outliers
+                      en "Outliers por tramo" (>3x el P90 de su propio tramo),
+                      sin tocar esa tabla (que sigue mostrando todos, para
+                      poder auditar). Arranca activado por defecto. */}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setDraft({ ...draft, excluir_outliers: !draft.excluir_outliers })
+                    }
+                    title="Excluye de los cálculos (cumplimiento de demora, tiempos del funnel, tendencia, etc.) los servicios marcados como outliers -- la tabla 'Outliers por tramo' siempre los sigue mostrando a todos."
+                    className={`flex items-center gap-1.5 px-space-sm py-1.5 rounded-lg shadow-sm text-body-sm font-body-sm cursor-pointer transition-colors ${
+                      draft.excluir_outliers
+                        ? "bg-surface-container-highest text-on-surface hover:bg-surface-container-high"
+                        : "bg-surface-container-lowest text-on-surface-variant hover:bg-surface-container-low"
+                    }`}
+                  >
+                    <Icon
+                      name={draft.excluir_outliers ? "check_box" : "check_box_outline_blank"}
+                      className={`text-[17px] ${draft.excluir_outliers ? "text-primary" : ""}`}
+                    />
+                    Excluir outliers
+                  </button>
                 </div>
                 <p className="font-label-sm text-label-sm text-on-surface-variant">
                   Estado, Tipo de servicio, Tipo de póliza y Provincia de origen
                   100% manuales. Sin selección se incluyen todos los valores,
                   igual que sin filtrar esa columna en Excel. Provincia de
                   origen solo cubre los servicios cruzados con el archivo de
-                  despachador.
+                  despachador. "Excluir outliers" saca de los cálculos los
+                  servicios marcados en "Outliers por tramo" (&gt;3× el P90 de
+                  su propio tramo) — la tabla de outliers siempre los muestra
+                  a todos, sin importar este check.
                 </p>
               </section>
             )}
