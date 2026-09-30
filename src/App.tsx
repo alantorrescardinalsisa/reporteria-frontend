@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -122,6 +123,15 @@ const pct = (v?: number | null) =>
   v == null
     ? "—"
     : `${new Intl.NumberFormat("es-AR", { maximumFractionDigits: 1 }).format(v * 100)} %`;
+// NUEVO (ADITIVO): a diferencia de pct() (formatea una proporción 0-1 ya
+// calculada), esta devuelve un número 0-100 a partir de dos conteos --
+// para alimentar el ancho de una barra de progreso visual, sin agregar
+// ningún indicador nuevo (solo redivide valores que la tarjeta ya muestra).
+const pctOf = (num?: number | null, den?: number | null) =>
+  num == null || den == null || den <= 0 ? undefined : (num / den) * 100;
+// NUEVO (ADITIVO): convierte una proporción 0-1 ya calculada (la misma
+// que formatea pct()) a 0-100 para el ancho de una barra de progreso.
+const ratioPct = (v?: number | null) => (v == null ? undefined : v * 100);
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 // NUEVO v2.4.0 (memoria backend, ADITIVO). `load()` disparaba sus ~18
 // pedidos analiticos TODOS a la vez (Promise.allSettled), lo que hace
@@ -423,6 +433,13 @@ const TONE_CLASSES: Record<string, string> = {
   purple: "bg-[#7c3aed]/10 text-[#7c3aed]",
   amber: "bg-[#f59e0b]/10 text-[#f59e0b]",
 };
+const PROGRESS_BAR_CLASSES: Record<string, string> = {
+  blue: "bg-primary",
+  green: "bg-tertiary",
+  red: "bg-primary",
+  purple: "bg-[#7c3aed]",
+  amber: "bg-outline",
+};
 function Card({
   icon,
   title,
@@ -433,6 +450,7 @@ function Card({
   highlight = false,
   tooltip,
   linkText = "Ver servicios",
+  progress,
 }: {
   icon: ReactNode;
   title: string;
@@ -443,6 +461,7 @@ function Card({
   highlight?: boolean;
   tooltip?: Tooltip;
   linkText?: string;
+  progress?: number;
 }) {
   return (
     <article
@@ -482,6 +501,14 @@ function Card({
           {detail}
         </small>
       </div>
+      {!highlight && progress != null && (
+        <div className="w-full bg-surface-container-high rounded-full h-1.5 overflow-hidden">
+          <div
+            className={`h-full rounded-full ${PROGRESS_BAR_CLASSES[tone] || PROGRESS_BAR_CLASSES.blue}`}
+            style={{ width: `${Math.max(0, Math.min(100, progress))}%` }}
+          />
+        </div>
+      )}
       {onClick && (
         <b
           className={`font-label-md text-label-md mt-1 inline-flex items-center gap-0.5 ${highlight ? "text-on-primary" : "text-primary"}`}
@@ -502,6 +529,7 @@ function IndicatorRow({
   detail,
   onClick,
   tooltip,
+  progress,
 }: {
   icon: ReactNode;
   label: string;
@@ -509,39 +537,48 @@ function IndicatorRow({
   detail?: string;
   onClick?: () => void;
   tooltip?: Tooltip;
+  progress?: number;
 }) {
   return (
     <div
-      className={`flex items-center justify-between gap-space-sm py-space-xs group ${
-        onClick ? "cursor-pointer" : ""
-      }`}
+      className={`flex flex-col gap-1 py-space-xs group ${onClick ? "cursor-pointer" : ""}`}
       onClick={onClick}
     >
-      <div className="flex items-center gap-space-sm min-w-0">
-        <div className="w-8 h-8 shrink-0 rounded-lg bg-surface-container-high flex items-center justify-center text-primary">
-          {icon}
-        </div>
-        <div className="min-w-0">
-          <div className="font-body-md text-body-md font-semibold text-on-surface flex items-center gap-1 min-w-0">
-            <span className="truncate">{label}</span>
-            {tooltip && <InfoTip {...tooltip} />}
+      <div className="flex items-center justify-between gap-space-sm">
+        <div className="flex items-center gap-space-sm min-w-0">
+          <div className="w-8 h-8 shrink-0 rounded-lg bg-surface-container-high flex items-center justify-center text-primary">
+            {icon}
           </div>
-          {detail && (
-            <div className="font-label-code text-label-code text-on-surface-variant truncate">
-              {detail}
+          <div className="min-w-0">
+            <div className="font-body-md text-body-md font-semibold text-on-surface flex items-center gap-1 min-w-0">
+              <span className="truncate">{label}</span>
+              {tooltip && <InfoTip {...tooltip} />}
             </div>
+            {detail && (
+              <div className="font-label-code text-label-code text-on-surface-variant truncate">
+                {detail}
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          <span className="font-metric-sm text-metric-sm text-on-surface">{value}</span>
+          {onClick && (
+            <Icon
+              name="chevron_right"
+              className="text-[18px] text-outline group-hover:text-primary transition-colors"
+            />
           )}
         </div>
       </div>
-      <div className="flex items-center gap-1 shrink-0">
-        <span className="font-metric-sm text-metric-sm text-on-surface">{value}</span>
-        {onClick && (
-          <Icon
-            name="chevron_right"
-            className="text-[18px] text-outline group-hover:text-primary transition-colors"
+      {progress != null && (
+        <div className="w-full bg-surface-container-high rounded-full h-1.5 overflow-hidden">
+          <div
+            className="bg-primary h-full rounded-full"
+            style={{ width: `${Math.max(0, Math.min(100, progress))}%` }}
           />
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -600,26 +637,61 @@ const TREND_SERIES: {
   label: string;
   stroke: string;
   fill: string;
+  hex: string;
 }[] = [
   {
     key: "cumplimiento_demora",
     label: "Cumplimiento de demora",
     stroke: "stroke-tertiary",
     fill: "fill-tertiary",
+    hex: "#571ac0",
   },
   {
     key: "efectividad_enviador",
     label: "Efectividad enviador",
     stroke: "stroke-primary",
     fill: "fill-primary",
+    hex: "#3525cd",
   },
   {
     key: "uso_enviador",
     label: "Uso enviador",
     stroke: "stroke-[#7c3aed]",
     fill: "fill-[#7c3aed]",
+    hex: "#7c3aed",
   },
 ];
+
+// NUEVO (ADITIVO): convierte una serie de puntos en una curva suave
+// (Catmull-Rom -> Bezier cúbica) en vez de segmentos rectos -- mismos
+// datos y mismas coordenadas x/y ya calculadas, solo cambia cómo se
+// dibuja la línea entre ellas.
+const smoothLinePath = (pts: { x: number; y: number }[]) => {
+  if (pts.length === 0) return "";
+  if (pts.length === 1) return `M ${pts[0].x} ${pts[0].y}`;
+  let d = `M ${pts[0].x} ${pts[0].y}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i - 1] || pts[i];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[i + 2] || p2;
+    const cp1x = p1.x + (p2.x - p0.x) / 6;
+    const cp1y = p1.y + (p2.y - p0.y) / 6;
+    const cp2x = p2.x - (p3.x - p1.x) / 6;
+    const cp2y = p2.y - (p3.y - p1.y) / 6;
+    d += ` C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${p2.x} ${p2.y}`;
+  }
+  return d;
+};
+// Misma curva, pero cerrada contra la línea de base (baseline) para
+// rellenar el área debajo -- usada solo en la serie principal.
+const smoothAreaPath = (pts: { x: number; y: number }[], baseline: number) => {
+  if (pts.length === 0) return "";
+  const line = smoothLinePath(pts);
+  const first = pts[0],
+    last = pts[pts.length - 1];
+  return `${line} L ${last.x} ${baseline} L ${first.x} ${baseline} Z`;
+};
 function TrendSvg({
   data,
   width,
@@ -632,14 +704,15 @@ function TrendSvg({
   responsive?: boolean;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
+  const gradId = useId();
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const W = width,
     H = height,
     P = 35,
     x = (i: number) => P + (i * (W - 2 * P)) / Math.max(1, data.length - 1),
     y = (v: number) => H - P - v * (H - 2 * P),
-    points = (k: keyof TrendPoint) =>
-      data.map((d, i) => `${x(i)},${y(Number(d[k] || 0))}`).join(" ");
+    pointsOf = (k: keyof TrendPoint) =>
+      data.map((d, i) => ({ x: x(i), y: y(Number(d[k] || 0)) }));
 
   // NUEVO (ADITIVO): antes se etiquetaba CADA día en el eje X -- con
   // más de ~15-20 puntos las etiquetas se pisaban entre sí y quedaban
@@ -687,6 +760,14 @@ function TrendSvg({
       viewBox={`0 0 ${W} ${H}`}
       preserveAspectRatio="none"
     >
+      <defs>
+        {TREND_SERIES.slice(0, 2).map((s) => (
+          <linearGradient key={s.key} id={`${gradId}-${s.key}`} x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor={s.hex} stopOpacity={0.25} />
+            <stop offset="100%" stopColor={s.hex} stopOpacity={0} />
+          </linearGradient>
+        ))}
+      </defs>
       {[0, 0.25, 0.5, 0.75, 1].map((v) => (
         <g key={v}>
           <line
@@ -696,20 +777,29 @@ function TrendSvg({
             y2={y(v)}
             className="stroke-outline-variant/30"
             strokeWidth={1}
+            strokeDasharray="4 4"
           />
           <text x="2" y={y(v) + 4} className="fill-outline text-[10px]">
             {v * 100}%
           </text>
         </g>
       ))}
+      {TREND_SERIES.slice(0, 2).map((s) => (
+        <path
+          key={`area-${s.key}`}
+          d={smoothAreaPath(pointsOf(s.key), H - P)}
+          fill={`url(#${gradId}-${s.key})`}
+          stroke="none"
+        />
+      ))}
       {TREND_SERIES.map((s) => (
-        <polyline
+        <path
           key={s.key}
           className={`fill-none ${s.stroke}`}
           strokeWidth={s.key === "cumplimiento_demora" ? 2.5 : 2}
           strokeLinecap="round"
           strokeLinejoin="round"
-          points={points(s.key)}
+          d={smoothLinePath(pointsOf(s.key))}
         />
       ))}
       {data.map(
@@ -3090,41 +3180,50 @@ export default function App() {
           más arriba), porque display:none en @media print no alcanzaba
           a evitar que apareciera en el PDF (ver CONTEXTO.md). */}
       {!printing && (
-        <nav className="fixed left-0 top-0 h-screen w-sidebar-width z-50 flex flex-col bg-on-primary-fixed">
-          <div className="px-md py-md flex flex-col gap-xs mb-sm">
-            <h1 className="text-headline-md font-headline-md font-bold text-on-primary">
-              Reportería
-            </h1>
-            <span className="text-label-sm font-label-sm text-primary-fixed-dim uppercase tracking-widest opacity-80">
-              Prestadores
-            </span>
+        <nav className="fixed left-0 top-0 h-screen w-sidebar-width z-50 flex flex-col justify-between py-space-lg bg-surface-container-lowest shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
+          <div className="flex flex-col gap-space-lg px-space-md">
+            <div className="flex items-center gap-space-sm px-space-xs">
+              <div className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center shadow-[0_4px_12px_rgba(53,37,205,0.25)] shrink-0">
+                <Icon name="radar" className="text-on-primary text-[20px]" />
+              </div>
+              <div className="flex flex-col">
+                <span className="font-headline-md text-headline-md tracking-tight text-on-surface">
+                  Reportería
+                </span>
+                <span className="font-label-caps text-label-caps uppercase text-on-surface-variant">
+                  Prestadores
+                </span>
+              </div>
+            </div>
+            <nav className="flex flex-col gap-space-xs">
+              {NAV_ITEMS.map((item) => (
+                <button
+                  key={item.page}
+                  type="button"
+                  aria-current={page === item.page ? "page" : undefined}
+                  onClick={() => setPage(item.page)}
+                  className={`px-space-sm py-space-sm rounded-lg flex items-center gap-space-sm text-left transition-all ${
+                    page === item.page
+                      ? "bg-primary-container text-on-primary font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.2)]"
+                      : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
+                  }`}
+                >
+                  <Icon name={item.icon} className="text-[19px]" filled={page === item.page} />
+                  <span className="font-body-md text-body-md">{item.label}</span>
+                </button>
+              ))}
+            </nav>
           </div>
-          <div className="flex flex-col flex-1">
-            {NAV_ITEMS.map((item) => (
-              <button
-                key={item.page}
-                type="button"
-                aria-current={page === item.page ? "page" : undefined}
-                onClick={() => setPage(item.page)}
-                className={`mx-2 my-1 px-4 py-3 rounded-lg flex items-center gap-3 text-left transition-colors ${
-                  page === item.page
-                    ? "bg-primary-container text-on-primary-container"
-                    : "text-on-primary-fixed-variant hover:bg-white/10"
-                }`}
-              >
-                <Icon name={item.icon} filled={page === item.page} />
-                <span className="font-label-md text-label-md">{item.label}</span>
-              </button>
-            ))}
-          </div>
-          <div className="px-md py-md mt-auto">
-            <div className="text-on-primary-fixed-variant rounded-lg flex items-center gap-3 opacity-80">
-              <Icon name="dns" className="text-[16px]" />
-              <span className="font-label-sm text-label-sm flex flex-col">
+          <div className="px-space-md flex flex-col gap-space-sm">
+            <div className="flex items-center justify-between px-space-xs font-body-sm text-body-sm text-on-surface-variant">
+              <span className="flex items-center gap-space-xs">
+                <Icon name="dns" className="text-[16px]" />
                 Backend v{backend.version}
-                <b className={backend.ok ? "text-tertiary-fixed-dim" : "text-error-container"}>
-                  {backend.ok ? "Conectado" : "Sin conexión"}
-                </b>
+              </span>
+              <span
+                className={`font-label-code text-label-code font-semibold ${backend.ok ? "text-primary" : "text-error"}`}
+              >
+                {backend.ok ? "Conectado" : "Sin conexión"}
               </span>
             </div>
           </div>
@@ -3230,35 +3329,39 @@ export default function App() {
                     )}
                   </div>
                 </div>
-                <div className="flex flex-wrap items-end gap-space-xs pt-space-xs">
-                  <div className="flex items-center gap-2">
-                    <div className="flex flex-col gap-1">
-                      <label className="font-label-sm text-label-sm text-on-surface-variant uppercase">
-                        Desde
-                      </label>
-                      <input
-                        className="form-input-styled font-body-md text-body-md text-on-surface h-9"
-                        type="date"
-                        value={draft.fecha_desde}
-                        onChange={(e) =>
-                          setDraft({ ...draft, fecha_desde: e.target.value })
-                        }
-                      />
-                    </div>
-                    <Icon name="arrow_right_alt" className="text-outline-variant mt-5" />
-                    <div className="flex flex-col gap-1">
-                      <label className="font-label-sm text-label-sm text-on-surface-variant uppercase">
-                        Hasta
-                      </label>
-                      <input
-                        className="form-input-styled font-body-md text-body-md text-on-surface h-9"
-                        type="date"
-                        value={draft.fecha_hasta}
-                        onChange={(e) =>
-                          setDraft({ ...draft, fecha_hasta: e.target.value })
-                        }
-                      />
-                    </div>
+                <div className="flex flex-wrap items-center gap-space-xs pt-space-xs">
+                  <div className="flex items-center gap-1.5 px-space-sm py-1.5 rounded-lg bg-surface-container-lowest shadow-sm h-9">
+                    <Icon name="date_range" className="text-primary text-[17px] shrink-0" />
+                    <input
+                      className="font-label-code text-label-code font-semibold text-on-surface bg-transparent outline-none w-[104px]"
+                      type="date"
+                      value={draft.fecha_desde}
+                      onChange={(e) =>
+                        setDraft({ ...draft, fecha_desde: e.target.value })
+                      }
+                    />
+                    <span className="text-on-surface-variant">—</span>
+                    <input
+                      className="font-label-code text-label-code font-semibold text-on-surface bg-transparent outline-none w-[104px]"
+                      type="date"
+                      value={draft.fecha_hasta}
+                      onChange={(e) =>
+                        setDraft({ ...draft, fecha_hasta: e.target.value })
+                      }
+                    />
+                    {draft.fecha_desde && draft.fecha_hasta && (
+                      <span className="text-on-surface-variant font-label-code text-label-code uppercase shrink-0 pl-1">
+                        {Math.max(
+                          0,
+                          Math.round(
+                            (new Date(draft.fecha_hasta).getTime() -
+                              new Date(draft.fecha_desde).getTime()) /
+                              86400000,
+                          ) + 1,
+                        )}
+                        d
+                      </span>
+                    )}
                   </div>
                   <MultiSelect
                     icon={<Icon name="hub" className="text-secondary text-[17px]" />}
@@ -3353,6 +3456,7 @@ export default function App() {
                       title="Servicios vehiculares"
                       value={nf(universes?.servicios_vehiculares)}
                       detail="Tipos operativos seleccionados"
+                      progress={pctOf(universes?.servicios_vehiculares, universes?.servicios_cargados)}
                       tooltip={{
                         leer: "De esos, cuántos son del tipo de servicio que involucra un vehículo (remolques, extracciones, mecánica, etc.).",
                         calculo: "Marca definida en el catálogo de tipos de servicio.",
@@ -3364,6 +3468,7 @@ export default function App() {
                       value={nf(universes?.servicios_evaluables)}
                       detail="Base seleccionada para KPI"
                       tone="green"
+                      progress={pctOf(universes?.servicios_evaluables, universes?.servicios_vehiculares)}
                       tooltip={{
                         leer: "De los vehiculares, cuántos están en condiciones de ser evaluados (no cancelados antes de tiempo, con un estado reconocido).",
                         calculo: "Marca definida en el catálogo de estados/tipos.",
@@ -3375,6 +3480,7 @@ export default function App() {
                       value={nf(universes?.servicios_cancelados)}
                       detail="Estados cancelados"
                       tone="red"
+                      progress={pctOf(universes?.servicios_cancelados, universes?.servicios_vehiculares)}
                       tooltip={{
                         leer: "De los vehiculares, cuántos terminaron cancelados.",
                         calculo: "Vehiculares con estado marcado como cancelado.",
@@ -3386,6 +3492,7 @@ export default function App() {
                       value={nf(universes?.servicios_no_finalizados)}
                       detail="Pendientes o en curso"
                       tone="amber"
+                      progress={pctOf(universes?.servicios_no_finalizados, universes?.servicios_vehiculares)}
                       tooltip={{
                         leer: "De los vehiculares, cuántos siguen pendientes o en curso, todavía sin llegar a un cierre ni cancelación.",
                         calculo: "Vehiculares cuyo estado no está marcado como final ni como cancelado.",
@@ -3468,6 +3575,7 @@ export default function App() {
                         label="Uso del enviador"
                         value={pct(summary?.uso_enviador)}
                         detail={`${nf(summary?.enviador_si)} servicios`}
+                        progress={ratioPct(summary?.uso_enviador)}
                         onClick={() => open("ENVIADOR_SI", "Servicios con enviador")}
                         tooltip={{
                           leer: "Qué porcentaje de los servicios pasó por el despacho automático (\"el enviador\"), en vez de asignarse a mano.",
@@ -3479,6 +3587,7 @@ export default function App() {
                         label="Asigna móvil"
                         value={nf(summary?.asigna_movil)}
                         detail={`${pct(summary?.efectividad_enviador)} efectividad`}
+                        progress={ratioPct(summary?.efectividad_enviador)}
                         onClick={() => open("ASIGNA_MOVIL", "Asigna móvil")}
                         tooltip={{
                           leer: "Cuántos servicios terminaron con un móvil asignado. \"% efectividad\" es más específico: de los que usaron el enviador, a cuántos les asignó un móvil.",
@@ -3490,6 +3599,7 @@ export default function App() {
                         label="No asigna móvil"
                         value={nf(summary?.no_asigna_movil_cantidad)}
                         detail={pct(summary?.no_asigna_movil_porcentaje)}
+                        progress={ratioPct(summary?.no_asigna_movil_porcentaje)}
                         onClick={() => open("NO_ASIGNA_MOVIL", "No asigna móvil")}
                         tooltip={{
                           leer: "El espejo del anterior: servicios que no terminaron con un móvil asignado.",
@@ -3501,6 +3611,7 @@ export default function App() {
                         label="Servicios programados"
                         value={nf(summary?.servicios_programados)}
                         detail={pct(summary?.programados_porcentaje)}
+                        progress={ratioPct(summary?.programados_porcentaje)}
                         onClick={() => open("PROGRAMADOS", "Programados")}
                         tooltip={{
                           leer: "Cuántos servicios del universo filtrado estaban agendados para un horario específico, en vez de ser una urgencia inmediata.",
@@ -3516,6 +3627,11 @@ export default function App() {
                             : "N/A"
                         }
                         detail={`${nf(summary?.servicios_cumplidos)} cumplen · ${nf(summary?.servicios_no_cumplidos)} no cumplen`}
+                        progress={
+                          (summary?.servicios_evaluados_demora ?? 0) > 0
+                            ? ratioPct(summary?.cumplimiento_demora)
+                            : undefined
+                        }
                         onClick={() => open("CUMPLE_DEMORA", "Cumple demora")}
                         tooltip={{
                           leer: "El termómetro oficial de SLA: qué % llegó dentro del tiempo prometido (con 14 min de tolerancia). Si falta el tiempo real, igual cuenta como si hubiera llegado al instante — ver \"Cumplimiento observado\" al lado.",
@@ -3536,6 +3652,11 @@ export default function App() {
                             : "N/A"
                         }
                         detail={`${nf(summary?.servicios_cumplidos_trazable)} cumplen · ${nf(summary?.servicios_no_cumplidos_trazable)} no cumplen (con Demora Prometida y Real cargadas)`}
+                        progress={
+                          (summary?.servicios_evaluados_demora_trazable ?? 0) > 0
+                            ? ratioPct(summary?.cumplimiento_demora_trazable)
+                            : undefined
+                        }
                         onClick={() =>
                           open("CUMPLE_DEMORA_TRAZABLE", "Cumple demora (trazable)")
                         }
@@ -3549,6 +3670,7 @@ export default function App() {
                         label="Cobertura de medición de demora"
                         value={pct(summary?.cobertura_medicion_demora)}
                         detail={`${nf(summary?.servicios_evaluados_demora_trazable)} de ${nf(summary?.servicios_consultados)} servicios con Demora Prometida y Real cargadas`}
+                        progress={ratioPct(summary?.cobertura_medicion_demora)}
                         tooltip={{
                           leer: "Qué % del universo filtrado tiene los datos completos como para medir su cumplimiento de verdad. Si es bajo, los dos indicadores anteriores hay que leerlos con pinzas.",
                           calculo: "Filas con DemoraPrometida y DemoraReal cargadas ÷ total del universo filtrado.",
