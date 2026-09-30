@@ -14,7 +14,7 @@
   border-radius: 8px;
   cursor: pointer;
   font-weight: 500;
-  color: #1e293b;
+  color: #131b2e;
   font-size: 13px;
   white-space: nowrap;
 }
@@ -38,7 +38,7 @@
 
 .filterPanel .multiPanel .multiOptions .multiOption .multiOptionCount {
   flex: 0 0 auto !important;
-  color: #64748b;
+  color: #464555;
   font-size: 12px;
   font-weight: 700;
 }
