@@ -213,6 +213,18 @@ function Icon({
     </span>
   );
 }
+/* ---------- NUEVO (ADITIVO): logo de la plataforma (mismo SVG que el
+   favicon, público\public\favicon.svg) -- inline para que quede nítido
+   en cualquier tamaño, sin pedir un archivo aparte. ---------- */
+function Logo({ className = "w-9 h-9 shrink-0" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 1246 1246" className={className} xmlns="http://www.w3.org/2000/svg">
+      <polygon points="115,148 755,148 435,468" fill="#F39200" />
+      <polygon points="115,148 435,468 115,788" fill="#E6007A" />
+      <polygon points="115,788 435,468 1125,1210" fill="#149999" />
+    </svg>
+  );
+}
 function Spinner({ className = "" }: { className?: string }) {
   return (
     <Icon name="progress_activity" className={`animate-spin ${className}`} />
@@ -3576,9 +3588,7 @@ export default function App() {
         <nav className="fixed left-0 top-0 h-screen w-sidebar-width z-50 flex flex-col justify-between py-space-lg bg-surface-container-lowest shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
           <div className="flex flex-col gap-space-lg px-space-md">
             <div className="flex items-center gap-space-sm px-space-xs">
-              <div className="w-9 h-9 rounded-xl bg-primary flex items-center justify-center shadow-[0_4px_12px_rgba(53,37,205,0.25)] shrink-0">
-                <Icon name="radar" className="text-on-primary text-[20px]" />
-              </div>
+              <Logo className="w-9 h-9 shrink-0" />
               <div className="flex flex-col">
                 <span className="font-headline-md text-headline-md tracking-tight text-on-surface">
                   Reportería
