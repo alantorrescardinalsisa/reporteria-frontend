@@ -3017,7 +3017,20 @@ export default function App() {
       setProvinciaOptions(x.provincias),
     );
     take<EstadosEncuesta>(17, (x) => setEstadosEncuesta(x));
-    if (errs.length) setError(errs.join(" | "));
+    // NUEVO (ADITIVO): las 18 llamadas de arriba van en paralelo -- si el
+    // backend está caído (dormido en Render, o a mitad de un redeploy),
+    // fallan casi todas con el mismo mensaje. Antes se mostraban las 18
+    // repetidas una al lado de la otra; ahora se agrupan por mensaje
+    // (con un contador) para que se pueda leer.
+    if (errs.length) {
+      const conteo = new Map<string, number>();
+      for (const e of errs) conteo.set(e, (conteo.get(e) || 0) + 1);
+      setError(
+        [...conteo.entries()]
+          .map(([msg, n]) => (n > 1 ? `${msg} (×${n})` : msg))
+          .join(" | "),
+      );
+    }
     setLoading(false);
   }, []);
   useEffect(() => {

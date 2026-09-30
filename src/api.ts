@@ -554,19 +554,44 @@ function fp(f: TrackeoFilters) {
     excluir_outliers: String(f.excluir_outliers),
   };
 }
+// NUEVO (ADITIVO): el backend vive en Render free tier -- "se duerme"
+// tras inactividad y tarda ~20-45s en volver a levantar (ademas de los
+// ~5-10s de un redeploy en curso). Antes, recargar la página en ese
+// momento disparaba las ~18 llamadas de load() en paralelo, todas
+// fallando con "TypeError: Failed to fetch" al mismo tiempo, y el
+// usuario tenía que esperar y recargar a mano. Ahora cada request()
+// reintenta solo las fallas de RED (fetch() sin respuesta del
+// servidor) con espera creciente, para cubrir ese arranque sin que el
+// usuario haga nada.
+const MAX_REINTENTOS_RED = 4;
+const ESPERA_REINTENTO_MS = 3000;
+function sleep(ms: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const r = await fetch(API_URL + path, { cache: "no-store", ...init });
-  const ct = r.headers.get("content-type") || "";
-  const body = ct.includes("json") ? await r.json() : await r.text();
-  if (!r.ok)
-    throw new Error(
-      typeof body === "object" && body?.detail
-        ? typeof body.detail === "string"
-          ? body.detail
-          : JSON.stringify(body.detail)
-        : String(body || `HTTP ${r.status}`),
-    );
-  return body as T;
+  for (let intento = 0; ; intento++) {
+    try {
+      const r = await fetch(API_URL + path, { cache: "no-store", ...init });
+      const ct = r.headers.get("content-type") || "";
+      const body = ct.includes("json") ? await r.json() : await r.text();
+      if (!r.ok)
+        throw new Error(
+          typeof body === "object" && body?.detail
+            ? typeof body.detail === "string"
+              ? body.detail
+              : JSON.stringify(body.detail)
+            : String(body || `HTTP ${r.status}`),
+        );
+      return body as T;
+    } catch (e) {
+      // Un error HTTP real (4xx/5xx) ya tiene respuesta del servidor --
+      // reintentarlo no cambia nada, se propaga directo. Solo TypeError
+      // (fetch no pudo ni conectar: backend dormido/redeployando, DNS,
+      // sin red) se reintenta.
+      if (!(e instanceof TypeError) || intento >= MAX_REINTENTOS_RED) throw e;
+      await sleep(ESPERA_REINTENTO_MS * Math.pow(2, intento));
+    }
+  }
 }
 
 export const api = {
