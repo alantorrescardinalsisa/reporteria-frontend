@@ -425,6 +425,188 @@ function MultiSelect({
   );
 }
 
+/* ---------- NUEVO (ADITIVO): selector de rango de fechas en un solo
+   calendario -- reemplaza los dos <input type="date"> sueltos. Mismo
+   dato que antes (fecha_desde / fecha_hasta como string "YYYY-MM-DD"
+   en el draft de filtros), solo cambia la interacción: un clic marca el
+   inicio, el siguiente clic marca el fin (si es anterior, se
+   intercambian), y mientras se elige el fin los días intermedios se
+   pintan en vivo siguiendo el mouse. */
+const MESES_LARGO = [
+  "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+];
+const DIAS_SEMANA_CORTO = ["L", "M", "M", "J", "V", "S", "D"];
+const isoDe = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const fechaDeIso = (s: string) => {
+  const [y, m, d] = s.split("-").map(Number);
+  return new Date(y, (m || 1) - 1, d || 1);
+};
+const gridDelMes = (vista: Date) => {
+  const year = vista.getFullYear(),
+    month = vista.getMonth(),
+    primero = new Date(year, month, 1),
+    inicioSemana = (primero.getDay() + 6) % 7,
+    diasEnMes = new Date(year, month + 1, 0).getDate();
+  const celdas: (Date | null)[] = [];
+  for (let i = 0; i < inicioSemana; i++) celdas.push(null);
+  for (let d = 1; d <= diasEnMes; d++) celdas.push(new Date(year, month, d));
+  while (celdas.length % 7 !== 0) celdas.push(null);
+  return celdas;
+};
+function DateRangePicker({
+  desde,
+  hasta,
+  onChange,
+}: {
+  desde: string;
+  hasta: string;
+  onChange: (desde: string, hasta: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [vista, setVista] = useState(() => fechaDeIso(desde || isoDe(new Date())));
+  const [inicioPendiente, setInicioPendiente] = useState<string | null>(null);
+  const [hoverIso, setHoverIso] = useState<string | null>(null);
+  const ref = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const h = (e: MouseEvent) =>
+      ref.current && !ref.current.contains(e.target as Node) && setOpen(false);
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+  useEffect(() => {
+    if (open) {
+      setInicioPendiente(null);
+      setVista(fechaDeIso(desde || isoDe(new Date())));
+    }
+  }, [open]);
+
+  const previewFin = inicioPendiente ? hoverIso ?? inicioPendiente : null;
+  const lo = inicioPendiente
+    ? previewFin && previewFin < inicioPendiente
+      ? previewFin
+      : inicioPendiente
+    : desde;
+  const hi = inicioPendiente
+    ? previewFin && previewFin < inicioPendiente
+      ? inicioPendiente
+      : previewFin
+    : hasta;
+
+  const clickDia = (iso: string) => {
+    if (!inicioPendiente) {
+      setInicioPendiente(iso);
+      onChange(iso, iso);
+    } else {
+      onChange(iso < inicioPendiente ? iso : inicioPendiente, iso < inicioPendiente ? inicioPendiente : iso);
+      setInicioPendiente(null);
+    }
+  };
+
+  const dias = Math.max(
+    0,
+    Math.round((fechaDeIso(hasta).getTime() - fechaDeIso(desde).getTime()) / 86400000) + 1,
+  );
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        className="flex items-center gap-1.5 px-space-sm py-1.5 rounded-lg bg-surface-container-lowest shadow-sm h-9 text-body-sm text-on-surface hover:bg-surface-container-low transition-colors"
+        onClick={() => setOpen((o) => !o)}
+      >
+        <Icon name="date_range" className="text-primary text-[17px] shrink-0" />
+        <span className="font-label-code text-label-code font-semibold text-on-surface whitespace-nowrap">
+          {desde && hasta ? `${desde.slice(8, 10)}/${desde.slice(5, 7)}/${desde.slice(2, 4)} — ${hasta.slice(8, 10)}/${hasta.slice(5, 7)}/${hasta.slice(2, 4)}` : "Elegir fechas"}
+        </span>
+        {desde && hasta && (
+          <span className="text-on-surface-variant font-label-code text-label-code uppercase shrink-0">
+            {dias}d
+          </span>
+        )}
+      </button>
+      {open && (
+        <div className="absolute top-full left-0 mt-1 w-72 z-30 bg-surface-container-lowest rounded-lg card-shadow border border-outline-variant/30 overflow-hidden flex flex-col p-space-sm gap-space-xs">
+          <div className="flex items-center justify-between px-1">
+            <button
+              type="button"
+              className="p-1 rounded-lg hover:bg-surface-container-low text-on-surface-variant"
+              onClick={() =>
+                setVista((v) => new Date(v.getFullYear(), v.getMonth() - 1, 1))
+              }
+            >
+              <Icon name="chevron_left" className="text-[18px]" />
+            </button>
+            <span className="font-body-md text-body-md font-semibold text-on-surface">
+              {MESES_LARGO[vista.getMonth()]} {vista.getFullYear()}
+            </span>
+            <button
+              type="button"
+              className="p-1 rounded-lg hover:bg-surface-container-low text-on-surface-variant"
+              onClick={() =>
+                setVista((v) => new Date(v.getFullYear(), v.getMonth() + 1, 1))
+              }
+            >
+              <Icon name="chevron_right" className="text-[18px]" />
+            </button>
+          </div>
+          <div className="grid grid-cols-7 gap-0.5 px-1">
+            {DIAS_SEMANA_CORTO.map((d, i) => (
+              <span
+                key={i}
+                className="text-center font-label-caps text-label-caps text-on-surface-variant py-1"
+              >
+                {d}
+              </span>
+            ))}
+            {gridDelMes(vista).map((d, i) => {
+              if (!d) return <span key={i} />;
+              const iso = isoDe(d);
+              const esInicio = iso === lo,
+                esFin = iso === hi,
+                enRango = lo && hi && iso > lo && iso < hi;
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => clickDia(iso)}
+                  onMouseEnter={() => inicioPendiente && setHoverIso(iso)}
+                  className={`h-7 text-body-sm font-body-sm rounded-md transition-colors ${
+                    esInicio || esFin
+                      ? "bg-primary text-on-primary font-semibold"
+                      : enRango
+                        ? "bg-primary/15 text-on-surface"
+                        : "text-on-surface hover:bg-surface-container-low"
+                  }`}
+                >
+                  {d.getDate()}
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex items-center justify-between px-1 pt-space-xs border-t border-outline-variant/20 font-label-code text-label-code text-on-surface-variant">
+            <span>
+              {inicioPendiente
+                ? "Elegí la fecha de fin…"
+                : desde && hasta
+                  ? `${dias} día${dias === 1 ? "" : "s"} seleccionados`
+                  : "Elegí la fecha de inicio"}
+            </span>
+            <button
+              type="button"
+              className="text-primary font-semibold hover:underline"
+              onClick={() => setOpen(false)}
+            >
+              Listo
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ---------- Tarjeta KPI (Universos Analíticos) ---------- */
 const TONE_CLASSES: Record<string, string> = {
   blue: "bg-primary/10 text-primary",
@@ -465,7 +647,7 @@ function Card({
 }) {
   return (
     <article
-      className={`flex flex-col justify-between gap-space-sm p-space-lg rounded-xl card-shadow border relative overflow-hidden transition-shadow hover:shadow-md ${
+      className={`flex flex-col h-full gap-space-sm p-space-lg rounded-xl card-shadow border relative overflow-hidden transition-shadow hover:shadow-md ${
         highlight
           ? "bg-primary text-on-primary border-transparent"
           : "bg-surface-container-lowest border-outline-variant/20"
@@ -501,22 +683,24 @@ function Card({
           {detail}
         </small>
       </div>
-      {!highlight && progress != null && (
-        <div className="w-full bg-surface-container-high rounded-full h-1.5 overflow-hidden">
-          <div
-            className={`h-full rounded-full ${PROGRESS_BAR_CLASSES[tone] || PROGRESS_BAR_CLASSES.blue}`}
-            style={{ width: `${Math.max(0, Math.min(100, progress))}%` }}
-          />
-        </div>
-      )}
-      {onClick && (
-        <b
-          className={`font-label-md text-label-md mt-1 inline-flex items-center gap-0.5 ${highlight ? "text-on-primary" : "text-primary"}`}
-        >
-          {linkText}
-          <Icon name="chevron_right" className="text-[16px]" />
-        </b>
-      )}
+      <div className="mt-auto flex flex-col gap-space-xs">
+        {!highlight && progress != null && (
+          <div className="w-full bg-surface-container-high rounded-full h-1.5 overflow-hidden">
+            <div
+              className={`h-full rounded-full ${PROGRESS_BAR_CLASSES[tone] || PROGRESS_BAR_CLASSES.blue}`}
+              style={{ width: `${Math.max(0, Math.min(100, progress))}%` }}
+            />
+          </div>
+        )}
+        {onClick && (
+          <b
+            className={`font-label-md text-label-md inline-flex items-center gap-0.5 ${highlight ? "text-on-primary" : "text-primary"}`}
+          >
+            {linkText}
+            <Icon name="chevron_right" className="text-[16px]" />
+          </b>
+        )}
+      </div>
     </article>
   );
 }
@@ -902,18 +1086,21 @@ const ENCUESTA_SERIES: {
   label: string;
   stroke: string;
   fill: string;
+  hex: string;
 }[] = [
   {
     key: "encuesta_final",
     label: "Encuesta final",
     stroke: "stroke-primary",
     fill: "fill-primary",
+    hex: "#3525cd",
   },
   {
     key: "encuesta_pendiente",
     label: "Encuesta pendiente",
     stroke: "stroke-[#f59e0b]",
     fill: "fill-[#f59e0b]",
+    hex: "#f59e0b",
   },
 ];
 function EncuestaTrendSvg({
@@ -931,6 +1118,7 @@ function EncuestaTrendSvg({
   height: number;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
+  const gradId = useId();
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const W = width,
     H = height,
@@ -941,8 +1129,8 @@ function EncuestaTrendSvg({
     ),
     x = (i: number) => P + (i * (W - 2 * P)) / Math.max(1, data.length - 1),
     y = (v: number) => H - P - (v / maxValor) * (H - 2 * P),
-    points = (k: "encuesta_final" | "encuesta_pendiente") =>
-      data.map((d, i) => `${x(i)},${y(Number(d[k] || 0))}`).join(" ");
+    pointsOf = (k: "encuesta_final" | "encuesta_pendiente") =>
+      data.map((d, i) => ({ x: x(i), y: y(Number(d[k] || 0)) }));
 
   // El backend ya viene marcando, para cada dia, si dispara una
   // alerta -- combina una regla puntual (residuo de ese dia contra su
@@ -1009,6 +1197,14 @@ function EncuestaTrendSvg({
       viewBox={`0 0 ${W} ${H}`}
       preserveAspectRatio="none"
     >
+      <defs>
+        {ENCUESTA_SERIES.map((s) => (
+          <linearGradient key={s.key} id={`${gradId}-${s.key}`} x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor={s.hex} stopOpacity={0.25} />
+            <stop offset="100%" stopColor={s.hex} stopOpacity={0} />
+          </linearGradient>
+        ))}
+      </defs>
       {[0, 0.25, 0.5, 0.75, 1].map((v) => (
         <g key={v}>
           <line
@@ -1018,6 +1214,7 @@ function EncuestaTrendSvg({
             y2={y(v * maxValor)}
             className="stroke-outline-variant/30"
             strokeWidth={1}
+            strokeDasharray="4 4"
           />
           <text x="2" y={y(v * maxValor) + 4} className="fill-outline text-[10px]">
             {Math.round(v * maxValor)}
@@ -1043,13 +1240,21 @@ function EncuestaTrendSvg({
           );
         })}
       {ENCUESTA_SERIES.map((s) => (
-        <polyline
+        <path
+          key={`area-${s.key}`}
+          d={smoothAreaPath(pointsOf(s.key), H - P)}
+          fill={`url(#${gradId}-${s.key})`}
+          stroke="none"
+        />
+      ))}
+      {ENCUESTA_SERIES.map((s) => (
+        <path
           key={s.key}
           className={`fill-none ${s.stroke}`}
           strokeWidth={2}
           strokeLinecap="round"
           strokeLinejoin="round"
-          points={points(s.key)}
+          d={smoothLinePath(pointsOf(s.key))}
         />
       ))}
       {limites &&
@@ -1407,12 +1612,13 @@ function HourlyBarChart({
     H = 320,
     PT = 34,
     PB = 26,
+    PL = 30,
     n = data.length,
     max = Math.max(1, ...data.map((d) => d.servicios)),
     plotH = H - PT - PB,
-    slot = W / n,
+    slot = (W - PL) / n,
     bw = slot * 0.55,
-    barX = (i: number) => i * slot + (slot - bw) / 2,
+    barX = (i: number) => PL + i * slot + (slot - bw) / 2,
     barH = (v: number) => (v / max) * plotH;
   const TOOLTIP_W = 190,
     TOOLTIP_H = 54;
@@ -1443,6 +1649,26 @@ function HourlyBarChart({
       className="w-full block"
       style={{ height: H }}
     >
+      {[0, 0.25, 0.5, 0.75, 1].map((v) => (
+        <g key={v}>
+          <line
+            x1={PL}
+            x2={W}
+            y1={PT + (plotH - v * plotH)}
+            y2={PT + (plotH - v * plotH)}
+            className="stroke-outline-variant/30"
+            strokeWidth={1}
+            strokeDasharray="4 4"
+          />
+          <text
+            x="0"
+            y={PT + (plotH - v * plotH) + 4}
+            className="fill-outline text-[10px]"
+          >
+            {nf(Math.round(v * max))}
+          </text>
+        </g>
+      ))}
       {data.map((d, i) => {
         const segmentos = d.por_tipo && d.por_tipo.length ? d.por_tipo : [{ tipo: "", cantidad: d.servicios }];
         let acumulado = 0;
@@ -3330,39 +3556,13 @@ export default function App() {
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-space-xs pt-space-xs">
-                  <div className="flex items-center gap-1.5 px-space-sm py-1.5 rounded-lg bg-surface-container-lowest shadow-sm h-9">
-                    <Icon name="date_range" className="text-primary text-[17px] shrink-0" />
-                    <input
-                      className="font-label-code text-label-code font-semibold text-on-surface bg-transparent outline-none w-[104px]"
-                      type="date"
-                      value={draft.fecha_desde}
-                      onChange={(e) =>
-                        setDraft({ ...draft, fecha_desde: e.target.value })
-                      }
-                    />
-                    <span className="text-on-surface-variant">—</span>
-                    <input
-                      className="font-label-code text-label-code font-semibold text-on-surface bg-transparent outline-none w-[104px]"
-                      type="date"
-                      value={draft.fecha_hasta}
-                      onChange={(e) =>
-                        setDraft({ ...draft, fecha_hasta: e.target.value })
-                      }
-                    />
-                    {draft.fecha_desde && draft.fecha_hasta && (
-                      <span className="text-on-surface-variant font-label-code text-label-code uppercase shrink-0 pl-1">
-                        {Math.max(
-                          0,
-                          Math.round(
-                            (new Date(draft.fecha_hasta).getTime() -
-                              new Date(draft.fecha_desde).getTime()) /
-                              86400000,
-                          ) + 1,
-                        )}
-                        d
-                      </span>
-                    )}
-                  </div>
+                  <DateRangePicker
+                    desde={draft.fecha_desde}
+                    hasta={draft.fecha_hasta}
+                    onChange={(fecha_desde, fecha_hasta) =>
+                      setDraft({ ...draft, fecha_desde, fecha_hasta })
+                    }
+                  />
                   <MultiSelect
                     icon={<Icon name="hub" className="text-secondary text-[17px]" />}
                     label="Campañas"
