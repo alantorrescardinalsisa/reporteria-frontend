@@ -292,12 +292,17 @@ function MultiSelect({
   options,
   placeholder,
   onChange,
+  icon,
 }: {
   label: string;
   values: string[];
   options: Option[];
   placeholder: string;
   onChange: (v: string[]) => void;
+  /* NUEVO (ADITIVO, rediseño visual): ícono opcional para el chip del
+     filtro, igual que el mockup de referencia -- si no se pasa, el
+     chip queda sin ícono (comportamiento anterior). */
+  icon?: ReactNode;
 }) {
   const [open, setOpen] = useState(false),
     [term, setTerm] = useState("");
@@ -311,25 +316,44 @@ function MultiSelect({
   const list = options.filter((o) =>
     o.label.toLowerCase().includes(term.toLowerCase()),
   );
-  const title =
-    values.length === 0
-      ? placeholder
-      : values.length === 1
-        ? options.find((o) => o.value === values[0])?.label || values[0]
-        : `${values.length} seleccionados`;
+  const selectedLabel =
+    values.length === 1
+      ? options.find((o) => o.value === values[0])?.label || values[0]
+      : null;
   return (
-    <div className="relative flex flex-col gap-1 min-w-[170px]" ref={ref}>
-      <label className="font-label-sm text-label-sm text-on-surface-variant uppercase">
-        {label}
-      </label>
+    <div className="relative min-w-[170px]" ref={ref}>
       <button
         type="button"
-        className="form-input-styled font-body-md text-body-md text-on-surface flex items-center justify-between gap-2 text-left"
+        className={`flex items-center justify-between gap-space-sm px-space-sm py-1.5 rounded-lg shadow-sm text-body-sm font-body-sm cursor-pointer transition-colors w-full ${
+          values.length > 0
+            ? "bg-surface-container-highest text-on-surface hover:bg-surface-container-high"
+            : "bg-surface-container-lowest text-on-surface hover:bg-surface-container-low"
+        }`}
         onClick={() => setOpen(!open)}
       >
-        <span className="truncate">{title}</span>
-        <Icon name="expand_more" className="text-[18px] text-outline shrink-0" />
+        <span className="flex items-center gap-1.5 min-w-0">
+          {icon}
+          <span className="truncate">
+            {selectedLabel ? (
+              <>
+                {label}: <strong className="text-on-surface">{selectedLabel}</strong>
+              </>
+            ) : (
+              <span className={values.length > 0 ? "font-medium" : "text-on-surface-variant"}>
+                {label}
+              </span>
+            )}
+          </span>
+        </span>
+        {values.length > 1 ? (
+          <span className="px-1.5 py-0.5 rounded-full bg-primary text-on-primary font-label-code text-label-code font-bold shrink-0">
+            {values.length} sel
+          </span>
+        ) : (
+          <Icon name="expand_more" className="text-[16px] text-on-surface-variant shrink-0" />
+        )}
       </button>
+      <span className="sr-only">{placeholder}</span>
       {open && (
         <div className="absolute top-full left-0 mt-1 w-72 max-w-[80vw] z-30 bg-surface-container-lowest rounded-lg card-shadow border border-outline-variant/30 overflow-hidden flex flex-col">
           <div className="flex items-center gap-2 px-3 py-2 border-b border-outline-variant/20">
@@ -422,38 +446,50 @@ function Card({
 }) {
   return (
     <article
-      className={`bg-surface-container-lowest rounded-xl p-md card-shadow border flex flex-col gap-md relative overflow-hidden transition-colors ${
-        highlight ? "border-primary/40 bg-primary/5" : "border-outline-variant/20"
-      } ${onClick ? "cursor-pointer hover:border-primary/30" : ""}`}
+      className={`flex flex-col justify-between gap-space-sm p-space-lg rounded-xl card-shadow border relative overflow-hidden transition-shadow hover:shadow-md ${
+        highlight
+          ? "bg-primary text-on-primary border-transparent"
+          : "bg-surface-container-lowest border-outline-variant/20"
+      } ${onClick ? "cursor-pointer" : ""}`}
       onClick={onClick}
     >
-      <div
-        className={`w-10 h-10 rounded-full flex items-center justify-center ${
-          highlight ? "bg-primary/20 text-primary" : TONE_CLASSES[tone]
-        }`}
-      >
-        {icon}
-      </div>
-      <div className="flex flex-col gap-1 z-10">
+      <div className="flex items-start justify-between gap-space-sm">
         <span
-          className={`font-display-lg text-display-lg leading-none ${highlight ? "text-primary" : "text-on-surface"}`}
+          className={`font-label-caps text-label-caps uppercase flex items-center gap-1 min-w-0 ${
+            highlight ? "text-on-primary/80" : "text-on-surface-variant"
+          }`}
+        >
+          <span className="truncate">{title}</span>
+          {tooltip && <InfoTip {...tooltip} />}
+        </span>
+        <div
+          className={`w-8 h-8 shrink-0 rounded-lg flex items-center justify-center ${
+            highlight ? "bg-surface-container-lowest/20 text-on-primary" : TONE_CLASSES[tone]
+          }`}
+        >
+          {icon}
+        </div>
+      </div>
+      <div className="flex flex-col gap-space-xs">
+        <span
+          className={`font-metric-display text-metric-display leading-none ${highlight ? "text-on-primary" : "text-on-surface"}`}
         >
           {value}
         </span>
-        <span className="font-label-md text-label-md text-on-surface-variant uppercase tracking-wider flex items-center gap-1">
-          {title}
-          {tooltip && <InfoTip {...tooltip} />}
-        </span>
-        <small className="font-body-md text-[13px] text-on-surface-variant/80 leading-snug">
+        <small
+          className={`font-body-sm text-body-sm leading-snug ${highlight ? "text-on-primary/90" : "text-on-surface-variant"}`}
+        >
           {detail}
         </small>
-        {onClick && (
-          <b className="font-label-md text-label-md text-primary mt-1 inline-flex items-center gap-0.5">
-            {linkText}
-            <Icon name="chevron_right" className="text-[16px]" />
-          </b>
-        )}
       </div>
+      {onClick && (
+        <b
+          className={`font-label-md text-label-md mt-1 inline-flex items-center gap-0.5 ${highlight ? "text-on-primary" : "text-primary"}`}
+        >
+          {linkText}
+          <Icon name="chevron_right" className="text-[16px]" />
+        </b>
+      )}
     </article>
   );
 }
@@ -476,30 +512,35 @@ function IndicatorRow({
 }) {
   return (
     <div
-      className={`bg-surface-container-lowest rounded-xl p-4 card-shadow border border-outline-variant/20 flex items-center justify-between gap-3 transition-colors ${
-        onClick ? "cursor-pointer hover:bg-surface-bright" : ""
+      className={`flex items-center justify-between gap-space-sm py-space-xs group ${
+        onClick ? "cursor-pointer" : ""
       }`}
       onClick={onClick}
     >
-      <div className="flex items-center gap-3 min-w-0">
-        <div className="w-8 h-8 shrink-0 rounded bg-surface-variant flex items-center justify-center text-on-surface-variant">
+      <div className="flex items-center gap-space-sm min-w-0">
+        <div className="w-8 h-8 shrink-0 rounded-lg bg-surface-container-high flex items-center justify-center text-primary">
           {icon}
         </div>
         <div className="min-w-0">
-          <div className="font-body-md text-body-md font-medium text-on-surface flex items-center gap-1 min-w-0">
+          <div className="font-body-md text-body-md font-semibold text-on-surface flex items-center gap-1 min-w-0">
             <span className="truncate">{label}</span>
             {tooltip && <InfoTip {...tooltip} />}
           </div>
           {detail && (
-            <div className="font-label-sm text-label-sm text-on-surface-variant truncate">
+            <div className="font-label-code text-label-code text-on-surface-variant truncate">
               {detail}
             </div>
           )}
         </div>
       </div>
       <div className="flex items-center gap-1 shrink-0">
-        <span className="font-headline-sm text-headline-sm text-on-surface">{value}</span>
-        {onClick && <Icon name="chevron_right" className="text-[18px] text-outline" />}
+        <span className="font-metric-sm text-metric-sm text-on-surface">{value}</span>
+        {onClick && (
+          <Icon
+            name="chevron_right"
+            className="text-[18px] text-outline group-hover:text-primary transition-colors"
+          />
+        )}
       </div>
     </div>
   );
@@ -1098,7 +1139,7 @@ function TrendChart({ data }: { data: TrendPoint[] }) {
     <div className="flex flex-col gap-2 flex-1">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <select
-          className="form-input-styled font-body-md text-body-md text-on-surface h-9"
+          className="form-input-styled font-body-sm text-body-sm text-on-surface h-9 rounded-lg"
           value={periodo}
           onChange={(e) => setPeriodo(e.target.value as typeof periodo)}
         >
@@ -1111,14 +1152,14 @@ function TrendChart({ data }: { data: TrendPoint[] }) {
         <button
           type="button"
           onClick={() => setZoom((z) => !z)}
-          className="h-9 px-sm rounded bg-surface-container-low text-on-surface font-label-md text-label-md flex items-center gap-1 hover:bg-surface-variant transition-colors"
+          className="flex items-center gap-1.5 px-space-md py-1.5 rounded-lg bg-surface-container-low hover:bg-surface-container-high text-on-surface-variant text-body-sm font-body-sm transition-all"
           title={
             zoom
               ? "Quitar zoom (ajustar al ancho de la tarjeta)"
               : "Hacer zoom (arrastrar para desplazarse)"
           }
         >
-          <Icon name={zoom ? "zoom_out" : "zoom_in"} className="text-[18px]" />
+          <Icon name={zoom ? "zoom_out" : "zoom_in"} className="text-[16px]" />
           {zoom ? "Quitar zoom" : "Zoom"}
         </button>
       </div>
@@ -1238,7 +1279,7 @@ function TramoCard({
    color). Con hover sobre un segmento se ve un tooltip (tipo, cantidad,
    % de esa hora), mismo lenguaje visual que EncuestaTrendSvg. ---------- */
 const HOURLY_TIPO_COLORS = [
-  "#004ac6",
+  "#3525cd",
   "#dc2626",
   "#f59e0b",
   "#059669",
@@ -3118,50 +3159,85 @@ export default function App() {
           <div className="max-w-container-max mx-auto p-xl flex flex-col gap-xl">
             {/* ---------- Filtros globales ---------- */}
             {page !== "upload" && page !== "intelligence" && (
-              <section className="flex flex-col gap-md">
-                {page === "metrics" && (
-                  <div className="flex justify-between items-end flex-wrap gap-2">
-                    <div className="flex items-center gap-3">
-                      <Icon name="analytics" className="text-primary text-[32px]" filled />
-                      <h2 className="font-display-lg text-display-lg text-on-surface">
-                        Métricas de Trackeo
+              <section className="sticky top-0 z-30 bg-surface/90 backdrop-blur-xl rounded-xl shadow-md p-space-md flex flex-col gap-space-sm">
+                <div className="flex flex-wrap items-center justify-between gap-space-md">
+                  <div className="flex items-center gap-space-md">
+                    {page === "metrics" && (
+                      <div className="flex flex-col">
+                        <span className="font-label-caps text-label-caps text-primary tracking-wider uppercase">
+                          Panel Telemetría Activa
+                        </span>
+                        <h2 className="font-headline-md text-headline-md text-on-surface font-bold tracking-tight">
+                          Métricas de Trackeo
+                        </h2>
+                      </div>
+                    )}
+                    {page === "providers" && (
+                      <h2 className="font-headline-md text-headline-md text-on-surface font-bold tracking-tight flex items-center gap-2">
+                        <Icon name="person_search" className="text-primary text-[24px]" filled />
+                        Detalle por prestador
                       </h2>
+                    )}
+                    {page === "cross" && (
+                      <h2 className="font-headline-md text-headline-md text-on-surface font-bold tracking-tight flex items-center gap-2">
+                        <Icon name="campaign" className="text-primary text-[24px]" filled />
+                        Campaña × prestador
+                      </h2>
+                    )}
+                    <div className="hidden sm:flex items-center gap-1.5 px-space-sm py-1 rounded-full bg-surface-container-high text-on-surface font-label-code text-label-code">
+                      <span
+                        className={`w-2 h-2 rounded-full ${backend.ok ? "bg-primary animate-pulse" : "bg-error"}`}
+                      />
+                      <span className="text-on-surface font-medium">
+                        {backend.ok ? "En vivo" : "Sin conexión"}
+                      </span>
                     </div>
-                    <ExportButton
-                      label="Exportar Reporte"
-                      className="bg-primary-container text-on-primary-container px-sm py-xs rounded-lg font-label-md text-label-md hover:bg-primary hover:text-on-primary transition-colors flex items-center gap-2"
-                      rows={() =>
-                        summary ? [summary as unknown as Record<string, unknown>] : []
-                      }
-                      fileBaseName="resumen-trackeo"
-                      pdfTitle="Resumen de métricas de trackeo"
-                    />
                   </div>
-                )}
-                {page === "providers" && (
-                  <div className="flex items-center gap-3">
-                    <Icon name="person_search" className="text-primary text-[32px]" filled />
-                    <h2 className="font-display-lg text-display-lg text-on-surface">
-                      Detalle por prestador
-                    </h2>
+                  <div className="flex items-center gap-space-xs">
+                    <button
+                      type="button"
+                      className="flex items-center gap-1.5 px-space-md py-1.5 rounded-lg bg-surface-container-low hover:bg-surface-container-high text-on-surface-variant text-body-sm font-body-sm transition-all"
+                      onClick={() => {
+                        setDraft(DEFAULT);
+                        setFilters(DEFAULT);
+                      }}
+                    >
+                      <Icon name="restart_alt" className="text-[16px]" />
+                      Restablecer
+                    </button>
+                    <button
+                      type="button"
+                      className="flex items-center gap-1.5 px-space-md py-1.5 rounded-lg bg-primary text-on-primary font-headline-md text-body-sm shadow-sm hover:opacity-95 active:scale-95 transition-all"
+                      onClick={() => setFilters({ ...draft })}
+                    >
+                      {loading ? (
+                        <Spinner className="text-[16px]" />
+                      ) : (
+                        <Icon name="tune" className="text-[16px]" />
+                      )}
+                      Aplicar filtros
+                    </button>
+                    {page === "metrics" && (
+                      <ExportButton
+                        label="Exportar"
+                        className="flex items-center gap-1.5 px-space-md py-1.5 rounded-lg bg-surface-container-lowest text-on-surface shadow-sm hover:bg-surface-container-low text-body-sm font-body-sm transition-all"
+                        rows={() =>
+                          summary ? [summary as unknown as Record<string, unknown>] : []
+                        }
+                        fileBaseName="resumen-trackeo"
+                        pdfTitle="Resumen de métricas de trackeo"
+                      />
+                    )}
                   </div>
-                )}
-                {page === "cross" && (
-                  <div className="flex items-center gap-3">
-                    <Icon name="campaign" className="text-primary text-[32px]" filled />
-                    <h2 className="font-display-lg text-display-lg text-on-surface">
-                      Campaña × prestador
-                    </h2>
-                  </div>
-                )}
-                <div className="bg-surface-container-lowest p-md rounded-xl card-shadow border border-outline-variant/20 flex flex-wrap items-end gap-md">
+                </div>
+                <div className="flex flex-wrap items-end gap-space-xs pt-space-xs">
                   <div className="flex items-center gap-2">
                     <div className="flex flex-col gap-1">
                       <label className="font-label-sm text-label-sm text-on-surface-variant uppercase">
                         Desde
                       </label>
                       <input
-                        className="form-input-styled font-body-md text-body-md text-on-surface"
+                        className="form-input-styled font-body-md text-body-md text-on-surface h-9"
                         type="date"
                         value={draft.fecha_desde}
                         onChange={(e) =>
@@ -3175,7 +3251,7 @@ export default function App() {
                         Hasta
                       </label>
                       <input
-                        className="form-input-styled font-body-md text-body-md text-on-surface"
+                        className="form-input-styled font-body-md text-body-md text-on-surface h-9"
                         type="date"
                         value={draft.fecha_hasta}
                         onChange={(e) =>
@@ -3185,6 +3261,7 @@ export default function App() {
                     </div>
                   </div>
                   <MultiSelect
+                    icon={<Icon name="hub" className="text-secondary text-[17px]" />}
                     label="Campañas"
                     values={draft.campanas}
                     options={campOpts}
@@ -3192,6 +3269,7 @@ export default function App() {
                     onChange={(campanas) => setDraft({ ...draft, campanas })}
                   />
                   <MultiSelect
+                    icon={<Icon name="local_shipping" className="text-secondary text-[17px]" />}
                     label="Prestadores"
                     values={draft.prestador_ids}
                     options={provOpts}
@@ -3201,6 +3279,7 @@ export default function App() {
                     }
                   />
                   <MultiSelect
+                    icon={<Icon name="rule" className="text-primary text-[17px]" />}
                     label="Estados"
                     values={draft.estados}
                     options={stateOpts}
@@ -3208,6 +3287,7 @@ export default function App() {
                     onChange={(estados) => setDraft({ ...draft, estados })}
                   />
                   <MultiSelect
+                    icon={<Icon name="category" className="text-primary text-[17px]" />}
                     label="Tipo servicio"
                     values={draft.tipos}
                     options={typeOpts}
@@ -3215,6 +3295,7 @@ export default function App() {
                     onChange={(tipos) => setDraft({ ...draft, tipos })}
                   />
                   <MultiSelect
+                    icon={<Icon name="policy" className="text-on-surface-variant text-[17px]" />}
                     label="Tipo de póliza"
                     values={draft.polizas}
                     options={polizaOpts}
@@ -3222,6 +3303,7 @@ export default function App() {
                     onChange={(polizas) => setDraft({ ...draft, polizas })}
                   />
                   <MultiSelect
+                    icon={<Icon name="place" className="text-on-surface-variant text-[17px]" />}
                     label="Provincia de origen"
                     values={draft.provincias_origen}
                     options={provinciaOpts}
@@ -3230,24 +3312,6 @@ export default function App() {
                       setDraft({ ...draft, provincias_origen })
                     }
                   />
-                  <div className="flex items-center gap-2 ml-auto">
-                    <button
-                      className="form-input-styled font-label-md text-label-md text-on-surface-variant hover:bg-surface-container-low transition-colors"
-                      onClick={() => {
-                        setDraft(DEFAULT);
-                        setFilters(DEFAULT);
-                      }}
-                    >
-                      Restablecer
-                    </button>
-                    <button
-                      className="h-10 px-sm rounded bg-primary text-on-primary font-label-md text-label-md flex items-center gap-2 hover:opacity-90 transition-opacity"
-                      onClick={() => setFilters({ ...draft })}
-                    >
-                      {loading && <Spinner className="text-[16px]" />}
-                      Aplicar filtros
-                    </button>
-                  </div>
                 </div>
                 <p className="font-label-sm text-label-sm text-on-surface-variant">
                   Estado, Tipo de servicio, Tipo de póliza y Provincia de origen
@@ -3388,7 +3452,7 @@ export default function App() {
                     <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs">
                       Indicadores operativos
                     </h3>
-                    <div className="flex flex-col gap-3">
+                    <div className="bg-surface-container-lowest rounded-xl p-space-lg card-shadow border border-outline-variant/20 flex flex-col divide-y divide-outline-variant/15">
                       <IndicatorRow
                         icon={<Icon name="database" className="text-[18px]" />}
                         label="Servicios seleccionados"
@@ -3688,7 +3752,7 @@ export default function App() {
                           label={label}
                           valueLabel={`${nf(count)} · ${pct(r)}`}
                           ratio={r || 0}
-                          color="#004ac6"
+                          color="#3525cd"
                           onClick={() => open(m, label)}
                         />
                       ))}
@@ -3924,15 +3988,15 @@ export default function App() {
                   </p>
                   <div className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 flex flex-col">
                     <div className="overflow-x-auto">
-                      <table className="w-full text-body-md font-body-md">
+                      <table className="w-full text-body-md font-body-md border-collapse">
                         <thead>
-                          <tr className="text-label-md font-label-md text-on-surface-variant uppercase text-left border-b border-outline-variant/30">
+                          <tr className="bg-surface-container-low text-on-surface-variant font-label-caps text-label-caps uppercase text-left">
                             <SortableTh
                               label="Campaña"
                               sortKey="campana"
                               sort={sortCampanaImpactoPageable}
                               defaultDir="asc"
-                              className="py-2 pl-md pr-3"
+                              className="py-space-sm pl-md pr-3 rounded-l-lg"
                             />
                             <SortableTh
                               label="Total"
@@ -3970,7 +4034,7 @@ export default function App() {
                               label="Impacto asignación"
                               sortKey="impacto_asignacion"
                               sort={sortCampanaImpactoPageable}
-                              className="py-2 pr-md"
+                              className="py-space-sm pr-md rounded-r-lg"
                               tooltip={{
                                 leer: "Columna por la que se ordena la tabla por defecto: cuántos servicios se ganarían si esa campaña mejorara su asignación al máximo.",
                                 calculo: "Total de servicios de la campaña × oportunidad de asignación.",
@@ -3987,25 +4051,29 @@ export default function App() {
                             .map((c) => (
                               <tr
                                 key={c.campana_normalizada}
-                                className="border-b border-outline-variant/10 hover:bg-surface-container-low"
+                                className="hover:bg-surface-container-low transition-colors border-b border-outline-variant/10 last:border-0"
                               >
-                                <td className="py-2 pl-md pr-3 text-on-surface font-medium">
+                                <td className="py-space-sm pl-md pr-3 text-on-surface font-semibold">
                                   {c.campana}
                                 </td>
-                                <td className="py-2 pr-3">{nf(c.total_general)}</td>
-                                <td className="py-2 pr-3">
+                                <td className="py-space-sm pr-3 font-label-code text-label-code font-bold">
+                                  {nf(c.total_general)}
+                                </td>
+                                <td className="py-space-sm pr-3 font-label-code text-label-code text-primary font-bold">
                                   {pct(c.efectividad_enviador)}
                                 </td>
-                                <td className="py-2 pr-3">
+                                <td className="py-space-sm pr-3 font-label-code text-label-code">
                                   {c.servicios_evaluados_demora_trazable > 0
                                     ? pct(c.cumplimiento_demora_trazable)
                                     : "N/A"}
                                 </td>
-                                <td className="py-2 pr-3">
+                                <td className="py-space-sm pr-3 font-label-code text-label-code text-on-surface-variant">
                                   {pct(c.oportunidad_mejora_asignacion)}
                                 </td>
-                                <td className="py-2 pr-md font-medium text-on-surface">
-                                  {nf(c.impacto_asignacion)}
+                                <td className="py-space-sm pr-md text-center">
+                                  <span className="px-2 py-0.5 rounded-full bg-surface-container-high text-primary font-label-code text-label-code font-bold">
+                                    {nf(c.impacto_asignacion)}
+                                  </span>
                                 </td>
                               </tr>
                             ))}
@@ -4032,7 +4100,7 @@ export default function App() {
                     </h3>
                     <div className="flex items-center gap-2 flex-wrap">
                       <select
-                        className="form-input-styled font-body-md text-body-md text-on-surface"
+                        className="form-input-styled font-body-sm text-body-sm text-on-surface h-9 rounded-lg"
                         value={horaCampana}
                         onChange={(e) => setHoraCampana(e.target.value)}
                       >
@@ -4044,7 +4112,7 @@ export default function App() {
                         ))}
                       </select>
                       <select
-                        className="form-input-styled font-body-md text-body-md text-on-surface"
+                        className="form-input-styled font-body-sm text-body-sm text-on-surface h-9 rounded-lg"
                         value={horaPrestador}
                         onChange={(e) => setHoraPrestador(e.target.value)}
                       >
@@ -4105,12 +4173,12 @@ export default function App() {
                         ratio={c.porcentaje}
                         color={
                           c.categoria === "FINALIZADO"
-                            ? "#006058"
+                            ? "#571ac0"
                             : c.categoria === "CANCELADO"
                               ? "#ba1a1a"
                               : c.categoria === "SIN_CLASIFICAR"
                                 ? "#f59e0b"
-                                : "#004ac6"
+                                : "#3525cd"
                         }
                       />
                     ))}
@@ -4162,15 +4230,33 @@ export default function App() {
                         {nf(trazabilidad?.total)} con secuencia completa
                       </span>
                     </div>
-                    <div className="flex flex-col gap-4 pt-2">
-                      {(trazabilidad?.funnel_completitud || []).map((e) => (
-                        <ProgressBar
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-space-sm pt-2">
+                      {(trazabilidad?.funnel_completitud || []).map((e, i) => (
+                        <div
                           key={e.etapa}
-                          label={e.etapa}
-                          valueLabel={`${nf(e.cantidad)} · ${pct(e.porcentaje)}`}
-                          ratio={e.porcentaje}
-                          color="#004ac6"
-                        />
+                          className="p-space-md rounded-xl bg-surface-container-low flex flex-col justify-between relative overflow-hidden group hover:bg-surface-container-high transition-colors"
+                        >
+                          <div className="flex items-center justify-between text-on-surface-variant font-label-code text-label-code">
+                            <span>{String(i + 1).padStart(2, "0")}</span>
+                            <span className="text-primary font-bold">{pct(e.porcentaje)}</span>
+                          </div>
+                          <div className="my-space-xs">
+                            <span className="font-headline-md text-body-lg font-bold text-on-surface block">
+                              {e.etapa}
+                            </span>
+                            <span className="font-body-sm text-body-sm text-on-surface-variant">
+                              {nf(e.cantidad)} servicios
+                            </span>
+                          </div>
+                          <div className="w-full bg-surface-container-highest rounded-full h-1 overflow-hidden mt-1">
+                            <div
+                              className="bg-primary h-full"
+                              style={{
+                                width: `${Math.min(100, Math.max(0, (e.porcentaje ?? 0) * 100))}%`,
+                              }}
+                            />
+                          </div>
+                        </div>
                       ))}
                     </div>
                   </div>
@@ -4207,7 +4293,7 @@ export default function App() {
                               : "N/A"
                           }
                           ratio={r?.efectividad_enviador || 0}
-                          color="#004ac6"
+                          color="#3525cd"
                         />
                       ))}
                     </div>
@@ -4273,7 +4359,7 @@ export default function App() {
                           label={e.etapa}
                           valueLabel={`${nf(e.cantidad)} · ${pct(e.porcentaje)}`}
                           ratio={e.porcentaje}
-                          color="#004ac6"
+                          color="#3525cd"
                         />
                       ))}
                     </div>
