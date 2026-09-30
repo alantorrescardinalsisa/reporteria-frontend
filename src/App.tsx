@@ -5077,13 +5077,8 @@ export default function App() {
                           sort={sortProvidersPageable}
                         />
                         <SortableTh
-                          label="Cumple"
+                          label="Cumple / No cumple"
                           sortKey="servicios_cumplidos"
-                          sort={sortProvidersPageable}
-                        />
-                        <SortableTh
-                          label="No cumple"
-                          sortKey="servicios_no_cumplidos"
                           sort={sortProvidersPageable}
                         />
                         <SortableTh
@@ -5315,13 +5310,8 @@ export default function App() {
                           sort={sortCrossPageable}
                         />
                         <SortableTh
-                          label="Cumple"
+                          label="Cumple / No cumple"
                           sortKey="servicios_cumplidos"
-                          sort={sortCrossPageable}
-                        />
-                        <SortableTh
-                          label="No cumple"
-                          sortKey="servicios_no_cumplidos"
                           sort={sortCrossPageable}
                         />
                         <SortableTh
