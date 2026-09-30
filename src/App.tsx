@@ -4930,7 +4930,7 @@ export default function App() {
                                           : "bg-surface-container text-secondary"
                                       }`}
                                     >
-                                      {o.prestador.slice(0, 2).toUpperCase()}
+                                      {(o.prestador || "??").slice(0, 2).toUpperCase()}
                                     </div>
                                     <span className="font-semibold text-on-surface truncate">
                                       {o.prestador}
