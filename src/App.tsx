@@ -789,6 +789,45 @@ function IndicatorRow({
   );
 }
 
+/* ---------- NUEVO (ADITIVO): grupo colapsable de secciones, para no
+   tener que scrollear toda la pantalla de "Métricas de Trackeo" de una
+   vez. Puramente visual -- envuelve secciones ya existentes sin tocar
+   su contenido ni sus cálculos. ---------- */
+function CollapsibleGroup({
+  title,
+  icon,
+  open,
+  onToggle,
+  children,
+}: {
+  title: string;
+  icon: string;
+  open: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <section className="flex flex-col gap-sm">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={open}
+        className="flex items-center justify-between gap-2 w-full text-left px-space-md py-space-sm rounded-xl bg-surface-container-lowest card-shadow border border-outline-variant/20 hover:bg-surface-container-low transition-colors"
+      >
+        <span className="flex items-center gap-2 font-headline-md text-headline-md text-on-surface font-semibold">
+          <Icon name={icon} className="text-primary text-[22px]" />
+          {title}
+        </span>
+        <Icon
+          name="expand_more"
+          className={`text-on-surface-variant text-[22px] transition-transform ${open ? "rotate-180" : ""}`}
+        />
+      </button>
+      {open && <div className="flex flex-col gap-xl pt-xs">{children}</div>}
+    </section>
+  );
+}
+
 /* ---------- Barra de progreso (Distribución / Calidad) ---------- */
 function ProgressBar({
   label,
@@ -2893,6 +2932,17 @@ export default function App() {
     [inteligenciaFilter, setInteligenciaFilter] = useState<Clasificacion | "todos">(
       "todos",
     ),
+    // NUEVO (ADITIVO): grupos colapsables en "Métricas de Trackeo" --
+    // puramente visual (qué secciones se muestran), no toca ningún
+    // cálculo ni pide nada nuevo al backend.
+    [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
+      resumen: true,
+      encuestas: true,
+      calidad: true,
+      tiempos: true,
+      asignacion: true,
+      outliers: true,
+    }),
     [modalClasificacion, setModalClasificacion] =
       useState<Clasificacion | null>(null),
     // NUEVO (ADITIVO): detalle de IDs al hacer clic en las tarjetas de
@@ -3670,6 +3720,35 @@ export default function App() {
                         pdfTitle="Resumen de métricas de trackeo"
                       />
                     )}
+                    {page === "metrics" && (
+                      <button
+                        type="button"
+                        className="flex items-center gap-1.5 px-space-md py-1.5 rounded-lg bg-surface-container-lowest text-on-surface shadow-sm hover:bg-surface-container-low text-body-sm font-body-sm transition-all"
+                        onClick={() => {
+                          const todoAbierto = Object.values(openGroups).every(Boolean);
+                          setOpenGroups({
+                            resumen: !todoAbierto,
+                            encuestas: !todoAbierto,
+                            calidad: !todoAbierto,
+                            tiempos: !todoAbierto,
+                            asignacion: !todoAbierto,
+                            outliers: !todoAbierto,
+                          });
+                        }}
+                      >
+                        <Icon
+                          name={
+                            Object.values(openGroups).every(Boolean)
+                              ? "unfold_less"
+                              : "unfold_more"
+                          }
+                          className="text-[16px]"
+                        />
+                        {Object.values(openGroups).every(Boolean)
+                          ? "Colapsar todo"
+                          : "Expandir todo"}
+                      </button>
+                    )}
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-space-xs pt-space-xs">
@@ -3779,6 +3858,14 @@ export default function App() {
 
             {page === "metrics" && (
               <>
+                <CollapsibleGroup
+                  title="Resumen general"
+                  icon="dashboard"
+                  open={openGroups.resumen}
+                  onToggle={() =>
+                    setOpenGroups({ ...openGroups, resumen: !openGroups.resumen })
+                  }
+                >
                 {/* ---------- Universos analíticos ---------- */}
                 <section className="flex flex-col gap-sm">
                   <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs">
@@ -4023,7 +4110,16 @@ export default function App() {
                     </div>
                   </div>
                 </section>
+                </CollapsibleGroup>
 
+                <CollapsibleGroup
+                  title="Encuestas"
+                  icon="forum"
+                  open={openGroups.encuestas}
+                  onToggle={() =>
+                    setOpenGroups({ ...openGroups, encuestas: !openGroups.encuestas })
+                  }
+                >
                 {/* ---------- NUEVO (ADITIVO): Encuesta post-servicio ---------- */}
                 <section className="flex flex-col gap-sm">
                   <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs">
@@ -4197,7 +4293,16 @@ export default function App() {
                     </div>
                   )}
                 </section>
+                </CollapsibleGroup>
 
+                <CollapsibleGroup
+                  title="Calidad de datos"
+                  icon="verified"
+                  open={openGroups.calidad}
+                  onToggle={() =>
+                    setOpenGroups({ ...openGroups, calidad: !openGroups.calidad })
+                  }
+                >
                 {/* ---------- Distribución + Calidad ---------- */}
                 <section className="grid grid-cols-1 lg:grid-cols-2 gap-xl">
                   <div className="flex flex-col gap-sm">
@@ -4322,7 +4427,16 @@ export default function App() {
                     </div>
                   </section>
                 )}
+                </CollapsibleGroup>
 
+                <CollapsibleGroup
+                  title="Tiempos, campañas y estados"
+                  icon="schedule"
+                  open={openGroups.tiempos}
+                  onToggle={() =>
+                    setOpenGroups({ ...openGroups, tiempos: !openGroups.tiempos })
+                  }
+                >
                 {/* ---------- NUEVO (ADITIVO): Funnel de tiempos, en lenguaje simple ---------- */}
                 <section className="flex flex-col gap-sm">
                   <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs">
@@ -4670,7 +4784,16 @@ export default function App() {
                     </div>
                   )}
                 </section>
+                </CollapsibleGroup>
 
+                <CollapsibleGroup
+                  title="Trazabilidad y asignación"
+                  icon="route"
+                  open={openGroups.asignacion}
+                  onToggle={() =>
+                    setOpenGroups({ ...openGroups, asignacion: !openGroups.asignacion })
+                  }
+                >
                 {/* ---------- NUEVO (ADITIVO): Trazabilidad completa ---------- */}
                 <section className="flex flex-col gap-sm">
                   <h3 className="font-title-lg text-title-lg text-on-surface border-b border-outline-variant/30 pb-xs flex items-center gap-1">
@@ -4863,7 +4986,16 @@ export default function App() {
                     </button>
                   </div>
                 </section>
+                </CollapsibleGroup>
 
+                <CollapsibleGroup
+                  title="Outliers y auditoría"
+                  icon="fact_check"
+                  open={openGroups.outliers}
+                  onToggle={() =>
+                    setOpenGroups({ ...openGroups, outliers: !openGroups.outliers })
+                  }
+                >
                 {/* ---------- NUEVO (ADITIVO): Outliers / anomalías ---------- */}
                 <section className="flex flex-col gap-sm">
                   <div className="flex justify-between items-end flex-wrap gap-2 border-b border-outline-variant/30 pb-xs">
@@ -5028,6 +5160,7 @@ export default function App() {
                     />
                   </div>
                 </section>
+                </CollapsibleGroup>
               </>
             )}
 
@@ -5672,7 +5805,7 @@ export default function App() {
                           icon={<Icon name="trending_up" />}
                           title="Se están destacando"
                           value={nf(inteligencia.resumen.destacado)}
-                          badge={`${pct(inteligencia.resumen.destacado / Math.max(1, inteligencia.total_prestadores))} benchmark`}
+                          badge={`${pct(inteligencia.resumen.destacado / Math.max(1, inteligencia.total_prestadores))} de la red`}
                           detail="Rinden muy bien y de forma estable — clic para ver quiénes"
                           tone="green"
                           onClick={() => setModalClasificacion("destacado")}
