@@ -14,6 +14,10 @@ export type TrackeoFilters = {
   // NUEVO (ADITIVO, 2026-09-30): checkbox global "excluir outliers" --
   // ver _umbral_outlier_campo/_umbral_outlier_tramo en el backend.
   excluir_outliers: boolean;
+  // NUEVO (ADITIVO, 2026-10-01): idem para "excluir servicios
+  // programados" -- reemplaza los dos checkboxes locales que antes
+  // vivían en "Tiempos del prestador" y "SLA de llegada".
+  excluir_programados: boolean;
 };
 export type EstadoOption = {
   estado: string;
@@ -552,6 +556,7 @@ function fp(f: TrackeoFilters) {
     poliza: f.polizas,
     provincia_origen: f.provincias_origen,
     excluir_outliers: String(f.excluir_outliers),
+    excluir_programados: String(f.excluir_programados),
   };
 }
 // NUEVO (ADITIVO): el backend vive en Render free tier -- "se duerme"
@@ -734,20 +739,9 @@ export const api = {
     request<HabilitadoresAsignacion>(
       "/api/metricas-trackeo/habilitadores-asignacion" + qs(fp(f)),
     ),
-  trackeoFunnelTiempos: (
-    f: TrackeoFilters,
-    incluirProgramadosSla?: boolean,
-    incluirProgramadosTiempos?: boolean,
-  ) =>
+  trackeoFunnelTiempos: (f: TrackeoFilters) =>
     request<FunnelTiempos>(
-      "/api/metricas-trackeo/funnel-tiempos" +
-        qs({
-          ...fp(f),
-          incluir_programados_sla: incluirProgramadosSla ? "true" : undefined,
-          incluir_programados_tiempos: incluirProgramadosTiempos
-            ? "true"
-            : undefined,
-        }),
+      "/api/metricas-trackeo/funnel-tiempos" + qs(fp(f)),
     ),
   trackeoEstadosCategorizados: (f: TrackeoFilters) =>
     request<EstadosCategorizados>(
