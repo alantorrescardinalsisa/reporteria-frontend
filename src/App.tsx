@@ -5399,12 +5399,21 @@ export default function App() {
                           }}
                         />
                         <SortableTh
+                          label="Reclamos"
+                          sortKey="reclamos_rotura"
+                          sort={sortProvidersPageable}
+                          tooltip={{
+                            leer: "Cantidad de servicios de ese prestador con al menos una queja/reclamo registrada (rotura/daños, demora, etc.) en el reporte Ficha de Seguimiento, en el período filtrado.",
+                            calculo: "Servicios distintos (por IdServicioPrestado) con Motivo de queja/reclamo asociado — si un mismo reclamo tiene varias filas de gestión, cuenta una sola vez.",
+                          }}
+                        />
+                        <SortableTh
                           label="Score"
                           sortKey="score_ranking"
                           sort={sortProvidersPageable}
                           tooltip={{
-                            leer: "Una nota de 0 a 100% que combina Cumplimiento observado, Trazabilidad, Reclamo de rotura y Reclamos por encuesta, con el mismo peso cada uno. El ⚠ avisa que ese prestador tiene menos de 20 servicios — con tan poca muestra, el score es poco confiable.",
-                            calculo: "37,5% Cumplimiento observado + 31,25% Trazabilidad + 18,75% (1 − % reclamos de rotura) + 12,5% (1 − % reclamos por encuesta, según la pregunta \"opinión sobre el profesional\" de la encuesta, ≤2 = reclamo) — se renormaliza si falta algún componente. Reclamo de rotura todavía no tiene dato en el reporte, y reclamos por encuesta solo se calcula para prestadores con encuestas respondidas en el período filtrado.",
+                            leer: "Una nota de 0 a 100% que combina Cumplimiento observado, Trazabilidad, Reclamos y Reclamos por encuesta, con el mismo peso cada uno. El ⚠ avisa que ese prestador tiene menos de 20 servicios — con tan poca muestra, el score es poco confiable.",
+                            calculo: "37,5% Cumplimiento observado + 31,25% Trazabilidad + 18,75% (1 − 0,2 × cantidad de reclamos) + 12,5% (1 − % reclamos por encuesta, según la pregunta \"opinión sobre el profesional\" de la encuesta, ≤2 = reclamo) — se renormaliza si falta algún componente. El componente de reclamos resta 20 puntos porcentuales por cada reclamo (sin tope, puede dar negativo), y reclamos por encuesta solo se calcula para prestadores con encuestas respondidas en el período filtrado. El score final nunca baja de 0%.",
                           }}
                         />
                       </tr>
@@ -5487,6 +5496,9 @@ export default function App() {
                             {x.demora_real_promedio != null
                               ? `${nf(x.demora_real_promedio)} min`
                               : "N/A"}
+                          </td>
+                          <td className="py-2 pr-3 font-label-code text-label-code">
+                            {nf(x.reclamos_rotura ?? 0)}
                           </td>
                           <td className="py-2 pr-3">
                             <span className="font-label-code text-label-code font-bold text-on-surface">

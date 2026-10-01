@@ -147,6 +147,12 @@ export type PrestadorMetric = TrackeoSummary & {
   // compute_reclamo_encuesta en app.py.
   reclamo_encuesta_pct?: number | null;
   encuestas_evaluadas_profesional?: number;
+  // NUEVO (2026-10-01): reclamo_rotura, parte del score. Ver
+  // compute_reclamo_rotura en app.py. reclamos_rotura es la cantidad
+  // NOMINAL de servicios con queja/reclamo (lo que usa el score, ver
+  // K_RECLAMO_ROTURA); reclamo_rotura_pct es solo informativo.
+  reclamos_rotura?: number;
+  reclamo_rotura_pct?: number | null;
 };
 // NUEVO v4.15.0 (ADITIVO): impacto por campana (volumen x oportunidad
 // de mejora). Ver /api/metricas-trackeo/impacto-campanas.
