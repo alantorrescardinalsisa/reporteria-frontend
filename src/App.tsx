@@ -5413,7 +5413,7 @@ export default function App() {
                           sort={sortProvidersPageable}
                           tooltip={{
                             leer: "Una nota de 0 a 100% que combina Cumplimiento observado, Trazabilidad, Reclamos y Reclamos por encuesta, con el mismo peso cada uno. El ⚠ avisa que ese prestador tiene menos de 20 servicios — con tan poca muestra, el score es poco confiable.",
-                            calculo: "37,5% Cumplimiento observado + 31,25% Trazabilidad + 18,75% (1 − 0,2 × cantidad de reclamos) + 12,5% (1 − % reclamos por encuesta, según la pregunta \"opinión sobre el profesional\" de la encuesta, ≤2 = reclamo) — se renormaliza si falta algún componente. El componente de reclamos resta 20 puntos porcentuales por cada reclamo (sin tope, puede dar negativo), y reclamos por encuesta solo se calcula para prestadores con encuestas respondidas en el período filtrado. El score final nunca baja de 0%.",
+                            calculo: "37,5% Cumplimiento observado + 31,25% Trazabilidad + 18,75% Reclamos + 12,5% (1 − % reclamos por encuesta, según la pregunta \"opinión sobre el profesional\" de la encuesta, ≤2 = reclamo) — se renormaliza si falta algún componente. El componente de reclamos depende de la tasa de reclamos sobre los servicios del prestador (amortiguada para muestras chicas): sin reclamos no resta nada, y como máximo resta 18,75 puntos del score. Reclamos por encuesta solo se calcula para prestadores con encuestas respondidas en el período filtrado.",
                           }}
                         />
                       </tr>
