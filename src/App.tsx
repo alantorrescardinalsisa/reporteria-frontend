@@ -26,7 +26,6 @@ import {
   type FunnelTiempos,
   type Clasificacion,
   type HabilitadoresAsignacion,
-  type IngestStatus,
   type InteligenciaPrestador,
   type InteligenciaPrestadores,
   type MetricaTrackeo,
@@ -59,6 +58,15 @@ import "./App.css";
 
 type Page = "metrics" | "providers" | "cross" | "upload" | "intelligence";
 type Option = { value: string; label: string };
+// NUEVO (2026-10-06, pedido del usuario): carga de varios reportes de una
+// sola vez. Cada archivo seleccionado es un ítem con su propio estado.
+type UploadItem = {
+  file: File;
+  state: "pendiente" | "subiendo" | "en_cola" | "procesando" | "procesado" | "error";
+  message: string;
+  reportId?: string;
+};
+
 type Drill = {
   title: string;
   metric: MetricaTrackeo;
@@ -2905,10 +2913,10 @@ export default function App() {
     [error, setError] = useState<string | null>(null),
     [backend, setBackend] = useState({ ok: false, version: "" }),
     [drill, setDrill] = useState<Drill | null>(null),
-    [file, setFile] = useState<File | null>(null),
+    [uploadItems, setUploadItems] = useState<UploadItem[]>([]),
     [uploading, setUploading] = useState(false),
-    [uploadStatus, setUploadStatus] = useState<IngestStatus | null>(null),
-    [uploadMessage, setUploadMessage] = useState(""),
+    [dragOver, setDragOver] = useState(false),
+    [uploadNotice, setUploadNotice] = useState(""),
     [providerSearch, setProviderSearch] = useState(""),
     // NUEVO (ADITIVO): filtro rápido por categoría en Detalle por
     // prestador -- sobre los mismos campos que ya trae cada fila
@@ -3342,34 +3350,84 @@ export default function App() {
       );
     }
   }
+  function addUploadFiles(list: FileList | null) {
+    if (!list || uploading) return;
+    const todos = Array.from(list);
+    // Al arrastrar y soltar el navegador no aplica el filtro `accept` del
+    // selector, así que se valida la extensión acá.
+    const nuevos = todos.filter((f) => /\.(xlsx|xlsm|xls|xlsb)$/i.test(f.name));
+    const ignorados = todos.length - nuevos.length;
+    setUploadNotice(
+      ignorados
+        ? `Se ignoraron ${ignorados} archivo(s) que no son Excel (.xlsx, .xlsm, .xls, .xlsb).`
+        : "",
+    );
+    setUploadItems((prev) => [
+      ...prev,
+      ...nuevos
+        .filter(
+          (f) => !prev.some((p) => p.file.name === f.name && p.file.size === f.size),
+        )
+        .map((file): UploadItem => ({ file, state: "pendiente", message: "Listo para subir" })),
+    ]);
+  }
+  // Sube los archivos EN ORDEN (cada uno queda en la cola del servidor; el
+  // worker los procesa de a uno en ese mismo orden) y después sigue el estado
+  // de todos a la vez. El orden importa: si dos reportes del mismo tipo se
+  // superponen, gana el que se procesa último.
   async function upload() {
-    if (!file) return;
+    const indices = uploadItems
+      .map((it, i) => (["pendiente", "error"].includes(it.state) ? i : -1))
+      .filter((i) => i >= 0);
+    if (!indices.length || uploading) return;
+    const archivos = uploadItems.map((it) => it.file);
+    const patch = (i: number, p: Partial<UploadItem>) =>
+      setUploadItems((items) => items.map((it, j) => (j === i ? { ...it, ...p } : it)));
     setUploading(true);
-    setUploadMessage("Subiendo…");
     try {
-      const x = await api.ingest(file);
-      if (x.status === "duplicado") {
-        setUploadMessage(x.mensaje || "Archivo duplicado");
-        return;
-      }
-      if (!x.report_id) throw Error("No se recibió report_id");
-      for (let i = 0; i < 600; i++) {
-        const s = await api.ingestStatus(x.report_id);
-        setUploadStatus(s);
-        setUploadMessage(
-          `${s.etapa || s.status}: ${nf(s.filas_procesadas)} filas`,
-        );
-        if (s.status === "procesado") {
-          await load(filters);
-          setFile(null);
-          return;
+      const ids = new Map<number, string>();
+      for (const i of indices) {
+        patch(i, { state: "subiendo", message: "Subiendo…" });
+        try {
+          const x = await api.ingest(archivos[i]);
+          if (!x.report_id) throw Error("No se recibió report_id");
+          ids.set(i, x.report_id);
+          patch(i, { state: "en_cola", reportId: x.report_id, message: x.mensaje || "En cola" });
+        } catch (e) {
+          patch(i, { state: "error", message: String(e) });
         }
-        if (["error", "cancelado"].includes(s.status))
-          throw Error(s.error_msg || s.status);
-        await sleep(3000);
       }
-    } catch (e) {
-      setUploadMessage(String(e));
+      const pendientes = new Set(ids.keys());
+      let algunoOk = false;
+      for (let n = 0; n < 1200 && pendientes.size; n++) {
+        for (const i of [...pendientes]) {
+          try {
+            const s = await api.ingestStatus(ids.get(i)!);
+            if (s.status === "procesado") {
+              algunoOk = true;
+              pendientes.delete(i);
+              patch(i, { state: "procesado", message: `Procesado: ${nf(s.filas_procesadas)} filas` });
+            } else if (["error", "cancelado"].includes(s.status)) {
+              pendientes.delete(i);
+              patch(i, { state: "error", message: s.error_msg || s.status });
+            } else {
+              patch(i, {
+                state: s.status === "pendiente" ? "en_cola" : "procesando",
+                message: `${s.etapa || s.status}: ${nf(s.filas_procesadas)} filas`,
+              });
+            }
+          } catch {
+            // error transitorio de red: se reintenta en la próxima vuelta
+          }
+        }
+        if (pendientes.size) await sleep(3000);
+      }
+      for (const i of pendientes)
+        patch(i, {
+          state: "error",
+          message: "Sin respuesta tras 60 min; revisá el estado más tarde.",
+        });
+      if (algunoOk) await load(filters);
     } finally {
       setUploading(false);
     }
@@ -6059,43 +6117,109 @@ export default function App() {
                     </p>
                   </div>
                 </header>
-                <label className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-outline-variant rounded-xl py-xl px-md cursor-pointer hover:border-primary hover:bg-primary/5 transition-colors">
+                <label
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    if (!uploading) setDragOver(true);
+                  }}
+                  onDragLeave={() => setDragOver(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setDragOver(false);
+                    addUploadFiles(e.dataTransfer.files);
+                  }}
+                  className={`flex flex-col items-center justify-center gap-2 border-2 border-dashed rounded-xl py-xl px-md transition-colors ${
+                    uploading
+                      ? "border-outline-variant opacity-50 cursor-not-allowed"
+                      : dragOver
+                        ? "border-primary bg-primary/10 cursor-copy"
+                        : "border-outline-variant cursor-pointer hover:border-primary hover:bg-primary/5"
+                  }`}
+                >
                   <input
                     className="hidden"
                     type="file"
+                    multiple
+                    disabled={uploading}
                     accept=".xlsx,.xlsm,.xls,.xlsb"
-                    onChange={(e) => setFile(e.target.files?.[0] || null)}
+                    onChange={(e) => {
+                      addUploadFiles(e.target.files);
+                      e.target.value = "";
+                    }}
                   />
                   <Icon name="upload_file" className="text-[42px] text-outline" />
                   <b className="font-body-md text-body-md text-on-surface text-center">
-                    {file?.name || "Seleccionar archivo Excel"}
+                    {dragOver ? "Soltá los archivos acá" : "Arrastrá los archivos Excel o hacé clic para seleccionarlos"}
                   </b>
-                  <span className="font-label-sm text-label-sm text-on-surface-variant">
-                    {file
-                      ? `${(file.size / 1024 / 1024).toFixed(2)} MB`
-                      : "Haz clic para seleccionar"}
+                  <span className="font-label-sm text-label-sm text-on-surface-variant text-center">
+                    Podés elegir varios a la vez. Se suben y procesan en el orden de
+                    la lista.
                   </span>
                 </label>
+                {uploadNotice && (
+                  <span className="font-label-sm text-label-sm text-error">{uploadNotice}</span>
+                )}
+                {uploadItems.length > 0 && (
+                  <ul className="flex flex-col gap-1">
+                    {uploadItems.map((it, i) => (
+                      <li
+                        key={`${it.file.name}-${it.file.size}`}
+                        className="bg-surface-container-low rounded-lg p-sm flex items-start justify-between gap-3"
+                      >
+                        <div className="min-w-0 flex flex-col">
+                          <b className="font-body-md text-body-md text-on-surface truncate">
+                            {i + 1}. {it.file.name}
+                          </b>
+                          <span
+                            className={`font-label-sm text-label-sm ${
+                              it.state === "error"
+                                ? "text-error"
+                                : it.state === "procesado"
+                                  ? "text-primary"
+                                  : "text-on-surface-variant"
+                            }`}
+                          >
+                            {(it.file.size / 1024 / 1024).toFixed(2)} MB · {it.message}
+                          </span>
+                        </div>
+                        {!uploading && it.state !== "procesando" && it.state !== "en_cola" && (
+                          <button
+                            className="text-on-surface-variant hover:text-error shrink-0"
+                            title="Quitar de la lista"
+                            onClick={() =>
+                              setUploadItems((items) => items.filter((_, j) => j !== i))
+                            }
+                          >
+                            <Icon name="close" className="text-[18px]" />
+                          </button>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
                 <button
                   className="h-11 rounded bg-primary text-on-primary font-label-md text-label-md flex items-center justify-center gap-2 disabled:opacity-50 hover:opacity-90 transition-opacity"
-                  disabled={!file || uploading}
+                  disabled={
+                    uploading ||
+                    !uploadItems.some((it) => it.state === "pendiente" || it.state === "error")
+                  }
                   onClick={upload}
                 >
                   {uploading && <Spinner className="text-[18px]" />}
-                  Procesar reporte
+                  {(() => {
+                    const n = uploadItems.filter(
+                      (it) => it.state === "pendiente" || it.state === "error",
+                    ).length;
+                    return n > 1 ? `Procesar ${n} reportes` : "Procesar reporte";
+                  })()}
                 </button>
-                {uploadMessage && (
-                  <div className="bg-surface-container-low rounded-lg p-sm flex flex-col gap-1">
-                    <b className="font-body-md text-body-md text-on-surface">
-                      {uploadMessage}
-                    </b>
-                    {uploadStatus && (
-                      <span className="font-label-sm text-label-sm text-on-surface-variant">
-                        Estado: {uploadStatus.status} · Filas:{" "}
-                        {nf(uploadStatus.filas_procesadas)}
-                      </span>
-                    )}
-                  </div>
+                {uploadItems.length > 0 && !uploading && (
+                  <button
+                    className="text-label-sm font-label-sm text-on-surface-variant hover:text-on-surface self-center"
+                    onClick={() => setUploadItems([])}
+                  >
+                    Limpiar lista
+                  </button>
                 )}
               </section>
             )}

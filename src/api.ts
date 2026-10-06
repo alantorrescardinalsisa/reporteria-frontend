@@ -796,6 +796,7 @@ export const api = {
       status: string;
       report_id?: string;
       report_id_existente?: string;
+      reemplazo_de?: string | null;
       mensaje?: string;
     }>("/ingestar", { method: "POST", body: form });
   },
