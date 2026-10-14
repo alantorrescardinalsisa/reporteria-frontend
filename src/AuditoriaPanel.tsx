@@ -1,9 +1,10 @@
 /* Pantalla "Auditoría de prestadores" (pestaña de Inteligencia Operativa).
-   Muestra lo que deja el motor estadístico semanal (esquema `auditoria`): resumen de la red, lista de prestadores
-   priorizados, y el detalle de cada uno con sus indicadores contra sus pares, el historial semanal y los servicios
-   concretos que respaldan cada alerta. SOLO LECTURA: no calcula nada ni modifica datos.
+   Muestra lo que deja el motor estadístico semanal (esquema `auditoria`) EN LENGUAJE LLANO: primero conclusiones
+   ("17 de cada 100 servicios…"), y los números técnicos (z ajustado, casos, puntos porcentuales) quedan en un
+   desplegable "Ver detalle técnico". SOLO LECTURA: no calcula nada ni modifica datos.
    Es una herramienta para AUDITAR: ninguna alerta es una sanción automática, requiere revisión de una persona. */
 import { useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import { api } from "./api";
 import type {
   AuditoriaCorrida,
@@ -12,19 +13,184 @@ import type {
   AuditoriaHistorial,
   AuditoriaResultado,
 } from "./api";
+import { InfoTip } from "./InfoTip";
+import type { Tooltip } from "./InfoTip";
+
+/* Textos de ayuda (tooltips ⓘ) de toda la pantalla, en lenguaje llano. Las definiciones y umbrales salen del
+   motor (auditoria_prestadores.py): si se cambian alla, actualizar aca. */
+const TIPS: Record<string, Tooltip> = {
+  pantalla: {
+    titulo: "Auditoría de prestadores",
+    leer: "Cada semana se compara a cada prestador con los demás en servicios parecidos (misma campaña y mismo tipo de servicio). Sirve para decidir a quién auditar primero. No es una sanción: siempre hay que revisar los servicios antes de decidir.",
+    calculo: "El análisis corre cada lunes sobre los servicios de enero a la fecha (sin programados ni prestadores de salud).",
+  },
+  corrida: {
+    titulo: "Semana",
+    leer: "Cada semana se guarda un resultado completo. Podés elegir una semana anterior para ver cómo estaba la red en esa fecha.",
+  },
+  candidatos: {
+    titulo: "Para auditar con prioridad",
+    leer: "Prestadores que se apartan mucho de lo normal en servicios parecidos, y con suficientes servicios como para que no sea casualidad. Son los primeros para revisar.",
+    calculo: "Diferencia muy marcada (z ajustado de 3 o más) en algún indicador (los reclamos solos no alcanzan) y al menos 300 servicios terminados.",
+  },
+  observacion: {
+    titulo: "Para seguir de cerca",
+    leer: "Prestadores con alguna diferencia importante respecto de lo normal, pero menos marcada o con menos servicios. Conviene seguirlos.",
+    calculo: "Algún indicador con diferencia significativa (z ajustado de 2 o más) y un mínimo que importa en la práctica.",
+  },
+  sinAlerta: {
+    titulo: "Sin problemas",
+    leer: "Prestadores que registran la llegada de sus servicios y no se apartan de lo normal en ningún aspecto.",
+  },
+  sinTrazabilidad: {
+    titulo: "No registran la llegada",
+    leer: "Prestadores que casi no cargan la hora de llegada en el sistema, así que no se les puede medir la demora. Se muestran aparte: el problema de fondo es que no usan el sistema.",
+    calculo: "Menos de la mitad de sus servicios terminados tiene hora de llegada.",
+  },
+  cumplen: {
+    titulo: "Cumplen lo prometido",
+    leer: "De cada 100 servicios terminados de prestadores que registran, cuántos cumplieron: llegaron a tiempo, con la llegada registrada y cargada en el momento.",
+    calculo: "100 menos el incumplimiento total (llegó tarde + sin hora de llegada + sin demora prometida + carga a destiempo).",
+  },
+  tardeComprobado: {
+    titulo: "Llegaron tarde",
+    leer: "Servicios donde la hora de llegada está registrada y el prestador llegó después de lo prometido.",
+    calculo: "Demora real mayor a la prometida más 15 minutos de tolerancia, sin ser una carga a destiempo.",
+  },
+  sinHoraLlegada: {
+    titulo: "Sin hora de llegada",
+    leer: "Servicios terminados donde el prestador no registró cuándo llegó. No se puede comprobar si cumplió, y se cuenta como incumplimiento.",
+  },
+  cargaRetroactiva: {
+    titulo: "Llegada cargada a destiempo",
+    leer: "Servicios cuya llegada se cargó mucho tiempo después de que ocurrió, por ejemplo al cerrar el mes. No prueba que hayan llegado tarde, pero sí que no se registró en el momento.",
+    calculo: "Demora real mayor a 3 veces la que tiene el 90 % de los servicios (percentil 90).",
+  },
+  incumple90: {
+    titulo: "Últimos 90 días",
+    leer: "De cada 100 servicios de los últimos 90 días, cuántos incumplieron. Debajo se compara con los 90 días anteriores para ver si la red mejora o empeora.",
+  },
+  comoLeer: {
+    titulo: "Cómo leer esta pantalla",
+    leer: "Despliega una explicación corta de qué significan los grupos y los números.",
+  },
+  priorizados: {
+    titulo: "Prestadores del más al menos urgente",
+    leer: "Ordenados de mayor a menor urgencia. Hacé clic en una fila para ver el detalle, el historial y los servicios de ejemplo.",
+  },
+  filtroAlerta: {
+    titulo: "Filtrar por situación",
+    leer: "Para auditar: diferencia muy marcada. Para seguir de cerca: diferencia moderada. Sin problemas: dentro de lo normal.",
+  },
+  filtroSegmento: {
+    titulo: "Registro de la llegada",
+    leer: "“Registran la llegada” son los prestadores que se pueden evaluar. “No registran la llegada” son los que casi no cargan la hora de llegada: no entran en la comparación.",
+  },
+  colPrestador: { leer: "Nombre del prestador. Hacé clic en la fila para ver el detalle." },
+  colNivel: {
+    titulo: "Volumen",
+    leer: "Cuántos servicios tiene el prestador, que determina si se lo puede evaluar con confianza.",
+    calculo: "Alto: 50 servicios o más. Medio: de 20 a 49. Bajo: menos de 20 (no se evalúa).",
+  },
+  colServicios: { leer: "Servicios asignados al prestador en el período analizado (todos los estados)." },
+  colCerrados: { leer: "Servicios que ya terminaron (cerrados o con encuesta). Sobre ellos se calculan los porcentajes." },
+  colPrioridad: {
+    titulo: "Urgencia (0 a 100)",
+    leer: "Qué tan apartado de lo normal está el prestador. Sirve para ordenar la lista: cuanto más alto, antes conviene mirarlo. No es un porcentaje de incumplimiento.",
+    calculo: "Suma ponderada de las diferencias importantes, sobre el máximo posible.",
+  },
+  colAlerta: {
+    titulo: "Situación",
+    leer: "Para auditar con prioridad: diferencia muy marcada y suficientes servicios. Para seguir de cerca: alguna diferencia importante. Sin problemas: dentro de lo normal.",
+  },
+  colMotivo: { leer: "Por qué quedó en esa situación, explicado en palabras. El detalle completo está al abrir la fila." },
+  confianza: {
+    titulo: "Confianza del resultado",
+    leer: "Qué tan firme es la conclusión según cuántos servicios terminados tiene el prestador. Con pocos servicios, un resultado puede deberse al azar.",
+    calculo: "Alta: 200 servicios terminados o más. Media: de 50 a 199. Baja: menos de 50.",
+  },
+  prioridad: {
+    titulo: "Urgencia",
+    leer: "Puntaje de 0 a 100 que ordena a los prestadores según cuánto se apartan de lo normal.",
+  },
+  motivos: {
+    titulo: "En pocas palabras",
+    leer: "Las razones por las que el prestador quedó en esta situación, de la más importante a la menos importante.",
+  },
+  indicadores: {
+    titulo: "Comparado con otros prestadores",
+    leer: "Cada tarjeta compara lo que le pasó al prestador con lo que sería normal en servicios parecidos (misma campaña y mismo tipo de servicio).",
+  },
+  tecnico: {
+    titulo: "Detalle técnico",
+    leer: "Los números estadísticos detrás de las tarjetas, para quien quiera verificarlos.",
+  },
+  colCasos: { leer: "Cantidad de servicios sobre los que se calcula el indicador." },
+  colObservado: { leer: "Porcentaje real del prestador." },
+  colEsperado: {
+    titulo: "Esperado (lo normal)",
+    leer: "Porcentaje que tendría si rindiera como los demás prestadores en las mismas campañas y tipos de servicio.",
+    calculo: "Promedio de los otros prestadores en cada combinación de campaña y tipo de servicio, ponderado por los servicios del prestador (sin contarlo a él).",
+  },
+  colDiferencia: { leer: "Observado menos esperado, en puntos porcentuales. Positivo significa peor que lo normal." },
+  colZ: {
+    titulo: "z ajustado",
+    leer: "Cuántas veces la diferencia supera lo que explicaría el azar, corregido porque los prestadores reales difieren entre sí. 2 o más es significativo; 3 o más es muy marcado.",
+    calculo: "Diferencia dividida por el error estándar, y reescalada por la dispersión real entre prestadores (método robusto MAD).",
+  },
+  colSenal: {
+    titulo: "Señal",
+    leer: "“Activa” cuando la diferencia es estadísticamente significativa y además supera un mínimo que importa en la práctica.",
+    calculo: "z ajustado de 2 o más y diferencia mínima: incumplimiento 3 pp, registro incompleto 5 pp, carga a destiempo 1 pp, reclamos 0,5 pp, encuestas 5 pp.",
+  },
+  composicion: {
+    titulo: "De qué está hecho el incumplimiento",
+    leer: "Descompone los servicios que incumplieron en sus causas, para saber si el problema es llegar tarde, no registrar la llegada o cargarla a destiempo.",
+  },
+  sinDemoraPrometida: {
+    titulo: "Sin demora prometida",
+    leer: "Servicios con llegada registrada pero sin demora prometida cargada: no se puede comprobar si cumplió y se cuenta como incumplimiento.",
+  },
+  tendencia: {
+    titulo: "Evolución",
+    leer: "Compara los últimos 90 días del prestador con los 90 anteriores, para ver si mejora o empeora.",
+    calculo: "Diferencia entre los dos períodos en puntos porcentuales. Suma a la urgencia si empeora 5 puntos o más y es estadísticamente significativo.",
+  },
+  historial: {
+    titulo: "Semana a semana",
+    leer: "Una barra por cada semana analizada. Rojo: estuvo para auditar con prioridad. Naranja: para seguir de cerca. Gris: sin problemas. Sirve para ver si el problema es nuevo o viene de antes.",
+  },
+  evidencia: {
+    titulo: "Servicios de ejemplo",
+    leer: "Casos reales para revisar uno por uno antes de decidir. Se muestran los más extremos de cada tipo (hasta 10 o 15, según el tipo).",
+  },
+  colCierreMes: { leer: "Si el servicio se cerró en los últimos 3 días del mes. Muchos cierres a fin de mes pueden indicar carga masiva para cobrar." },
+  colJuntos: { leer: "Si la llegada y el cierre se cargaron con menos de 15 minutos de diferencia. Es la huella típica de una carga hecha después del hecho." },
+};
+
+const TITULO_EVIDENCIA: Record<string, { titulo: string; leer: string }> = {
+  "Tarde comprobado": { titulo: "Llegaron tarde", leer: "Llegaron después de lo prometido más 15 minutos, con hora de llegada registrada." },
+  "Carga tardia / demora extrema": {
+    titulo: "Llegada cargada mucho después",
+    leer: "La demora real supera 3 veces la que tiene el 90 % de los servicios: la llegada se cargó mucho después de que ocurrió.",
+  },
+  "Sin hora de llegada": { titulo: "Sin hora de llegada registrada", leer: "Servicios terminados donde el prestador no registró la llegada." },
+  "Reclamo / queja": { titulo: "Con reclamo del cliente", leer: "Servicios con un reclamo o queja registrado por el cliente." },
+};
 
 const CANDIDATO = "Candidato a auditoria prioritaria";
 const OBSERVACION = "Observacion";
 const PAGE_SIZE = 15;
 const Z_MIN = 2; // mismos umbrales que el motor (ver auditoria_prestadores.py)
-const INDICADORES: { clave: string; nombre: string; efectoMin: number; informativo?: boolean }[] = [
-  { clave: "incumple", nombre: "Incumplimiento de demora", efectoMin: 3 },
-  { clave: "incompleto", nombre: "Registro incompleto (móvil / coordenadas / envío)", efectoMin: 5 },
-  { clave: "extremo", nombre: "Carga retroactiva (demora extrema)", efectoMin: 1 },
-  { clave: "reclamo", nombre: "Reclamos / quejas", efectoMin: 0.5 },
-  { clave: "enc_baja", nombre: "Encuestas con nota baja", efectoMin: 5 },
-  { clave: "cancela", nombre: "Cancelaciones tras asignar (solo informativo)", efectoMin: 2, informativo: true },
+const INDICADORES: { clave: string; titulo: string; problema: string; efectoMin: number; informativo?: boolean }[] = [
+  { clave: "incumple", titulo: "Cumplir con la demora prometida", problema: "servicios llegaron tarde o sin registrar la llegada", efectoMin: 3 },
+  { clave: "incompleto", titulo: "Registrar bien cada servicio", problema: "servicios con datos incompletos (móvil, ubicación o envío)", efectoMin: 5 },
+  { clave: "extremo", titulo: "Cargar la llegada en el momento", problema: "servicios con la llegada cargada mucho después de que ocurrió", efectoMin: 1 },
+  { clave: "reclamo", titulo: "Reclamos de clientes", problema: "servicios con un reclamo o queja", efectoMin: 0.5 },
+  { clave: "enc_baja", titulo: "Opinión de los clientes", problema: "encuestas con nota baja", efectoMin: 5 },
+  { clave: "cancela", titulo: "Cancelaciones", problema: "servicios cancelados después de asignarlos (solo informativo)", efectoMin: 2, informativo: true },
 ];
+const NIVEL_TEXTO: Record<string, string> = { A: "alto", B: "medio", C: "bajo" };
 
 const nf = (v?: number | null, dec = 0) =>
   v == null
@@ -32,6 +198,14 @@ const nf = (v?: number | null, dec = 0) =>
     : new Intl.NumberFormat("es-AR", { maximumFractionDigits: dec, minimumFractionDigits: dec }).format(v);
 const pp = (v?: number | null) => (v == null ? "—" : `${nf(v, 1)} %`);
 const signed = (v?: number | null, dec = 1) => (v == null ? "—" : `${v > 0 ? "+" : ""}${nf(v, dec)}`);
+/* "17" / "1,9": un porcentaje como cantidad cada 100 (con decimal solo si es chico). */
+const cada100 = (v?: number | null) => {
+  if (v == null) return "—";
+  if (v >= 10) return nf(Math.round(v));
+  const r = Math.round(v * 10) / 10;
+  return nf(r, Number.isInteger(r) ? 0 : 1);
+};
+const plural = (n: number, uno: string, varios: string) => `${nf(n)} ${n === 1 ? uno : varios}`;
 const fechaHora = (s?: string | number | null) => {
   if (s == null || s === "") return "—";
   const d = new Date(String(s));
@@ -59,18 +233,213 @@ function Icon({ name, className = "", filled = false }: { name: string; classNam
   return <span className={`material-symbols-outlined ${filled ? "icon-filled" : ""} ${className}`}>{name}</span>;
 }
 
-function alertaInfo(a: string | null): { label: string; tone: string; rank: number } {
-  if (a === CANDIDATO) return { label: "Candidato a auditoría", tone: "text-error bg-error/10", rank: 2 };
-  if (a === OBSERVACION) return { label: "Observación", tone: "text-[#b5610a] bg-[#f59e0b]/10", rank: 1 };
-  return { label: "Sin alerta", tone: "text-on-surface-variant bg-surface-container-low", rank: 0 };
+type Situacion = {
+  clave: "auditar" | "seguir" | "ok" | "sin_registro" | "pocos_datos";
+  label: string;
+  tone: string;
+  rank: number;
+};
+/* La situacion de un prestador en palabras. Un prestador que no registra la llegada NO es "sin problemas":
+   simplemente no se lo puede medir. */
+function situacion(r: AuditoriaResultado): Situacion {
+  if (r.alerta === CANDIDATO) return { clave: "auditar", label: "Para auditar con prioridad", tone: "text-error bg-error/10", rank: 3 };
+  if (r.alerta === OBSERVACION) return { clave: "seguir", label: "Para seguir de cerca", tone: "text-[#b5610a] bg-[#f59e0b]/10", rank: 2 };
+  if (r.segmento !== "Registra")
+    return { clave: "sin_registro", label: "No registra la llegada", tone: "text-on-surface-variant bg-surface-container-low", rank: 0 };
+  if (r.prioridad == null)
+    return { clave: "pocos_datos", label: "Pocos datos para evaluar", tone: "text-on-surface-variant bg-surface-container-low", rank: 0 };
+  return { clave: "ok", label: "Sin problemas", tone: "text-tertiary bg-tertiary/10", rank: 1 };
 }
 
-function Kpi({ titulo, valor, detalle, tone = "" }: { titulo: string; valor: string; detalle?: string; tone?: string }) {
+/* ---- Motivos de la alerta, en palabras ----
+   El motor guarda los motivos como un texto tecnico separado por " | " (y con detalles entre corchetes que tambien
+   usan " | "). Aca se separan sin cortar los corchetes y se traducen a frases comprensibles. */
+function separarMotivos(texto: string | null): string[] {
+  const out: string[] = [];
+  let actual = "";
+  let profundidad = 0;
+  const t = texto || "";
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i];
+    if (c === "[") profundidad++;
+    if (c === "]") profundidad = Math.max(0, profundidad - 1);
+    if (profundidad === 0 && t.startsWith(" | ", i)) {
+      if (actual.trim()) out.push(actual.trim());
+      actual = "";
+      i += 2;
+      continue;
+    }
+    actual += c;
+  }
+  if (actual.trim()) out.push(actual.trim());
+  return out;
+}
+
+const acentuar = (s: string) =>
+  s.replace(/ultimos/g, "últimos").replace(/\bdias\b/g, "días").replace(/despues/g, "después").replace(/\bmovil\b/g, "móvil");
+
+/* Aclaraciones entre corchetes del motor ("tarde comprobado 43.2%") a frases ("43 de cada 100 llegaron tarde").
+   Las que valen 0 se omiten. */
+function suavizarAclaracion(s: string): string | null {
+  const reglas: [RegExp, (n: string) => string][] = [
+    [/^tarde comprobado ([\d.]+)%$/, (n) => `${cada100(parseFloat(n))} de cada 100 llegaron tarde`],
+    [/^sin hora de llegada ([\d.]+)%$/, (n) => `${cada100(parseFloat(n))} de cada 100 no registran la llegada`],
+    [/^sin demora prometida ([\d.]+)%$/, (n) => `${cada100(parseFloat(n))} de cada 100 sin demora prometida cargada`],
+    [/^([\d.]+)% cerrados en los ultimos 3 dias del mes$/, (n) => `${cada100(parseFloat(n))} de cada 100 se cerraron en los últimos 3 días del mes`],
+    [/^([\d.]+)% con llegada y cierre cargados juntos$/, (n) => `${cada100(parseFloat(n))} de cada 100 tienen la llegada y el cierre cargados juntos`],
+  ];
+  for (const [re, f] of reglas) {
+    const m = s.match(re);
+    if (m) return parseFloat(m[1]) === 0 ? null : f(m[1]);
+  }
+  return acentuar(s);
+}
+
+type MotivoInterpretado = { clave: string; obs: number; esp: number; diff: number; z: number; n: number; extras: string[] };
+
+/* Del nombre largo que genera el motor al indicador al que corresponde. */
+const CLAVES_POR_PREFIJO: [string, string][] = [
+  ["Incumplimiento de demora", "incumple"],
+  ["Datos de registro incompletos", "incompleto"],
+  ["Carga tardia", "extremo"],
+  ["Cancelaciones", "cancela"],
+  ["Reclamos", "reclamo"],
+  ["Encuestas con calificacion baja", "enc_baja"],
+];
+
+function interpretarMotivo(texto: string): MotivoInterpretado | null {
+  const m = texto.match(/^(.*?): ([\d.]+)% vs ([\d.]+)% esperado \(\+?(-?[\d.]+) pp, z ajustado=(-?[\d.]+), n=(\d+)\)\s*(?:\[(.*)\])?\s*$/s);
+  if (!m) return null;
+  const base = m[1].replace(/\s*\(.*\)\s*$/, "").trim();
+  const clave = CLAVES_POR_PREFIJO.find(([pref]) => base.startsWith(pref))?.[1] ?? base;
+  return {
+    clave,
+    obs: parseFloat(m[2]),
+    esp: parseFloat(m[3]),
+    diff: parseFloat(m[4]),
+    z: parseFloat(m[5]),
+    n: parseInt(m[6], 10),
+    extras: m[7] ? m[7].split(" | ").map(suavizarAclaracion).filter((x): x is string => x != null) : [],
+  };
+}
+
+/* Una frase por motivo. `tecnico` guarda el texto original por si hace falta (se muestra en el detalle tecnico). */
+function explicarMotivo(raw: string): { frase: string; aclaraciones: string[]; tecnico: string } {
+  const m = interpretarMotivo(raw);
+  if (m) {
+    const o = cada100(m.obs);
+    const e = cada100(m.esp);
+    const frases: Record<string, string> = {
+      incumple: `Llega tarde o no registra la llegada en ${o} de cada 100 servicios (lo normal en servicios parecidos: ${e}).`,
+      incompleto: `Carga datos incompletos (móvil, ubicación o envío) en ${o} de cada 100 servicios (lo normal: ${e}).`,
+      extremo: `Carga la llegada mucho después de que ocurrió en ${o} de cada 100 servicios (lo normal: ${e}).`,
+      reclamo: `Recibe reclamos en ${o} de cada 100 servicios (lo normal: ${e}).`,
+      enc_baja: `${o} de cada 100 clientes que respondieron la encuesta le pusieron nota baja (lo normal: ${e}).`,
+      cancela: `Cancela ${o} de cada 100 servicios después de asignarlos (lo normal: ${e}).`,
+    };
+    const frase = frases[m.clave] ?? `${m.clave}: ${o} de cada 100 (lo normal: ${e}).`;
+    return { frase, aclaraciones: m.extras, tecnico: raw };
+  }
+  const empeora = raw.match(/^Empeora: incumplimiento ultimos 90 dias \+?(-?[\d.]+) pp/);
+  if (empeora) {
+    return {
+      frase: `Está empeorando: en los últimos 90 días incumple ${nf(parseFloat(empeora[1]), 1)} puntos porcentuales más que en los 90 días anteriores.`,
+      aclaraciones: [],
+      tecnico: raw,
+    };
+  }
+  const noRegistra = raw.match(/^NO REGISTRA en el sistema \(([\d.]+)% con hora de llegada\)/);
+  if (noRegistra) {
+    return {
+      frase: `No registra la hora de llegada en el sistema: solo ${cada100(parseFloat(noRegistra[1]))} de cada 100 servicios la tienen.`,
+      aclaraciones: [],
+      tecnico: raw,
+    };
+  }
+  if (raw.startsWith("Datos insuficientes")) {
+    return { frase: "Tiene pocos servicios para evaluarlo con confianza.", aclaraciones: [], tecnico: raw };
+  }
+  return { frase: acentuar(raw), aclaraciones: [], tecnico: raw };
+}
+
+/* compacto: una frase por motivo (tabla). detallado: con aclaraciones debajo (ventana de detalle). */
+function MotivosLista({ texto, detallado = false }: { texto: string | null; detallado?: boolean }) {
+  const motivos = separarMotivos(texto).map(explicarMotivo);
+  if (motivos.length === 0) return <span>Sin diferencias importantes.</span>;
   return (
-    <div className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 p-md flex flex-col gap-1">
-      <span className="font-label-caps text-label-caps text-on-surface-variant uppercase">{titulo}</span>
-      <span className={`font-headline-lg text-headline-lg font-semibold ${tone || "text-on-surface"}`}>{valor}</span>
-      {detalle && <span className="font-body-sm text-body-sm text-on-surface-variant">{detalle}</span>}
+    <ul className={detallado ? "list-disc pl-5 flex flex-col gap-2" : "flex flex-col gap-1"}>
+      {motivos.map((m, i) => (
+        <li key={i} className={detallado ? "" : "list-none"}>
+          {m.frase}
+          {detallado && m.aclaraciones.length > 0 && (
+            <span className="block text-on-surface-variant text-[12.5px]">{m.aclaraciones.join(" · ")}</span>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/* ---- Piezas visuales (mismo estilo que las tarjetas de Métricas de Trackeo) ---- */
+function Caja({
+  titulo,
+  valor,
+  explicacion,
+  badge,
+  badgeTone = "text-[#b5610a] bg-[#f59e0b]/10",
+  tip,
+  valorTone = "text-on-surface",
+}: {
+  titulo: string;
+  valor: string;
+  explicacion?: string;
+  badge?: string;
+  badgeTone?: string;
+  tip?: Tooltip;
+  valorTone?: string;
+}) {
+  return (
+    <div className="flex flex-col gap-1 bg-surface-container-low rounded-lg p-sm">
+      <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wide flex items-center gap-1">
+        {titulo}
+        {tip && <InfoTip {...tip} />}
+      </span>
+      <span className={`font-headline-sm text-headline-sm ${valorTone}`}>{valor}</span>
+      {badge && <span className={`font-label-md text-label-md rounded-full px-2 py-0.5 w-fit uppercase tracking-wide ${badgeTone}`}>{badge}</span>}
+      {explicacion && <span className="font-label-sm text-label-sm text-on-surface-variant">{explicacion}</span>}
+    </div>
+  );
+}
+
+function Tarjeta({
+  icono,
+  titulo,
+  tip,
+  children,
+  resumen,
+}: {
+  icono: string;
+  titulo: string;
+  tip?: Tooltip;
+  children: ReactNode;
+  resumen?: ReactNode;
+}) {
+  return (
+    <div className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 flex flex-col gap-sm p-md">
+      <header className="flex items-center gap-3">
+        <Icon name={icono} className="text-primary" />
+        <h4 className="font-title-lg text-title-lg text-on-surface flex items-center gap-1">
+          {titulo}
+          {tip && <InfoTip {...tip} />}
+        </h4>
+      </header>
+      {children}
+      {resumen && (
+        <div className="flex items-center gap-2 bg-primary-container/50 rounded-lg px-sm py-2">
+          <Icon name="auto_awesome" className="text-primary text-[18px] shrink-0" />
+          <span className="font-body-md text-body-md text-on-surface">{resumen}</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -82,14 +451,15 @@ function MiniHistorial({ historial }: { historial: AuditoriaHistorial[] }) {
   const H = 70;
   return (
     <div className="overflow-x-auto">
-      <svg width={Math.max(historial.length * W + 10, 120)} height={H + 28} role="img" aria-label="Prioridad por semana">
+      <svg width={Math.max(historial.length * W + 10, 120)} height={H + 28} role="img" aria-label="Urgencia por semana">
         {historial.map((h, i) => {
           const v = h.prioridad ?? 0;
           const alto = Math.max(1, (v / max) * H);
           const color = h.alerta === CANDIDATO ? "#ba1a1a" : h.alerta === OBSERVACION ? "#f59e0b" : "#8a8f98";
+          const estado = h.alerta === CANDIDATO ? "para auditar con prioridad" : h.alerta === OBSERVACION ? "para seguir de cerca" : "sin problemas";
           return (
             <g key={h.clave_semana} transform={`translate(${5 + i * W},0)`}>
-              <title>{`${h.clave_semana}: prioridad ${nf(h.prioridad, 1)}${h.alerta ? " — " + alertaInfo(h.alerta).label : ""}`}</title>
+              <title>{`Semana ${h.clave_semana}: urgencia ${nf(h.prioridad, 1)} — ${estado}`}</title>
               <rect x={3} y={H - alto} width={W - 8} height={alto} fill={color} rx={2} />
               <text x={W / 2 - 1} y={H + 12} fontSize={9} textAnchor="middle" fill="currentColor">
                 {h.clave_semana.slice(-3)}
@@ -100,6 +470,17 @@ function MiniHistorial({ historial }: { historial: AuditoriaHistorial[] }) {
       </svg>
     </div>
   );
+}
+
+/* Estado de un indicador en palabras (a partir de las mismas reglas que usa el motor). */
+function estadoIndicador(z: number | null, diff: number | null, efectoMin: number, informativo = false) {
+  if (z != null && diff != null && z >= 3 && diff >= efectoMin)
+    return { texto: informativo ? "Dato informativo" : "Se aparta mucho de lo normal", tone: "text-error bg-error/10", activa: true };
+  if (z != null && diff != null && z >= Z_MIN && diff >= efectoMin)
+    return { texto: informativo ? "Dato informativo" : "Se aparta de lo normal", tone: "text-[#b5610a] bg-[#f59e0b]/10", activa: true };
+  if (z != null && diff != null && z <= -Z_MIN && diff <= -efectoMin)
+    return { texto: "Mejor que lo normal", tone: "text-tertiary bg-tertiary/10", activa: false };
+  return { texto: "Dentro de lo normal", tone: "text-on-surface-variant bg-surface-container-highest", activa: false };
 }
 
 function Detalle({ r, run, onClose }: { r: AuditoriaResultado; run: AuditoriaCorrida | null; onClose: () => void }) {
@@ -130,23 +511,35 @@ function Detalle({ r, run, onClose }: { r: AuditoriaResultado; run: AuditoriaCor
     return () => window.removeEventListener("keydown", h);
   }, [onClose]);
 
-  const a = alertaInfo(r.alerta);
-  const motivos = (r.motivos || "").split(" | ").filter(Boolean);
+  const sit = situacion(r);
+  const motivos = separarMotivos(r.motivos);
   const grupos = useMemo(() => {
     const m = new Map<string, AuditoriaEvidencia[]>();
     (ev || []).forEach((e) => m.set(e.tipo_evidencia, [...(m.get(e.tipo_evidencia) || []), e]));
     return [...m.entries()];
   }, [ev]);
-  const comp: [string, string][] = [
-    ["Tarde comprobado", "tarde_comprobado%"],
-    ["Sin hora de llegada", "sin_hora_llegada%"],
-    ["Sin demora prometida", "sin_demora_prometida%"],
-    ["Carga retroactiva", "carga_tardia_extremo%"],
-    ["Incumplimiento total", "incumple_total%"],
+  const registra = r.segmento === "Registra";
+  const pctHora = mnum(r, "pct_hora_llego");
+
+  const comp: [string, string, Tooltip][] = [
+    ["Llegaron tarde", "tarde_comprobado%", TIPS.tardeComprobado],
+    ["No registran la hora de llegada", "sin_hora_llegada%", TIPS.sinHoraLlegada],
+    ["No tienen demora prometida cargada", "sin_demora_prometida%", TIPS.sinDemoraPrometida],
+    ["Tienen la llegada cargada a destiempo", "carga_tardia_extremo%", TIPS.cargaRetroactiva],
   ];
+  const incumpleTotal = mnum(r, "incumple_total%");
   const tendInc = mnum(r, "incumple_tend_pp");
-  const tendIncZ = mnum(r, "incumple_tend_z");
   const tendComp = mnum(r, "incompleto_tend_pp");
+  const frasesTendencia = (v: number | null, que: string) => {
+    if (v == null) return null;
+    if (v >= 5) return { icono: "trending_up", tone: "text-error", texto: `Está empeorando: ${que} ${nf(v, 1)} puntos porcentuales más que en los 90 días anteriores.` };
+    if (v <= -5) return { icono: "trending_down", tone: "text-tertiary", texto: `Está mejorando: ${que} ${nf(Math.abs(v), 1)} puntos porcentuales menos que en los 90 días anteriores.` };
+    return { icono: "trending_flat", tone: "text-on-surface-variant", texto: `Se mantiene parecido a los 90 días anteriores (${signed(v)} puntos porcentuales).` };
+  };
+  const evolInc = frasesTendencia(tendInc, "incumple");
+  const evolComp = frasesTendencia(tendComp, "carga datos incompletos en");
+  const semanasAuditar = hist.filter((h) => h.alerta === CANDIDATO).length;
+  const semanasSeguir = hist.filter((h) => h.alerta === OBSERVACION).length;
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 overflow-y-auto p-md" onClick={onClose}>
@@ -160,12 +553,19 @@ function Detalle({ r, run, onClose }: { r: AuditoriaResultado; run: AuditoriaCor
           <div className="flex flex-col gap-1">
             <div className="flex items-center gap-space-sm flex-wrap">
               <h3 className="font-headline-md text-headline-md text-on-surface font-semibold">{r.prestador || "Sin nombre"}</h3>
-              <span className={`font-label-caps text-label-caps rounded-md px-2.5 py-0.5 uppercase font-bold ${a.tone}`}>{a.label}</span>
+              <span className={`font-label-caps text-label-caps rounded-md px-2.5 py-0.5 uppercase font-bold ${sit.tone}`}>{sit.label}</span>
             </div>
             <span className="font-body-sm text-body-sm text-on-surface-variant">
-              {r.segmento || "—"} · Nivel {r.nivel || "—"} · {nf(r.servicios)} servicios ({nf(r.cerrados)} cerrados) · Prioridad{" "}
-              {r.prioridad == null ? "—" : `${nf(r.prioridad, 1)} / 100`} · Confianza {r.confianza || "—"}
-              {mnum(r, "pct_hora_llego") != null && ` · ${nf(mnum(r, "pct_hora_llego"), 1)} % con hora de llegada`}
+              {registra ? "Registra la llegada de sus servicios" : "No registra la llegada de sus servicios"}
+              {pctHora != null && ` (${cada100(pctHora)} de cada 100 tienen hora de llegada)`} · Volumen {NIVEL_TEXTO[r.nivel || ""] || "—"}{" "}
+              <InfoTip {...TIPS.colNivel} /> · {nf(r.servicios)} servicios, {nf(r.cerrados)} terminados
+              {r.prioridad != null && (
+                <>
+                  {" "}
+                  · Urgencia {nf(r.prioridad, 1)} de 100 <InfoTip {...TIPS.prioridad} />
+                </>
+              )}{" "}
+              · Confianza del resultado: {r.confianza || "—"} <InfoTip {...TIPS.confianza} />
             </span>
           </div>
           <button
@@ -179,177 +579,242 @@ function Detalle({ r, run, onClose }: { r: AuditoriaResultado; run: AuditoriaCor
         </div>
 
         <div className="p-md flex flex-col gap-lg">
-          <div className="rounded-xl bg-surface-container-low p-space-md flex items-start gap-space-md">
-            <Icon name="gavel" className="text-primary text-[22px] mt-0.5" />
-            <p className="font-body-md text-body-md text-on-surface-variant">
-              Este resultado es un insumo para <b>auditar</b>: ordena a quién mirar primero y deja a mano la evidencia. No es una sanción
-              automática; la decisión la toma una persona después de revisar los servicios.
-            </p>
-          </div>
+          <Tarjeta
+            icono="summarize"
+            titulo="En pocas palabras"
+            tip={TIPS.motivos}
+            resumen="Es un insumo para auditar, no una sanción: la decisión la toma una persona después de revisar los servicios de ejemplo de más abajo."
+          >
+            {motivos.length > 0 ? (
+              <div className="flex flex-col gap-1 font-body-md text-body-md text-on-surface">
+                <span>
+                  {sit.rank >= 2
+                    ? `Quedó en “${sit.label.toLowerCase()}” por estos motivos:`
+                    : "Esto es lo que se observa en este prestador:"}
+                </span>
+                <MotivosLista texto={r.motivos} detallado />
+              </div>
+            ) : (
+              <p className="font-body-md text-body-md text-on-surface">
+                {registra
+                  ? "No se aparta de forma importante de lo normal en servicios parecidos. Ningún aspecto medido muestra una diferencia significativa."
+                  : "Casi no registra la hora de llegada de sus servicios, por lo que no se le puede medir la demora. El problema de fondo es que no usa el sistema."}
+              </p>
+            )}
+            {r.informativo && (
+              <p className="font-body-sm text-body-sm text-on-surface-variant">
+                <b>Dato informativo (no suma a la urgencia):</b> {acentuar(r.informativo)}
+              </p>
+            )}
+          </Tarjeta>
 
-          {motivos.length > 0 && (
-            <section className="flex flex-col gap-1">
-              <h4 className="font-headline-md text-body-md text-on-surface font-semibold">Por qué quedó marcado</h4>
-              <ul className="list-disc pl-5 flex flex-col gap-0.5 font-body-md text-body-md text-on-surface">
-                {motivos.map((m, i) => (
-                  <li key={i}>{m}</li>
-                ))}
-              </ul>
-            </section>
-          )}
-          {r.informativo && (
-            <p className="font-body-sm text-body-sm text-on-surface-variant">
-              <b>Informativo (no suma a la prioridad):</b> {r.informativo}
-            </p>
-          )}
-
-          <section className="flex flex-col gap-2">
-            <h4 className="font-headline-md text-body-md text-on-surface font-semibold">Indicadores contra sus pares</h4>
-            <p className="font-body-sm text-body-sm text-on-surface-variant">
-              “Esperado” es lo que tendría el prestador si rindiera como los demás en las mismas campañas y tipos de servicio. La señal se
-              activa si la diferencia es estadísticamente significativa (z ajustado ≥ {Z_MIN}) y supera un mínimo en puntos porcentuales.
-            </p>
-            <div className="overflow-x-auto">
-              <table className="w-full text-body-md font-body-md whitespace-nowrap">
-                <thead>
-                  <tr className="bg-surface-container-low font-label-caps text-label-caps text-on-surface-variant uppercase text-left">
-                    <th className="py-2 px-2">Indicador</th>
-                    <th className="py-2 px-2 text-right">Casos</th>
-                    <th className="py-2 px-2 text-right">Observado</th>
-                    <th className="py-2 px-2 text-right">Esperado</th>
-                    <th className="py-2 px-2 text-right">Diferencia</th>
-                    <th className="py-2 px-2 text-right">z ajustado</th>
-                    <th className="py-2 px-2">Señal</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {INDICADORES.filter((i) => mnum(r, `${i.clave}_obs%`) != null).map((i) => {
-                    const diff = mnum(r, `${i.clave}_diff_pp`);
-                    const z = mnum(r, `${i.clave}_z_adj`);
-                    const activa = z != null && diff != null && z >= Z_MIN && diff >= i.efectoMin;
-                    return (
-                      <tr key={i.clave} className="border-t border-outline-variant/20">
-                        <td className="py-2 px-2 font-body-md text-body-md text-on-surface">{i.nombre}</td>
-                        <td className="py-2 px-2 text-right">{nf(mnum(r, `${i.clave}_n`))}</td>
-                        <td className="py-2 px-2 text-right">{pp(mnum(r, `${i.clave}_obs%`))}</td>
-                        <td className="py-2 px-2 text-right">{pp(mnum(r, `${i.clave}_esp%`))}</td>
-                        <td className={`py-2 px-2 text-right ${activa ? "text-error font-semibold" : ""}`}>{signed(diff)} pp</td>
-                        <td className="py-2 px-2 text-right">{signed(z)}</td>
-                        <td className="py-2 px-2">
-                          {activa ? (
-                            <span className="font-label-caps text-label-caps rounded-md px-2 py-0.5 uppercase font-bold text-error bg-error/10">
-                              {i.informativo ? "Informativo" : "Activa"}
-                            </span>
-                          ) : (
-                            <span className="text-on-surface-variant">—</span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+          <Tarjeta icono="compare_arrows" titulo="Comparado con otros prestadores" tip={TIPS.indicadores}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+              {INDICADORES.filter((i) => mnum(r, `${i.clave}_obs%`) != null).map((i) => {
+                const obs = mnum(r, `${i.clave}_obs%`);
+                const esp = mnum(r, `${i.clave}_esp%`);
+                const est = estadoIndicador(mnum(r, `${i.clave}_z_adj`), mnum(r, `${i.clave}_diff_pp`), i.efectoMin, i.informativo);
+                return (
+                  <Caja
+                    key={i.clave}
+                    titulo={i.titulo}
+                    valor={`${cada100(obs)} de cada 100`}
+                    badge={est.texto}
+                    badgeTone={est.tone}
+                    explicacion={`${i.problema}. Lo normal en servicios parecidos: ${cada100(esp)} de cada 100 (sobre ${nf(mnum(r, `${i.clave}_n`))} servicios).`}
+                  />
+                );
+              })}
             </div>
-          </section>
+            <details className="rounded-lg bg-surface-container-low p-sm font-body-sm text-body-sm text-on-surface-variant">
+              <summary className="cursor-pointer font-semibold text-on-surface">
+                <span className="inline-flex items-center gap-1.5">
+                  Ver detalle técnico
+                  <InfoTip {...TIPS.tecnico} />
+                </span>
+              </summary>
+              <div className="overflow-x-auto pt-2">
+                <table className="w-full text-body-md font-body-md whitespace-nowrap">
+                  <thead>
+                    <tr className="bg-surface-container-lowest font-label-caps text-label-caps text-on-surface-variant uppercase text-left">
+                      <th className="py-2 px-2">Indicador</th>
+                      {(
+                        [
+                          ["Casos", TIPS.colCasos],
+                          ["Observado", TIPS.colObservado],
+                          ["Esperado", TIPS.colEsperado],
+                          ["Diferencia", TIPS.colDiferencia],
+                          ["z ajustado", TIPS.colZ],
+                        ] as [string, Tooltip][]
+                      ).map(([nombre, tip]) => (
+                        <th key={nombre} className="py-2 px-2 text-right">
+                          <span className="inline-flex items-center gap-1 justify-end">
+                            {nombre}
+                            <InfoTip {...tip} />
+                          </span>
+                        </th>
+                      ))}
+                      <th className="py-2 px-2">
+                        <span className="inline-flex items-center gap-1">
+                          Señal
+                          <InfoTip {...TIPS.colSenal} />
+                        </span>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {INDICADORES.filter((i) => mnum(r, `${i.clave}_obs%`) != null).map((i) => {
+                      const diff = mnum(r, `${i.clave}_diff_pp`);
+                      const z = mnum(r, `${i.clave}_z_adj`);
+                      const activa = z != null && diff != null && z >= Z_MIN && diff >= i.efectoMin;
+                      return (
+                        <tr key={i.clave} className="border-t border-outline-variant/20">
+                          <td className="py-2 px-2 text-on-surface">{i.titulo}</td>
+                          <td className="py-2 px-2 text-right">{nf(mnum(r, `${i.clave}_n`))}</td>
+                          <td className="py-2 px-2 text-right">{pp(mnum(r, `${i.clave}_obs%`))}</td>
+                          <td className="py-2 px-2 text-right">{pp(mnum(r, `${i.clave}_esp%`))}</td>
+                          <td className={`py-2 px-2 text-right ${activa ? "text-error font-semibold" : ""}`}>{signed(diff)} pp</td>
+                          <td className="py-2 px-2 text-right">{signed(z)}</td>
+                          <td className="py-2 px-2">{activa ? (i.informativo ? "Informativo" : "Activa") : "—"}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </details>
+          </Tarjeta>
 
           <section className="grid grid-cols-1 md:grid-cols-2 gap-md">
-            <div className="flex flex-col gap-2">
-              <h4 className="font-headline-md text-body-md text-on-surface font-semibold">De qué está hecho el incumplimiento</h4>
-              <table className="w-full text-body-md font-body-md">
-                <tbody>
-                  {comp.map(([label, k]) => (
-                    <tr key={k} className="border-t border-outline-variant/20">
-                      <td className="py-1.5 px-2 text-on-surface">{label}</td>
-                      <td className="py-1.5 px-2 text-right">{pp(mnum(r, k))}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <Tarjeta
+              icono="rule"
+              titulo="Qué pasa con los servicios que incumplen"
+              tip={TIPS.composicion}
+              resumen={
+                incumpleTotal != null
+                  ? `En total, ${cada100(incumpleTotal)} de cada 100 servicios terminados de este prestador incumplen.`
+                  : undefined
+              }
+            >
+              <ul className="flex flex-col gap-1.5 font-body-md text-body-md text-on-surface">
+                {comp.map(([label, k, tip]) => (
+                  <li key={k} className="flex items-center justify-between gap-2">
+                    <span className="inline-flex items-center gap-1">
+                      {label}
+                      <InfoTip {...tip} />
+                    </span>
+                    <span className="font-semibold">{mnum(r, k) == null ? "—" : `${cada100(mnum(r, k))} de cada 100`}</span>
+                  </li>
+                ))}
+              </ul>
               {(mnum(r, "extremos_cerrados_fin_de_mes%") != null || mnum(r, "extremos_llegada_y_cierre_juntos%") != null) && (
                 <p className="font-body-sm text-body-sm text-on-surface-variant">
-                  De sus cargas retroactivas: {nf(mnum(r, "extremos_cerrados_fin_de_mes%"), 0)} % se cerraron en los últimos 3 días del mes y{" "}
-                  {nf(mnum(r, "extremos_llegada_y_cierre_juntos%"), 0)} % tienen llegada y cierre cargados juntos.
+                  De sus llegadas cargadas a destiempo: {cada100(mnum(r, "extremos_cerrados_fin_de_mes%"))} de cada 100 se cerraron en los últimos 3 días del mes y{" "}
+                  {cada100(mnum(r, "extremos_llegada_y_cierre_juntos%"))} de cada 100 tienen la llegada y el cierre cargados juntos.
                 </p>
               )}
-            </div>
-            <div className="flex flex-col gap-2">
-              <h4 className="font-headline-md text-body-md text-on-surface font-semibold">Tendencia (últimos 90 días contra los 90 anteriores)</h4>
-              <table className="w-full text-body-md font-body-md">
-                <tbody>
-                  <tr className="border-t border-outline-variant/20">
-                    <td className="py-1.5 px-2 text-on-surface">Incumplimiento</td>
-                    <td className="py-1.5 px-2 text-right">
-                      {signed(tendInc)} pp {tendIncZ != null && <span className="text-on-surface-variant">(z {signed(tendIncZ)})</span>}
-                    </td>
-                  </tr>
-                  <tr className="border-t border-outline-variant/20">
-                    <td className="py-1.5 px-2 text-on-surface">Registro incompleto</td>
-                    <td className="py-1.5 px-2 text-right">{signed(tendComp)} pp</td>
-                  </tr>
-                </tbody>
-              </table>
-              <h4 className="font-headline-md text-body-md text-on-surface font-semibold pt-2">Prioridad semana a semana</h4>
+            </Tarjeta>
+
+            <Tarjeta icono="timeline" titulo="Cómo viene evolucionando" tip={TIPS.tendencia}>
+              {[evolInc, evolComp].filter(Boolean).length === 0 && (
+                <p className="font-body-md text-body-md text-on-surface-variant">Todavía no hay suficientes datos para comparar los últimos 90 días con los anteriores.</p>
+              )}
+              {[evolInc, evolComp].map(
+                (e, i) =>
+                  e && (
+                    <p key={i} className="flex items-start gap-2 font-body-md text-body-md text-on-surface">
+                      <Icon name={e.icono} className={`${e.tone} text-[20px] shrink-0`} />
+                      {e.texto}
+                    </p>
+                  ),
+              )}
+              <h5 className="font-label-caps text-label-caps text-on-surface-variant uppercase flex items-center gap-1 pt-1">
+                Semana a semana
+                <InfoTip {...TIPS.historial} />
+              </h5>
               {hist.length > 0 ? (
-                <MiniHistorial historial={hist} />
+                <>
+                  <MiniHistorial historial={hist} />
+                  <span className="font-body-sm text-body-sm text-on-surface-variant">
+                    En las últimas {plural(hist.length, "semana", "semanas")} estuvo {semanasAuditar} {semanasAuditar === 1 ? "vez" : "veces"} para auditar con prioridad y {semanasSeguir}{" "}
+                    {semanasSeguir === 1 ? "vez" : "veces"} para seguir de cerca.
+                  </span>
+                </>
               ) : (
                 <span className="font-body-sm text-body-sm text-on-surface-variant">Todavía no hay historial.</span>
               )}
-            </div>
+            </Tarjeta>
           </section>
 
-          <section className="flex flex-col gap-2">
-            <h4 className="font-headline-md text-body-md text-on-surface font-semibold">Servicios que respaldan la alerta</h4>
+          <Tarjeta icono="manage_search" titulo="Servicios de ejemplo para revisar" tip={TIPS.evidencia}>
+            <p className="font-body-md text-body-md text-on-surface-variant">
+              Estos son casos reales de este prestador. Conviene revisarlos uno por uno antes de decidir.
+            </p>
             {err && <p className="font-body-md text-body-md text-error">{err}</p>}
             {!err && ev == null && <p className="font-body-md text-body-md text-on-surface-variant">Cargando…</p>}
             {!err && ev != null && grupos.length === 0 && (
               <p className="font-body-md text-body-md text-on-surface-variant">
-                No hay servicios de evidencia guardados para este prestador (solo se guardan para los que tienen prioridad mayor a 0).
+                No hay servicios de ejemplo guardados para este prestador (solo se guardan para los que tienen alguna diferencia importante).
               </p>
             )}
-            {grupos.map(([tipo, filas]) => (
-              <div key={tipo} className="flex flex-col gap-1">
-                <span className="font-label-caps text-label-caps text-on-surface-variant uppercase">
-                  {tipo} ({filas.length})
-                </span>
-                <div className="overflow-x-auto max-h-72 overflow-y-auto border border-outline-variant/20 rounded-lg">
-                  <table className="w-full text-body-sm font-body-sm whitespace-nowrap">
-                    <thead className="sticky top-0">
-                      <tr className="bg-surface-container-low font-label-caps text-label-caps text-on-surface-variant uppercase text-left">
-                        <th className="py-1.5 px-2">Servicio</th>
-                        <th className="py-1.5 px-2">Orden</th>
-                        <th className="py-1.5 px-2">Campaña</th>
-                        <th className="py-1.5 px-2">Tipo</th>
-                        <th className="py-1.5 px-2">Alta</th>
-                        <th className="py-1.5 px-2">Llegada</th>
-                        <th className="py-1.5 px-2">Finalización</th>
-                        <th className="py-1.5 px-2 text-right">Prometida</th>
-                        <th className="py-1.5 px-2 text-right">Real</th>
-                        <th className="py-1.5 px-2">Cierre fin de mes</th>
-                        <th className="py-1.5 px-2">Llegada y cierre juntos</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filas.map((e, i) => (
-                        <tr key={`${e.id_servicio_prestado}-${i}`} className="border-t border-outline-variant/20">
-                          <td className="py-1.5 px-2">{e.id_servicio_prestado ?? "—"}</td>
-                          <td className="py-1.5 px-2">{e.id_orden_de_servicio ?? "—"}</td>
-                          <td className="py-1.5 px-2">{String(e.datos?.campana ?? "—")}</td>
-                          <td className="py-1.5 px-2">{String(e.datos?.tipo_de_servicio ?? "—")}</td>
-                          <td className="py-1.5 px-2">{fechaHora(e.datos?.alta)}</td>
-                          <td className="py-1.5 px-2">{fechaHora(e.datos?.llegada)}</td>
-                          <td className="py-1.5 px-2">{fechaHora(e.datos?.finalizacion)}</td>
-                          <td className="py-1.5 px-2 text-right">{minutos(e.datos?.demora_prometida)}</td>
-                          <td className="py-1.5 px-2 text-right">{minutos(e.datos?.demora_real)}</td>
-                          <td className="py-1.5 px-2">{String(e.datos?.cierre_ultimos_3_dias_del_mes ?? "—")}</td>
-                          <td className="py-1.5 px-2">{String(e.datos?.llegada_y_cierre_juntos ?? "—")}</td>
+            {grupos.map(([tipo, filas]) => {
+              const nombre = TITULO_EVIDENCIA[tipo];
+              return (
+                <div key={tipo} className="flex flex-col gap-1">
+                  <span className="font-label-caps text-label-caps text-on-surface-variant uppercase flex items-center gap-1">
+                    {nombre?.titulo ?? tipo} ({filas.length})
+                    {nombre && <InfoTip titulo={nombre.titulo} leer={nombre.leer} />}
+                  </span>
+                  <div className="overflow-x-auto max-h-72 overflow-y-auto border border-outline-variant/20 rounded-lg">
+                    <table className="w-full text-body-sm font-body-sm whitespace-nowrap">
+                      <thead className="sticky top-0">
+                        <tr className="bg-surface-container-low font-label-caps text-label-caps text-on-surface-variant uppercase text-left">
+                          <th className="py-1.5 px-2">Servicio</th>
+                          <th className="py-1.5 px-2">Orden</th>
+                          <th className="py-1.5 px-2">Campaña</th>
+                          <th className="py-1.5 px-2">Tipo de servicio</th>
+                          <th className="py-1.5 px-2">Se dio de alta</th>
+                          <th className="py-1.5 px-2">Llegó</th>
+                          <th className="py-1.5 px-2">Terminó</th>
+                          <th className="py-1.5 px-2 text-right">Demora prometida</th>
+                          <th className="py-1.5 px-2 text-right">Demora real</th>
+                          <th className="py-1.5 px-2">
+                            <span className="inline-flex items-center gap-1">
+                              Cerrado a fin de mes
+                              <InfoTip {...TIPS.colCierreMes} />
+                            </span>
+                          </th>
+                          <th className="py-1.5 px-2">
+                            <span className="inline-flex items-center gap-1">
+                              Llegada y cierre juntos
+                              <InfoTip {...TIPS.colJuntos} />
+                            </span>
+                          </th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {filas.map((e, i) => (
+                          <tr key={`${e.id_servicio_prestado}-${i}`} className="border-t border-outline-variant/20">
+                            <td className="py-1.5 px-2">{e.id_servicio_prestado ?? "—"}</td>
+                            <td className="py-1.5 px-2">{e.id_orden_de_servicio ?? "—"}</td>
+                            <td className="py-1.5 px-2">{String(e.datos?.campana ?? "—")}</td>
+                            <td className="py-1.5 px-2">{String(e.datos?.tipo_de_servicio ?? "—")}</td>
+                            <td className="py-1.5 px-2">{fechaHora(e.datos?.alta)}</td>
+                            <td className="py-1.5 px-2">{fechaHora(e.datos?.llegada)}</td>
+                            <td className="py-1.5 px-2">{fechaHora(e.datos?.finalizacion)}</td>
+                            <td className="py-1.5 px-2 text-right">{minutos(e.datos?.demora_prometida)}</td>
+                            <td className="py-1.5 px-2 text-right">{minutos(e.datos?.demora_real)}</td>
+                            <td className="py-1.5 px-2">{e.datos?.cierre_ultimos_3_dias_del_mes === "Si" ? "Sí" : e.datos?.cierre_ultimos_3_dias_del_mes === "No" ? "No" : "—"}</td>
+                            <td className="py-1.5 px-2">{e.datos?.llegada_y_cierre_juntos === "Si" ? "Sí" : e.datos?.llegada_y_cierre_juntos === "No" ? "No" : "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </section>
+              );
+            })}
+          </Tarjeta>
         </div>
       </div>
     </div>
@@ -366,7 +831,7 @@ function descargarCsv(filas: AuditoriaResultado[], clave: string) {
     ["Servicios", (r) => r.servicios],
     ["Cerrados", (r) => r.cerrados],
     ["Prioridad", (r) => r.prioridad],
-    ["Alerta", (r) => alertaInfo(r.alerta).label],
+    ["Situacion", (r) => situacion(r).label],
     ["Confianza", (r) => r.confianza],
     ["% tarde comprobado", (r) => mnum(r, "tarde_comprobado%")],
     ["% sin hora de llegada", (r) => mnum(r, "sin_hora_llegada%")],
@@ -374,7 +839,7 @@ function descargarCsv(filas: AuditoriaResultado[], clave: string) {
     ["% incumple total", (r) => mnum(r, "incumple_total%")],
     ["% incumple esperado", (r) => mnum(r, "incumple_esp%")],
     ["% registro incompleto", (r) => mnum(r, "incompleto_obs%")],
-    ["Motivos", (r) => r.motivos],
+    ["Motivos", (r) => separarMotivos(r.motivos).map((m) => explicarMotivo(m).frase).join(" | ")],
   ];
   const esc = (v: unknown) => {
     const s = v == null ? "" : String(v);
@@ -397,7 +862,7 @@ export default function AuditoriaPanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [fAlerta, setFAlerta] = useState<"todas" | "candidato" | "observacion" | "sin">("todas");
+  const [fAlerta, setFAlerta] = useState<"todas" | "auditar" | "seguir" | "ok">("todas");
   const [fSegmento, setFSegmento] = useState<"Registra" | "Sin trazabilidad" | "todos">("Registra");
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "prioridad", dir: "desc" });
   const [page, setPage] = useState(1);
@@ -429,10 +894,10 @@ export default function AuditoriaPanel() {
     const arr = (data?.resultados || []).filter((r) => {
       if (fSegmento !== "todos" && r.segmento !== fSegmento) return false;
       if (q && !(r.prestador || "").toLowerCase().includes(q)) return false;
-      const rank = alertaInfo(r.alerta).rank;
-      if (fAlerta === "candidato") return rank === 2;
-      if (fAlerta === "observacion") return rank === 1;
-      if (fAlerta === "sin") return rank === 0;
+      const clave = situacion(r).clave;
+      if (fAlerta === "auditar") return clave === "auditar";
+      if (fAlerta === "seguir") return clave === "seguir";
+      if (fAlerta === "ok") return clave === "ok";
       return true;
     });
     const val = (r: AuditoriaResultado): string | number | null => {
@@ -440,7 +905,7 @@ export default function AuditoriaPanel() {
         case "prestador":
           return (r.prestador || "").toLowerCase();
         case "alerta":
-          return alertaInfo(r.alerta).rank;
+          return situacion(r).rank;
         case "nivel":
           return r.nivel;
         default:
@@ -463,19 +928,22 @@ export default function AuditoriaPanel() {
   const alertas = corrida?.conteos?.alertas_registran || {};
   const totalPaginas = Math.max(1, Math.ceil(filas.length / PAGE_SIZE));
   const visibles = filas.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-  const th = (key: SortKey, label: string, right = false) => (
+  const th = (key: SortKey, label: string, tip: Tooltip, right = false) => (
     <th className={`py-2 pr-3 ${right ? "text-right" : ""}`}>
-      <button
-        type="button"
-        className={`uppercase hover:text-on-surface flex items-center gap-1 ${right ? "ml-auto" : ""}`}
-        onClick={() => {
-          setSort((s) => ({ key, dir: s.key === key && s.dir === "desc" ? "asc" : "desc" }));
-          setPage(1);
-        }}
-      >
-        {label}
-        {sort.key === key && <Icon name={sort.dir === "desc" ? "arrow_downward" : "arrow_upward"} className="text-[14px]" />}
-      </button>
+      <div className={`flex items-center gap-1 ${right ? "justify-end" : ""}`}>
+        <button
+          type="button"
+          className="uppercase hover:text-on-surface flex items-center gap-1"
+          onClick={() => {
+            setSort((s) => ({ key, dir: s.key === key && s.dir === "desc" ? "asc" : "desc" }));
+            setPage(1);
+          }}
+        >
+          {label}
+          {sort.key === key && <Icon name={sort.dir === "desc" ? "arrow_downward" : "arrow_upward"} className="text-[14px]" />}
+        </button>
+        <InfoTip {...tip} />
+      </div>
     </th>
   );
   const v90 = resumen.incumple_total_90d;
@@ -499,24 +967,43 @@ export default function AuditoriaPanel() {
   if (!corrida) {
     return (
       <p className="font-body-md text-body-md text-on-surface-variant text-center py-xl">
-        Todavía no hay ninguna corrida de auditoría guardada. El motor corre los lunes; también se puede ejecutar a mano desde GitHub Actions.
+        Todavía no hay ningún análisis guardado. El análisis corre automáticamente los lunes; también se puede ejecutar a mano desde GitHub Actions.
       </p>
     );
   }
+
+  const nAuditar = alertas[CANDIDATO] ?? 0;
+  const nSeguir = alertas[OBSERVACION] ?? 0;
+  const nSinProblemas = alertas["Sin alerta"] ?? 0;
+  const nRegistran = resumen.prestadores_registran ?? 0;
+  const nSinRegistro = resumen.prestadores_sin_trazabilidad ?? 0;
+  const diff90 = v90 != null && vPrev != null ? v90 - vPrev : null;
+  const tendenciaRed =
+    diff90 == null
+      ? null
+      : diff90 >= 1
+        ? { texto: `Empeoró ${nf(diff90, 1)} puntos`, tone: "text-error bg-error/10", frase: `empeoró ${nf(diff90, 1)} puntos porcentuales respecto de los 90 días anteriores` }
+        : diff90 <= -1
+          ? { texto: `Mejoró ${nf(Math.abs(diff90), 1)} puntos`, tone: "text-tertiary bg-tertiary/10", frase: `mejoró ${nf(Math.abs(diff90), 1)} puntos porcentuales respecto de los 90 días anteriores` }
+          : { texto: "Sin cambios", tone: "text-on-surface-variant bg-surface-container-highest", frase: "se mantiene parecida a la de los 90 días anteriores" };
 
   return (
     <div className="flex flex-col gap-lg">
       <section className="flex flex-col gap-space-sm">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex flex-col">
-            <h3 className="font-headline-md text-headline-md text-on-surface font-semibold">Auditoría de prestadores</h3>
+            <h3 className="font-headline-md text-headline-md text-on-surface font-semibold flex items-center gap-1.5">
+              Auditoría de prestadores
+              <InfoTip {...TIPS.pantalla} />
+            </h3>
             <span className="font-body-sm text-body-sm text-on-surface-variant">
-              Semana {corrida.clave_semana} · datos del {soloFecha(corrida.periodo_desde)} al {soloFecha(corrida.periodo_hasta)} · motor v
-              {corrida.version_motor} · calculada el {fechaHora(corrida.ejecutada_at)}
+              Resultado de la semana {corrida.clave_semana} · con datos del {soloFecha(corrida.periodo_desde)} al {soloFecha(corrida.periodo_hasta)} · calculado el{" "}
+              {fechaHora(corrida.ejecutada_at)}
             </span>
           </div>
           <label className="flex items-center gap-1.5 font-label-sm text-label-sm text-on-surface-variant">
-            Corrida
+            Semana
+            <InfoTip {...TIPS.corrida} />
             <select
               className="form-input-styled font-body-md text-body-md text-on-surface h-8 py-0"
               value={runId || corrida.run_id}
@@ -534,41 +1021,108 @@ export default function AuditoriaPanel() {
             </select>
           </label>
         </div>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-md">
-          <Kpi titulo="Candidatos a auditoría" valor={nf(alertas[CANDIDATO] ?? 0)} detalle="z ajustado ≥ 3 y volumen suficiente" tone="text-error" />
-          <Kpi titulo="En observación" valor={nf(alertas[OBSERVACION] ?? 0)} detalle="Alguna señal significativa, menos fuerte" tone="text-[#b5610a]" />
-          <Kpi titulo="Sin alerta" valor={nf(alertas["Sin alerta"] ?? 0)} detalle={`${nf(resumen.prestadores_registran ?? undefined)} prestadores que registran`} />
-          <Kpi
-            titulo="Sin trazabilidad"
-            valor={nf(resumen.prestadores_sin_trazabilidad ?? undefined)}
-            detalle={`${nf(resumen.servicios_sin_trazabilidad ?? undefined)} servicios: no registran la llegada`}
-          />
+
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-md">
+          <Tarjeta
+            icono="fact_check"
+            titulo="A quién conviene mirar primero"
+            resumen={`Esta semana hay ${plural(nAuditar, "prestador", "prestadores")} para auditar con prioridad y ${plural(nSeguir, "prestador", "prestadores")} para seguir de cerca, entre los ${nf(nRegistran)} que registran la llegada de sus servicios. ${
+              nSinRegistro > 0 ? `Otros ${plural(nSinRegistro, "prestador", "prestadores")} no registran la llegada, así que no se los puede medir.` : ""
+            }`}
+          >
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <Caja
+                titulo="Para auditar con prioridad"
+                valor={`${nf(nAuditar)} ${nAuditar === 1 ? "prestador" : "prestadores"}`}
+                valorTone={nAuditar > 0 ? "text-error" : "text-on-surface"}
+                explicacion="Se apartan mucho de lo normal y tienen suficientes servicios como para que no sea casualidad."
+                tip={TIPS.candidatos}
+              />
+              <Caja
+                titulo="Para seguir de cerca"
+                valor={`${nf(nSeguir)} ${nSeguir === 1 ? "prestador" : "prestadores"}`}
+                valorTone={nSeguir > 0 ? "text-[#b5610a]" : "text-on-surface"}
+                explicacion="Tienen alguna diferencia importante, pero menos marcada."
+                tip={TIPS.observacion}
+              />
+              <Caja
+                titulo="Sin problemas"
+                valor={`${nf(nSinProblemas)} ${nSinProblemas === 1 ? "prestador" : "prestadores"}`}
+                explicacion={`Dentro de lo normal, de ${nf(nRegistran)} que registran la llegada.`}
+                tip={TIPS.sinAlerta}
+              />
+              <Caja
+                titulo="No registran la llegada"
+                valor={`${nf(nSinRegistro)} ${nSinRegistro === 1 ? "prestador" : "prestadores"}`}
+                explicacion={`No se les puede medir la demora (${nf(resumen.servicios_sin_trazabilidad ?? undefined)} servicios).`}
+                tip={TIPS.sinTrazabilidad}
+              />
+            </div>
+          </Tarjeta>
+
+          <Tarjeta
+            icono="directions_car"
+            titulo="Cómo está la red de prestadores"
+            resumen={`De cada 100 servicios terminados de los prestadores que registran, ${cada100(resumen.pct_cumple)} se cumplieron como se prometió.${
+              tendenciaRed ? ` En los últimos 90 días la situación ${tendenciaRed.frase}.` : ""
+            }`}
+          >
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <Caja
+                titulo="Cumplen lo prometido"
+                valor={`${cada100(resumen.pct_cumple)} de cada 100`}
+                explicacion="Llegan a tiempo y dejan la llegada bien registrada."
+                tip={TIPS.cumplen}
+              />
+              <Caja
+                titulo="Llegan tarde"
+                valor={`${cada100(resumen.pct_tarde_comprobado)} de cada 100`}
+                explicacion="Con la hora de llegada registrada, llegaron después de lo prometido."
+                tip={TIPS.tardeComprobado}
+              />
+              <Caja
+                titulo="No registran la llegada"
+                valor={`${cada100(resumen.pct_sin_hora_llegada)} de cada 100`}
+                explicacion="No se puede comprobar si cumplieron."
+                tip={TIPS.sinHoraLlegada}
+              />
+              <Caja
+                titulo="Cargan la llegada a destiempo"
+                valor={`${cada100(resumen.pct_carga_retroactiva)} de cada 100`}
+                explicacion="La llegada se cargó mucho después de que ocurrió."
+                tip={TIPS.cargaRetroactiva}
+              />
+              <Caja
+                titulo="Incumplen en los últimos 90 días"
+                valor={`${cada100(v90)} de cada 100`}
+                badge={tendenciaRed?.texto}
+                badgeTone={tendenciaRed?.tone}
+                explicacion={vPrev != null ? `En los 90 días anteriores eran ${cada100(vPrev)} de cada 100.` : undefined}
+                tip={TIPS.incumple90}
+              />
+            </div>
+          </Tarjeta>
         </div>
-        <div className="grid grid-cols-2 lg:grid-cols-5 gap-md">
-          <Kpi titulo="Cumplen la demora" valor={pp(resumen.pct_cumple)} detalle="Prestadores que registran" />
-          <Kpi titulo="Tarde comprobado" valor={pp(resumen.pct_tarde_comprobado)} />
-          <Kpi titulo="Sin hora de llegada" valor={pp(resumen.pct_sin_hora_llegada)} />
-          <Kpi titulo="Carga retroactiva" valor={pp(resumen.pct_carga_retroactiva)} />
-          <Kpi
-            titulo="Incumple (90 días)"
-            valor={pp(v90)}
-            detalle={vPrev != null && v90 != null ? `${signed(v90 - vPrev)} pp contra los 90 días anteriores` : undefined}
-          />
-        </div>
+
         <details className="rounded-xl bg-surface-container-low p-space-md font-body-md text-body-md text-on-surface-variant">
-          <summary className="cursor-pointer font-semibold text-on-surface">Cómo leer esta pantalla</summary>
+          <summary className="cursor-pointer font-semibold text-on-surface">
+            <span className="inline-flex items-center gap-1.5">
+              Cómo leer esta pantalla
+              <InfoTip {...TIPS.comoLeer} />
+            </span>
+          </summary>
           <div className="pt-2 flex flex-col gap-1">
             <p>
-              Cada prestador se compara contra los demás en las mismas campañas y tipos de servicio. Se marca cuando se aparta más de lo que
-              explicaría el azar y la diferencia es relevante en puntos porcentuales.
+              Cada semana se compara a cada prestador con los demás en servicios parecidos (misma campaña y mismo tipo de servicio). Si un prestador se
+              aparta mucho de lo normal, y no es por casualidad, queda marcado.
             </p>
             <p>
-              <b>Prioridad</b> (0 a 100): suma ponderada de las señales activas; sirve para ordenar la lista. <b>Candidato a auditoría</b>:
-              señal fuerte (z ajustado ≥ 3) con al menos 300 servicios cerrados. <b>Observación</b>: alguna señal activa, menos fuerte.
+              <b>Para auditar con prioridad</b>: se aparta mucho de lo normal y tiene al menos 300 servicios terminados. <b>Para seguir de cerca</b>: se aparta
+              de lo normal, pero menos o con menos servicios. <b>Urgencia</b>: un puntaje de 0 a 100 que ordena la lista; no es un porcentaje.
             </p>
             <p>
-              <b>Sin trazabilidad</b>: prestadores que casi no registran la hora de llegada; no se les puede medir la demora, se listan aparte. Los
-              servicios programados no se incluyen. Nada de esto es una sanción automática: hay que revisar la evidencia de cada caso.
+              <b>No registran la llegada</b>: prestadores que casi no cargan la hora de llegada; no se les puede medir la demora, por eso se listan aparte. Los
+              servicios programados no se incluyen. Nada de esto es una sanción automática: hay que revisar los servicios de cada caso.
             </p>
           </div>
         </details>
@@ -578,8 +1132,9 @@ export default function AuditoriaPanel() {
         <div className="p-md flex flex-col gap-space-md">
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-space-sm">
             <div className="flex items-center gap-space-xs">
-              <Icon name="fact_check" className="text-primary text-[22px]" />
-              <h3 className="font-headline-md text-headline-md text-on-surface font-semibold">Prestadores priorizados</h3>
+              <Icon name="format_list_numbered" className="text-primary text-[22px]" />
+              <h3 className="font-headline-md text-headline-md text-on-surface font-semibold">Prestadores, del más al menos urgente</h3>
+              <InfoTip {...TIPS.priorizados} />
               <span className="font-label-code text-label-code text-on-surface-variant">({nf(filas.length)})</span>
             </div>
             <div className="flex items-center gap-space-sm flex-wrap">
@@ -609,11 +1164,11 @@ export default function AuditoriaPanel() {
             <div className="flex items-center gap-1 p-1 rounded-lg bg-surface-container-low font-body-sm text-body-sm flex-wrap">
               {(
                 [
-                  ["todas", "Todas"],
-                  ["candidato", "Candidatos"],
-                  ["observacion", "Observación"],
-                  ["sin", "Sin alerta"],
-                ] as ["todas" | "candidato" | "observacion" | "sin", string][]
+                  ["todas", "Todos"],
+                  ["auditar", "Para auditar"],
+                  ["seguir", "Para seguir de cerca"],
+                  ["ok", "Sin problemas"],
+                ] as ["todas" | "auditar" | "seguir" | "ok", string][]
               ).map(([k, label]) => (
                 <button
                   key={k}
@@ -629,12 +1184,15 @@ export default function AuditoriaPanel() {
                   {label}
                 </button>
               ))}
+              <span className="pr-2">
+                <InfoTip {...TIPS.filtroAlerta} />
+              </span>
             </div>
             <div className="flex items-center gap-1 p-1 rounded-lg bg-surface-container-low font-body-sm text-body-sm flex-wrap">
               {(
                 [
                   ["Registra", "Registran la llegada"],
-                  ["Sin trazabilidad", "Sin trazabilidad"],
+                  ["Sin trazabilidad", "No registran la llegada"],
                   ["todos", "Todos"],
                 ] as ["Registra" | "Sin trazabilidad" | "todos", string][]
               ).map(([k, label]) => (
@@ -652,6 +1210,9 @@ export default function AuditoriaPanel() {
                   {label}
                 </button>
               ))}
+              <span className="pr-2">
+                <InfoTip {...TIPS.filtroSegmento} />
+              </span>
             </div>
           </div>
         </div>
@@ -659,19 +1220,23 @@ export default function AuditoriaPanel() {
           <table className="w-full text-body-md font-body-md whitespace-nowrap">
             <thead>
               <tr className="bg-surface-container-low font-label-caps text-label-caps text-on-surface-variant text-left">
-                {th("prestador", "Prestador")}
-                {th("nivel", "Nivel")}
-                {th("servicios", "Servicios", true)}
-                {th("cerrados", "Cerrados", true)}
-                {th("prioridad", "Prioridad", true)}
-                {th("alerta", "Alerta")}
-                <th className="py-2 pr-3 uppercase">Motivo principal</th>
+                {th("prestador", "Prestador", TIPS.colPrestador)}
+                {th("nivel", "Volumen", TIPS.colNivel)}
+                {th("servicios", "Servicios", TIPS.colServicios, true)}
+                {th("cerrados", "Terminados", TIPS.colCerrados, true)}
+                {th("prioridad", "Urgencia", TIPS.colPrioridad, true)}
+                {th("alerta", "Situación", TIPS.colAlerta)}
+                <th className="py-2 pr-3 uppercase">
+                  <span className="flex items-center gap-1">
+                    Por qué
+                    <InfoTip {...TIPS.colMotivo} />
+                  </span>
+                </th>
               </tr>
             </thead>
             <tbody>
               {visibles.map((r) => {
-                const a = alertaInfo(r.alerta);
-                const motivo = (r.motivos || "").split(" | ")[0];
+                const a = situacion(r);
                 const barra = r.prioridad == null ? 0 : Math.min(100, r.prioridad);
                 return (
                   <tr
@@ -679,26 +1244,26 @@ export default function AuditoriaPanel() {
                     className="border-t border-outline-variant/20 hover:bg-surface-container-low cursor-pointer"
                     onClick={() => setSel(r)}
                   >
-                    <td className="py-2 pr-3 font-body-md text-body-md text-on-surface font-medium">{r.prestador || "Sin nombre"}</td>
-                    <td className="py-2 pr-3 text-on-surface-variant">{r.nivel || "—"}</td>
-                    <td className="py-2 pr-3 text-right">{nf(r.servicios)}</td>
-                    <td className="py-2 pr-3 text-right">{nf(r.cerrados)}</td>
-                    <td className="py-2 pr-3">
+                    <td className="py-2 pr-3 font-body-md text-body-md text-on-surface font-medium align-top">{r.prestador || "Sin nombre"}</td>
+                    <td className="py-2 pr-3 text-on-surface-variant align-top capitalize">{NIVEL_TEXTO[r.nivel || ""] || "—"}</td>
+                    <td className="py-2 pr-3 text-right align-top">{nf(r.servicios)}</td>
+                    <td className="py-2 pr-3 text-right align-top">{nf(r.cerrados)}</td>
+                    <td className="py-2 pr-3 align-top">
                       <div className="flex items-center justify-end gap-2">
                         <div className="w-20 h-1.5 rounded-full bg-surface-container-high overflow-hidden">
                           <div
-                            className={`h-full ${a.rank === 2 ? "bg-error" : a.rank === 1 ? "bg-[#f59e0b]" : "bg-primary"}`}
+                            className={`h-full ${a.clave === "auditar" ? "bg-error" : a.clave === "seguir" ? "bg-[#f59e0b]" : "bg-primary"}`}
                             style={{ width: `${barra}%` }}
                           />
                         </div>
                         <span className="w-10 text-right">{r.prioridad == null ? "—" : nf(r.prioridad, 1)}</span>
                       </div>
                     </td>
-                    <td className="py-2 pr-3">
-                      <span className={`font-label-caps text-label-caps rounded-md px-2.5 py-0.5 uppercase font-bold ${a.tone}`}>{a.label}</span>
+                    <td className="py-2 pr-3 align-top">
+                      <span className={`font-label-caps text-label-caps rounded-md px-2.5 py-0.5 uppercase font-bold whitespace-normal ${a.tone}`}>{a.label}</span>
                     </td>
-                    <td className="py-2 pr-3 font-body-sm text-body-sm text-on-surface-variant max-w-md truncate" title={r.motivos || ""}>
-                      {motivo || "—"}
+                    <td className="py-2 pr-3 font-body-sm text-body-sm text-on-surface-variant min-w-[340px] max-w-[480px] whitespace-normal align-top">
+                      <MotivosLista texto={r.motivos} />
                     </td>
                   </tr>
                 );
