@@ -605,9 +605,72 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
 }
 
+// NUEVO v2.5.0 (ADITIVO): pantalla de auditoria de prestadores dentro de
+// Inteligencia Operativa. Lee lo que deja el motor semanal (solo lectura).
+export type AuditoriaCorridaResumen = {
+  run_id: string;
+  clave_semana: string;
+  ejecutada_at: string;
+  periodo_desde: string;
+  periodo_hasta: string;
+  version_motor: string;
+  notificada_at?: string | null;
+};
+export type AuditoriaCorrida = AuditoriaCorridaResumen & {
+  parametros?: Record<string, unknown> | null;
+  // Conteos y metricas globales de la corrida (ver persistencia.guardar en el motor).
+  conteos?: {
+    resumen?: Record<string, number | null>;
+    alertas_registran?: Record<string, number>;
+    programados_excluidos?: number;
+    servicios_analizados?: number;
+    [clave: string]: unknown;
+  } | null;
+};
+export type AuditoriaMetricaValor = number | string | null;
+export type AuditoriaResultado = {
+  prestador_id: string;
+  prestador: string | null;
+  segmento: string | null; // "Registra" | "Sin trazabilidad"
+  nivel: string | null; // A | B | C
+  servicios: number | null;
+  cerrados: number | null;
+  prioridad: number | null;
+  alerta: string | null; // "" | "Observacion" | "Candidato a auditoria prioritaria"
+  confianza: string | null;
+  motivos: string | null;
+  informativo: string | null;
+  metricas: Record<string, AuditoriaMetricaValor> | null;
+};
+export type AuditoriaEvidencia = {
+  tipo_evidencia: string;
+  id_servicio_prestado: number | null;
+  id_orden_de_servicio: number | null;
+  datos: Record<string, AuditoriaMetricaValor> | null;
+};
+export type AuditoriaHistorial = {
+  clave_semana: string;
+  ejecutada_at: string;
+  prioridad: number | null;
+  alerta: string | null;
+  cerrados: number | null;
+};
+
 export const api = {
   url: API_URL,
   health: () => request<{ ok: boolean; version: string }>("/health"),
+  auditoriaCorridas: () =>
+    request<{ corridas: AuditoriaCorridaResumen[] }>("/api/auditoria/corridas"),
+  auditoriaResultados: (runId?: string) =>
+    request<{ corrida: AuditoriaCorrida | null; resultados: AuditoriaResultado[] }>(
+      "/api/auditoria/resultados" + (runId ? "?run_id=" + encodeURIComponent(runId) : ""),
+    ),
+  auditoriaPrestador: (prestadorId: string, runId?: string) =>
+    request<{ evidencia: AuditoriaEvidencia[]; historial: AuditoriaHistorial[] }>(
+      "/api/auditoria/prestador/" +
+        encodeURIComponent(prestadorId) +
+        (runId ? "?run_id=" + encodeURIComponent(runId) : ""),
+    ),
   trackeoResumen: (f: TrackeoFilters) =>
     request<{ resumen: TrackeoSummary }>(
       "/api/metricas-trackeo/resumen" + qs(fp(f)),

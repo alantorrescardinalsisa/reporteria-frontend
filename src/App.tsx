@@ -46,6 +46,7 @@ import {
   type TrendPoint,
 } from "./api";
 import "./App.css";
+import AuditoriaPanel from "./AuditoriaPanel";
 
 /* ============================================================
  * Nota de mantenimiento: este archivo fue re-diseñado visualmente
@@ -62,7 +63,14 @@ type Option = { value: string; label: string };
 // sola vez. Cada archivo seleccionado es un ítem con su propio estado.
 type UploadItem = {
   file: File;
-  state: "pendiente" | "subiendo" | "en_cola" | "procesando" | "procesado" | "error";
+  state:
+    | "pendiente"
+    | "subiendo"
+    | "en_cola"
+    | "procesando"
+    | "procesado"
+    | "reemplazado"
+    | "error";
   message: string;
   reportId?: string;
 };
@@ -2950,6 +2958,10 @@ export default function App() {
     // entre prestadores" -- filtran la misma lista que ya trae
     // /api/inteligencia/prestadores, sin pedir nada nuevo al backend.
     [inteligenciaSearch, setInteligenciaSearch] = useState(""),
+    // NUEVO (ADITIVO): pestañas de Inteligencia Operativa -- "panorama" es
+    // la pantalla de siempre; "auditoria" muestra lo que deja el motor
+    // estadistico semanal (componente AuditoriaPanel, solo lectura).
+    [inteligenciaTab, setInteligenciaTab] = useState<"panorama" | "auditoria">("panorama"),
     [inteligenciaFilter, setInteligenciaFilter] = useState<Clasificacion | "todos">(
       "todos",
     ),
@@ -3416,8 +3428,19 @@ export default function App() {
                 message: `${s.etapa || s.status}: ${nf(s.filas_procesadas)} filas`,
               });
             }
-          } catch {
-            // error transitorio de red: se reintenta en la próxima vuelta
+          } catch (e) {
+            // El reporte ya no existe en el servidor: lo borró un reemplazo
+            // posterior (mismo archivo, o mismo tipo y período). No se
+            // reintenta: seguiría dando 404 para siempre.
+            if (e instanceof Error && /no encontrado/i.test(e.message)) {
+              pendientes.delete(i);
+              patch(i, {
+                state: "reemplazado",
+                message:
+                  "Este reporte desapareció del servidor: lo reemplazó otra carga posterior del mismo tipo y período (o del mismo archivo). Verificá que la otra carga haya terminado bien.",
+              });
+            }
+            // cualquier otro error se considera transitorio y se reintenta
           }
         }
         if (pendientes.size) await sleep(3000);
@@ -5805,6 +5828,35 @@ export default function App() {
                   </div>
                 </div>
 
+                {/* NUEVO (ADITIVO): pestañas -- Panorama (lo de siempre) y
+                    Auditoría de prestadores (motor estadístico semanal). */}
+                <div className="flex items-center gap-1 p-1 rounded-lg bg-surface-container-low font-body-md text-body-md self-start">
+                  {(
+                    [
+                      ["panorama", "Panorama de la red", "insights"],
+                      ["auditoria", "Auditoría de prestadores", "fact_check"],
+                    ] as ["panorama" | "auditoria", string, string][]
+                  ).map(([key, label, icon]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setInteligenciaTab(key)}
+                      className={`px-4 py-1.5 rounded-md transition-colors flex items-center gap-1.5 ${
+                        inteligenciaTab === key
+                          ? "bg-surface-container-lowest text-on-surface font-medium shadow-xs"
+                          : "text-on-surface-variant hover:text-on-surface"
+                      }`}
+                    >
+                      <Icon name={icon} className="text-[18px]" />
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                {inteligenciaTab === "auditoria" && <AuditoriaPanel />}
+
+                {inteligenciaTab === "panorama" && (
+                  <>
                 {/* NUEVO (ADITIVO): con un período filtrado muy corto,
                     "primera vs segunda mitad" pierde sentido (todas las
                     filas comparten fecha) y casi ningún prestador junta
@@ -6095,6 +6147,8 @@ export default function App() {
                     </section>
                   </>
                 )}
+                  </>
+                )}
               </div>
             )}
 
@@ -6109,9 +6163,12 @@ export default function App() {
                     <p className="font-label-sm text-label-sm text-on-surface-variant">
                       Excel de Trackeo (.xlsx/.xlsm), archivo de despachador con
                       origen/destino (.xls/.xlsb/.xlsx), Reporte de Métricas de
-                      Encuestas (.xlsx), o Reporte Ficha Seguimiento filtrado por
-                      Evento="USO DEL SISTEMA" y Acción="SERVICIO FINALIZADO"
-                      (.xlsx) — la plataforma detecta cuál es por el nombre del
+                      Encuestas (.xlsx), o Reporte Ficha Seguimiento (.xlsx; para
+                      "debieron enviarse" cuenta las filas con Estado="CERRADO
+                      (V H)", Evento="WHATSAPP", Motivo="SEGUIMIENTO DE CASO" y
+                      Acción="SERVICIO FINALIZADO"; para los reclamos del score
+                      hace falta la Ficha completa, sin esos filtros) — la
+                      plataforma detecta cuál es por el nombre del
                       archivo. Si el de despachador pesa más de 50 MB, exportalo
                       como .xlsb (mucho más liviano que .xls).
                     </p>
