@@ -15,6 +15,7 @@ import type {
 } from "./api";
 import { InfoTip } from "./InfoTip";
 import type { Tooltip } from "./InfoTip";
+import { CANDIDATO, OBSERVACION, situacion } from "./auditoriaSituacion";
 
 /* Textos de ayuda (tooltips ⓘ) de toda la pantalla, en lenguaje llano. Las definiciones y umbrales salen del
    motor (auditoria_prestadores.py): si se cambian alla, actualizar aca. */
@@ -178,8 +179,6 @@ const TITULO_EVIDENCIA: Record<string, { titulo: string; leer: string }> = {
   "Reclamo / queja": { titulo: "Con reclamo del cliente", leer: "Servicios con un reclamo o queja registrado por el cliente." },
 };
 
-const CANDIDATO = "Candidato a auditoria prioritaria";
-const OBSERVACION = "Observacion";
 const PAGE_SIZE = 15;
 const Z_MIN = 2; // mismos umbrales que el motor (ver auditoria_prestadores.py)
 const INDICADORES: { clave: string; titulo: string; problema: string; efectoMin: number; informativo?: boolean }[] = [
@@ -231,24 +230,6 @@ const mnum = (r: AuditoriaResultado, k: string): number | null => {
 
 function Icon({ name, className = "", filled = false }: { name: string; className?: string; filled?: boolean }) {
   return <span className={`material-symbols-outlined ${filled ? "icon-filled" : ""} ${className}`}>{name}</span>;
-}
-
-type Situacion = {
-  clave: "auditar" | "seguir" | "ok" | "sin_registro" | "pocos_datos";
-  label: string;
-  tone: string;
-  rank: number;
-};
-/* La situacion de un prestador en palabras. Un prestador que no registra la llegada NO es "sin problemas":
-   simplemente no se lo puede medir. */
-function situacion(r: AuditoriaResultado): Situacion {
-  if (r.alerta === CANDIDATO) return { clave: "auditar", label: "Para auditar con prioridad", tone: "text-error bg-error/10", rank: 3 };
-  if (r.alerta === OBSERVACION) return { clave: "seguir", label: "Para seguir de cerca", tone: "text-[#b5610a] bg-[#f59e0b]/10", rank: 2 };
-  if (r.segmento !== "Registra")
-    return { clave: "sin_registro", label: "No registra la llegada", tone: "text-on-surface-variant bg-surface-container-low", rank: 0 };
-  if (r.prioridad == null)
-    return { clave: "pocos_datos", label: "Pocos datos para evaluar", tone: "text-on-surface-variant bg-surface-container-low", rank: 0 };
-  return { clave: "ok", label: "Sin problemas", tone: "text-tertiary bg-tertiary/10", rank: 1 };
 }
 
 /* ---- Motivos de la alerta, en palabras ----
@@ -855,15 +836,15 @@ function descargarCsv(filas: AuditoriaResultado[], clave: string) {
   URL.revokeObjectURL(url);
 }
 
-export default function AuditoriaPanel() {
+export default function AuditoriaPanel({ buscarInicial = "" }: { buscarInicial?: string }) {
   const [corridas, setCorridas] = useState<AuditoriaCorridaResumen[]>([]);
   const [runId, setRunId] = useState("");
   const [data, setData] = useState<{ corrida: AuditoriaCorrida | null; resultados: AuditoriaResultado[] } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(buscarInicial);
   const [fAlerta, setFAlerta] = useState<"todas" | "auditar" | "seguir" | "ok">("todas");
-  const [fSegmento, setFSegmento] = useState<"Registra" | "Sin trazabilidad" | "todos">("Registra");
+  const [fSegmento, setFSegmento] = useState<"Registra" | "Sin trazabilidad" | "todos">(buscarInicial ? "todos" : "Registra");
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "prioridad", dir: "desc" });
   const [page, setPage] = useState(1);
   const [sel, setSel] = useState<AuditoriaResultado | null>(null);

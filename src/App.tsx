@@ -13,6 +13,7 @@ import {
   api,
   type Alertas,
   type Anomalias,
+  type AuditoriaResultado,
   type CampanaImpacto,
   type CampanaMetric,
   type CampanaPrestadorMetric,
@@ -47,6 +48,8 @@ import {
 } from "./api";
 import "./App.css";
 import AuditoriaPanel from "./AuditoriaPanel";
+import GuiaEvaluaciones, { type DestinoEvaluacion } from "./GuiaEvaluaciones";
+import { situacion as situacionAuditoria } from "./auditoriaSituacion";
 import { InfoTip, type Tooltip } from "./InfoTip";
 
 /* ============================================================
@@ -2875,6 +2878,15 @@ export default function App() {
     // la pantalla de siempre; "auditoria" muestra lo que deja el motor
     // estadistico semanal (componente AuditoriaPanel, solo lectura).
     [inteligenciaTab, setInteligenciaTab] = useState<"panorama" | "auditoria">("panorama"),
+    // NUEVO (ADITIVO): conexion entre "Detalle por prestador" y la pestana de
+    // Auditoria. `auditoriaBusqueda` abre la Auditoria ya buscando a un
+    // prestador; `auditoriaPorPrestador` es la ultima auditoria semanal
+    // indexada por prestador_id, para mostrar su situacion en la tabla de
+    // Detalle por prestador (se carga una vez, la primera vez que se abre).
+    [auditoriaBusqueda, setAuditoriaBusqueda] = useState(""),
+    [auditoriaPorPrestador, setAuditoriaPorPrestador] = useState<Map<string, AuditoriaResultado> | null>(null),
+    [auditoriaSemana, setAuditoriaSemana] = useState<string | null>(null),
+    [auditoriaNoDisponible, setAuditoriaNoDisponible] = useState(false),
     [inteligenciaFilter, setInteligenciaFilter] = useState<Clasificacion | "todos">(
       "todos",
     ),
@@ -2912,6 +2924,34 @@ export default function App() {
     // no aparezca es que directamente no exista en el DOM mientras se
     // imprime -- no ocultarlo por CSS, sacarlo del árbol de React.
     [printing, setPrinting] = useState(false);
+  // NUEVO (ADITIVO): la columna "Auditoria" de Detalle por prestador necesita la
+  // ultima auditoria semanal. Se pide una sola vez, al abrir esa pantalla; si
+  // falla (ej. todavia no se corrio la migracion SQL), la columna muestra "—".
+  useEffect(() => {
+    if (page !== "providers" || auditoriaPorPrestador || auditoriaNoDisponible) return;
+    let vivo = true;
+    api
+      .auditoriaResultados()
+      .then((d) => {
+        if (!vivo) return;
+        setAuditoriaPorPrestador(new Map(d.resultados.map((r) => [r.prestador_id, r])));
+        setAuditoriaSemana(d.corrida?.clave_semana ?? null);
+      })
+      .catch(() => vivo && setAuditoriaNoDisponible(true));
+    return () => {
+      vivo = false;
+    };
+  }, [page, auditoriaPorPrestador, auditoriaNoDisponible]);
+  const irAEvaluacion = (destino: DestinoEvaluacion, buscar = "") => {
+    if (destino === "providers") {
+      setPage("providers");
+      return;
+    }
+    setPage("intelligence");
+    setInteligenciaTab(destino);
+    setAuditoriaBusqueda(destino === "auditoria" ? buscar : "");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
   useEffect(() => {
     // "app:enter-print-mode" lo dispara printCurrentView() ANTES de
     // llamar a window.print(), esperando a que React haya terminado de
@@ -5174,6 +5214,8 @@ export default function App() {
 
             {page === "providers" && (
               <div className="flex flex-col gap-xl">
+                {/* NUEVO (ADITIVO): guia de las tres formas de evaluar a un prestador */}
+                <GuiaEvaluaciones actual="providers" onIr={(d) => irAEvaluacion(d)} />
                 {/* ---------- NUEVO (ADITIVO): tarjetas KPI ---------- */}
                 <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-md">
                   <Card
@@ -5410,6 +5452,19 @@ export default function App() {
                             calculo: "37,5% Cumplimiento observado + 31,25% Trazabilidad + 18,75% Reclamos + 12,5% (1 − % reclamos por encuesta, según la pregunta \"opinión sobre el profesional\" de la encuesta, ≤2 = reclamo) — se renormaliza si falta algún componente. El componente de reclamos depende de la tasa de reclamos sobre los servicios del prestador (amortiguada para muestras chicas): sin reclamos no resta nada, y como máximo resta 18,75 puntos del score. Reclamos por encuesta solo se calcula para prestadores con encuestas respondidas en el período filtrado.",
                           }}
                         />
+                        {/* NUEVO (ADITIVO): situacion en la ultima auditoria semanal */}
+                        <th className="py-2 pr-3">
+                          <span className="inline-flex items-center gap-1">
+                            Auditoría
+                            <InfoTip
+                              titulo="Situación en la auditoría"
+                              leer={`Cómo quedó este prestador en la última auditoría semanal${
+                                auditoriaSemana ? ` (semana ${auditoriaSemana})` : ""
+                              }: para auditar con prioridad, para seguir de cerca, sin problemas, o no se lo puede medir. No cambia con los filtros de arriba, porque la auditoría compara a cada prestador con otros de servicios parecidos desde enero. Hacé clic en la etiqueta para ver el detalle.`}
+                              calculo="Es el resultado del motor de auditoría, que cuenta los servicios sin hora de llegada como incumplimiento; por eso puede diferir del cumplimiento y del score de esta tabla."
+                            />
+                          </span>
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
@@ -5508,6 +5563,34 @@ export default function App() {
                                 ⚠
                               </span>
                             )}
+                          </td>
+                          <td className="py-2 pr-3">
+                            {(() => {
+                              if (auditoriaNoDisponible) return <span className="text-on-surface-variant">—</span>;
+                              if (!auditoriaPorPrestador)
+                                return <span className="text-on-surface-variant/60 font-label-code text-label-code">…</span>;
+                              const a = auditoriaPorPrestador.get(x.prestador_id);
+                              if (!a)
+                                return (
+                                  <span
+                                    className="font-label-caps text-label-caps rounded-md px-2 py-0.5 uppercase text-on-surface-variant bg-surface-container-low"
+                                    title="Este prestador no figura en la última auditoría semanal (por ejemplo, es administrativo o de salud, o no tuvo servicios desde enero)."
+                                  >
+                                    No evaluado
+                                  </span>
+                                );
+                              const s = situacionAuditoria(a);
+                              return (
+                                <button
+                                  type="button"
+                                  onClick={() => irAEvaluacion("auditoria", a.prestador ?? x.prestador)}
+                                  className={`font-label-caps text-label-caps rounded-md px-2 py-0.5 uppercase font-bold hover:opacity-80 transition-opacity ${s.tone}`}
+                                  title="Ver el detalle en la pestaña Auditoría de prestadores"
+                                >
+                                  {s.label}
+                                </button>
+                              );
+                            })()}
                           </td>
                         </tr>
                         );
@@ -5753,7 +5836,10 @@ export default function App() {
                     <button
                       key={key}
                       type="button"
-                      onClick={() => setInteligenciaTab(key)}
+                      onClick={() => {
+                        setInteligenciaTab(key);
+                        setAuditoriaBusqueda("");
+                      }}
                       className={`px-4 py-1.5 rounded-md transition-colors flex items-center gap-1.5 ${
                         inteligenciaTab === key
                           ? "bg-surface-container-lowest text-on-surface font-medium shadow-xs"
@@ -5766,10 +5852,16 @@ export default function App() {
                   ))}
                 </div>
 
-                {inteligenciaTab === "auditoria" && <AuditoriaPanel />}
+                {inteligenciaTab === "auditoria" && (
+                  <>
+                    <GuiaEvaluaciones actual="auditoria" onIr={(d) => irAEvaluacion(d)} />
+                    <AuditoriaPanel key={auditoriaBusqueda} buscarInicial={auditoriaBusqueda} />
+                  </>
+                )}
 
                 {inteligenciaTab === "panorama" && (
                   <>
+                    <GuiaEvaluaciones actual="panorama" onIr={(d) => irAEvaluacion(d)} />
                 {/* NUEVO (ADITIVO): con un período filtrado muy corto,
                     "primera vs segunda mitad" pierde sentido (todas las
                     filas comparten fecha) y casi ningún prestador junta
