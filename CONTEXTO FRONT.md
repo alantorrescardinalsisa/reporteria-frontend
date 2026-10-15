@@ -115,6 +115,14 @@ Se verificó por hash y por referencias (ningún import ni el `index.html` real 
 
 `AuditoriaPanel.tsx`: nueva columna ordenable "Servicios de más" (tabla de prestadores, CSV y detalle del prestador) con tooltip `TIPS.colImpacto`. Lee `metricas.impacto_servicios` (lo calcula el motor, ver `CONTEXTO_AUDITORIA_PRESTADORES.md` §26); para corridas anteriores a este cambio muestra "—". Sin cambios en `api.ts` (`metricas` ya es un objeto libre) ni en el SQL del panel.
 
+## Actualización 2026-10-15 (2) — regla única de demora y datos faltantes
+
+`AuditoriaPanel.tsx` y `GuiaEvaluaciones.tsx` reflejan la opción C: "Demora comprobada" (solo servicios con hora de llegada) e indicador propio "Sin hora de llegada" (carga de datos). Nuevas claves en `INDICADORES`, `CLAVES_POR_PREFIJO` (con `incumple_v1` para corridas anteriores a esta fecha) y textos de `TIPS`. Definiciones: `CATALOGO_INDICADORES.md`.
+
+## Actualización 2026-10-15 (3) — aspecto del impacto y regla de Pareto
+
+`AuditoriaPanel.tsx`: debajo de "Servicios de más" se muestra de qué aspecto sale (`metricas.impacto_indicador`, mapa `ASPECTO_IMPACTO`) y se agregó la columna "Acumulado" (regla de Pareto, `calcularPareto()`): se ordena TODA la corrida (sin filtros) por servicios de más y se acumula; grupo A hasta el 80 % del total (incluye al que lo cruza), B hasta el 95 %, C el resto. Es un dato fijo por prestador (no depende del filtro ni del orden de la tabla). También en el CSV y en una línea resumen sobre la tabla.
+
 ## Archivo Excel en esta carpeta
 
 `Reporte Metricas_de_prestadores Trackeo_de_servicios 2026-08-25 11_59_06.057.xlsx` — otra copia de muestra del reporte de Trackeo (mismo origen que el de `esquemas/esquema_supabase_prestadores/`, exportado de SMV). Está mezclado con el código fuente del frontend por descuido de organización, no tiene relación funcional con el build de Vite.

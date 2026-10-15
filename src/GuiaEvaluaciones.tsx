@@ -81,8 +81,9 @@ export default function GuiaEvaluaciones({ actual, onIr }: { actual: DestinoEval
         <summary className="cursor-pointer font-semibold text-on-surface">¿Por qué un mismo prestador puede verse distinto en cada una?</summary>
         <ul className="list-disc pl-5 pt-2 flex flex-col gap-1.5">
           <li>
-            <b>Los servicios sin hora de llegada.</b> Detalle y Panorama no los cuentan (ni a favor ni en contra). La Auditoría los cuenta como incumplimiento. Un
-            prestador que casi no registra la llegada puede verse bien en las dos primeras y aparecer marcado en la Auditoría.
+            <b>Los servicios sin hora de llegada.</b> En las tres, la demora se mide solo sobre servicios que tienen hora de llegada: los demás ni suman ni restan
+            al cumplimiento. Que falte la hora de llegada es un problema de carga de datos y se penaliza aparte: en el Detalle, dentro del registro completo; en la
+            Auditoría, como un aspecto propio (&ldquo;sin hora de llegada&rdquo;). El Panorama solo mira la demora.
           </li>
           <li>
             <b>Con quién se compara.</b> Detalle y Panorama lo comparan con todos los prestadores del filtro, aunque hagan servicios muy distintos. La Auditoría

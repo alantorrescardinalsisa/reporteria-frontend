@@ -50,8 +50,8 @@ const TIPS: Record<string, Tooltip> = {
   },
   cumplen: {
     titulo: "Cumplen lo prometido",
-    leer: "De cada 100 servicios terminados de prestadores que registran, cuántos cumplieron: llegaron a tiempo, con la llegada registrada y cargada en el momento.",
-    calculo: "100 menos el incumplimiento total (llegó tarde + sin hora de llegada + sin demora prometida + carga a destiempo).",
+    leer: "De cada 100 servicios con hora de llegada registrada (de prestadores que registran), cuántos llegaron a tiempo. Los servicios sin hora de llegada no entran acá: se penalizan aparte, como problema de carga de datos.",
+    calculo: "100 menos el porcentaje que llegó tarde, calculado solo sobre servicios con hora de llegada y demora prometida, sin contar las llegadas cargadas a destiempo.",
   },
   tardeComprobado: {
     titulo: "Llegaron tarde",
@@ -60,7 +60,7 @@ const TIPS: Record<string, Tooltip> = {
   },
   sinHoraLlegada: {
     titulo: "Sin hora de llegada",
-    leer: "Servicios terminados donde el prestador no registró cuándo llegó. No se puede comprobar si cumplió, y se cuenta como incumplimiento.",
+    leer: "Servicios terminados donde el prestador no registró cuándo llegó. No se puede comprobar si cumplió, así que NO cuenta como demora: se penaliza aparte, como problema de carga de datos.",
   },
   cargaRetroactiva: {
     titulo: "Llegada cargada a destiempo",
@@ -69,7 +69,7 @@ const TIPS: Record<string, Tooltip> = {
   },
   incumple90: {
     titulo: "Últimos 90 días",
-    leer: "De cada 100 servicios de los últimos 90 días, cuántos incumplieron. Debajo se compara con los 90 días anteriores para ver si la red mejora o empeora.",
+    leer: "De cada 100 servicios de los últimos 90 días con hora de llegada registrada, cuántos llegaron tarde. Debajo se compara con los 90 días anteriores para ver si la red mejora o empeora.",
   },
   comoLeer: {
     titulo: "Cómo leer esta pantalla",
@@ -102,8 +102,13 @@ const TIPS: Record<string, Tooltip> = {
   },
   colImpacto: {
     titulo: "Servicios de más",
-    leer: "Cuántos servicios problemáticos aporta el prestador por encima de lo que sería normal. Ayuda a elegir por dónde empezar: un prestador grande con una diferencia chica puede aportar más servicios problemáticos que uno chico con una diferencia enorme. No cambia la urgencia, es un dato más.",
-    calculo: "Diferencia con lo normal (en puntos) × servicios evaluados, en el aspecto donde más se aparta. Es un mínimo: un mismo servicio puede tener varios problemas y no se cuenta dos veces.",
+    leer: "Cuántos servicios con problemas tiene el prestador de más, comparado con lo que tendría si rindiera como los demás prestadores en servicios parecidos. Debajo del número se aclara por qué aspecto (demora, falta de hora de llegada, etc.). Ayuda a elegir por dónde empezar: un prestador grande con una diferencia chica puede sumar más servicios problemáticos que uno chico con una diferencia enorme. No cambia la urgencia, es un dato más.",
+    calculo: "Si el prestador tuviera el rendimiento normal, tendría X servicios con problemas; tiene más. La diferencia es este número. Se calcula en el aspecto donde más se aparta, y es un mínimo: no suma aspectos distintos para no contar dos veces el mismo servicio.",
+  },
+  colPareto: {
+    titulo: "Acumulado (regla de Pareto)",
+    leer: "Qué parte del total de “servicios de más” de toda la red ya se alcanzó al llegar a este prestador, ordenando de mayor a menor. El punto rojo marca al grupo chico que junta el 80 % del problema: ahí conviene empezar. Es un dato fijo de cada prestador: no cambia con los filtros ni con el orden de la tabla.",
+    calculo: "Se ordenan todos los prestadores de la corrida por “servicios de más” y se va sumando. Grupo A: hasta completar el 80 % del total (incluye al que lo cruza). Grupo B: del 80 % al 95 %. Grupo C: el resto.",
   },
   colAlerta: {
     titulo: "Situación",
@@ -147,15 +152,15 @@ const TIPS: Record<string, Tooltip> = {
   colSenal: {
     titulo: "Señal",
     leer: "“Activa” cuando la diferencia es estadísticamente significativa y además supera un mínimo que importa en la práctica.",
-    calculo: "z ajustado de 2 o más y diferencia mínima: incumplimiento 3 pp, registro incompleto 5 pp, carga a destiempo 1 pp, reclamos 0,5 pp, encuestas 5 pp.",
+    calculo: "z ajustado de 2 o más y diferencia mínima: demora 3 pp, sin hora de llegada 5 pp, registro incompleto 5 pp, carga a destiempo 1 pp, reclamos 0,5 pp, encuestas 5 pp.",
   },
   composicion: {
-    titulo: "De qué está hecho el incumplimiento",
-    leer: "Descompone los servicios que incumplieron en sus causas, para saber si el problema es llegar tarde, no registrar la llegada o cargarla a destiempo.",
+    titulo: "De qué están hechos los problemas",
+    leer: "Descompone los servicios con problemas por causa: llegar tarde (demora), no registrar la llegada (carga de datos) o cargarla a destiempo (carga de datos).",
   },
   sinDemoraPrometida: {
     titulo: "Sin demora prometida",
-    leer: "Servicios con llegada registrada pero sin demora prometida cargada: no se puede comprobar si cumplió y se cuenta como incumplimiento.",
+    leer: "Servicios con llegada registrada pero sin demora prometida cargada: no se puede comprobar si cumplió. No cuenta como demora ni se penaliza al prestador (la demora prometida la carga la compañía).",
   },
   tendencia: {
     titulo: "Evolución",
@@ -187,7 +192,8 @@ const TITULO_EVIDENCIA: Record<string, { titulo: string; leer: string }> = {
 const PAGE_SIZE = 15;
 const Z_MIN = 2; // mismos umbrales que el motor (ver auditoria_prestadores.py)
 const INDICADORES: { clave: string; titulo: string; problema: string; efectoMin: number; informativo?: boolean }[] = [
-  { clave: "incumple", titulo: "Cumplir con la demora prometida", problema: "servicios llegaron tarde o sin registrar la llegada", efectoMin: 3 },
+  { clave: "incumple", titulo: "Cumplir con la demora prometida", problema: "servicios con hora de llegada que llegaron tarde (los que no tienen hora de llegada se miden aparte)", efectoMin: 3 },
+  { clave: "sin_llegada", titulo: "Registrar la hora de llegada", problema: "servicios terminados sin hora de llegada (problema de carga de datos, no de demora)", efectoMin: 5 },
   { clave: "incompleto", titulo: "Registrar bien cada servicio", problema: "servicios con datos incompletos (móvil, ubicación o envío)", efectoMin: 5 },
   { clave: "extremo", titulo: "Cargar la llegada en el momento", problema: "servicios con la llegada cargada mucho después de que ocurrió", efectoMin: 1 },
   { clave: "reclamo", titulo: "Reclamos de clientes", problema: "servicios con un reclamo o queja", efectoMin: 0.5 },
@@ -231,6 +237,19 @@ const minutos = (v: unknown) => {
 const mnum = (r: AuditoriaResultado, k: string): number | null => {
   const v = r.metricas?.[k];
   return typeof v === "number" ? v : null;
+};
+/* De qué aspecto sale el "servicios de más" (lo calcula el motor en `impacto_indicador`). */
+const ASPECTO_IMPACTO: Record<string, string> = {
+  incumple: "por demora",
+  sin_llegada: "por falta de hora de llegada",
+  incompleto: "por datos incompletos",
+  extremo: "por llegada cargada a destiempo",
+  reclamo: "por reclamos",
+  enc_baja: "por encuestas con nota baja",
+};
+const aspectoImpacto = (r: AuditoriaResultado): string | null => {
+  const v = r.metricas?.["impacto_indicador"];
+  return typeof v === "string" ? ASPECTO_IMPACTO[v] ?? null : null;
 };
 
 function Icon({ name, className = "", filled = false }: { name: string; className?: string; filled?: boolean }) {
@@ -285,7 +304,9 @@ type MotivoInterpretado = { clave: string; obs: number; esp: number; diff: numbe
 
 /* Del nombre largo que genera el motor al indicador al que corresponde. */
 const CLAVES_POR_PREFIJO: [string, string][] = [
-  ["Incumplimiento de demora", "incumple"],
+  ["Demora comprobada", "incumple"],
+  ["Sin hora de llegada", "sin_llegada"],
+  ["Incumplimiento de demora", "incumple_v1"], // corridas anteriores al 2026-10-15 (la demora incluia los servicios sin hora de llegada)
   ["Datos de registro incompletos", "incompleto"],
   ["Carga tardia", "extremo"],
   ["Cancelaciones", "cancela"],
@@ -316,7 +337,9 @@ function explicarMotivo(raw: string): { frase: string; aclaraciones: string[]; t
     const o = cada100(m.obs);
     const e = cada100(m.esp);
     const frases: Record<string, string> = {
-      incumple: `Llega tarde o no registra la llegada en ${o} de cada 100 servicios (lo normal en servicios parecidos: ${e}).`,
+      incumple: `Llega tarde en ${o} de cada 100 servicios con hora de llegada registrada (lo normal en servicios parecidos: ${e}).`,
+      sin_llegada: `No registra la hora de llegada en ${o} de cada 100 servicios terminados (lo normal: ${e}). Es un problema de carga de datos, no de demora.`,
+      incumple_v1: `Llega tarde o no registra la llegada en ${o} de cada 100 servicios (lo normal en servicios parecidos: ${e}).`,
       incompleto: `Carga datos incompletos (móvil, ubicación o envío) en ${o} de cada 100 servicios (lo normal: ${e}).`,
       extremo: `Carga la llegada mucho después de que ocurrió en ${o} de cada 100 servicios (lo normal: ${e}).`,
       reclamo: `Recibe reclamos en ${o} de cada 100 servicios (lo normal: ${e}).`,
@@ -513,7 +536,6 @@ function Detalle({ r, run, onClose }: { r: AuditoriaResultado; run: AuditoriaCor
     ["No tienen demora prometida cargada", "sin_demora_prometida%", TIPS.sinDemoraPrometida],
     ["Tienen la llegada cargada a destiempo", "carga_tardia_extremo%", TIPS.cargaRetroactiva],
   ];
-  const incumpleTotal = mnum(r, "incumple_total%");
   const tendInc = mnum(r, "incumple_tend_pp");
   const tendComp = mnum(r, "incompleto_tend_pp");
   const frasesTendencia = (v: number | null, que: string) => {
@@ -554,7 +576,7 @@ function Detalle({ r, run, onClose }: { r: AuditoriaResultado; run: AuditoriaCor
               {mnum(r, "impacto_servicios") != null && mnum(r, "impacto_servicios")! > 0 && (
                 <>
                   {" "}
-                  · {nf(mnum(r, "impacto_servicios"))} servicios por encima de lo normal <InfoTip {...TIPS.colImpacto} />
+                  · {nf(mnum(r, "impacto_servicios"))} servicios de más{aspectoImpacto(r) ? ` ${aspectoImpacto(r)}` : ""} <InfoTip {...TIPS.colImpacto} />
                 </>
               )}{" "}
               · Confianza del resultado: {r.confianza || "—"} <InfoTip {...TIPS.confianza} />
@@ -680,11 +702,11 @@ function Detalle({ r, run, onClose }: { r: AuditoriaResultado; run: AuditoriaCor
           <section className="grid grid-cols-1 md:grid-cols-2 gap-md">
             <Tarjeta
               icono="rule"
-              titulo="Qué pasa con los servicios que incumplen"
+              titulo="Qué pasa con los servicios terminados"
               tip={TIPS.composicion}
               resumen={
-                incumpleTotal != null
-                  ? `En total, ${cada100(incumpleTotal)} de cada 100 servicios terminados de este prestador incumplen.`
+                mnum(r, "tarde_comprobado%") != null
+                  ? `De cada 100 servicios terminados de este prestador: ${cada100(mnum(r, "tarde_comprobado%"))} llegaron tarde, ${cada100(mnum(r, "sin_hora_llegada%"))} no tienen hora de llegada (carga de datos) y ${cada100(mnum(r, "carga_tardia_extremo%"))} tienen la llegada cargada a destiempo.`
                   : undefined
               }
             >
@@ -813,9 +835,31 @@ function Detalle({ r, run, onClose }: { r: AuditoriaResultado; run: AuditoriaCor
   );
 }
 
+/* Regla de Pareto sobre el "servicios de más": se ordena TODA la corrida (sin filtros) de mayor a menor impacto y se
+   acumula. A = hasta el 80 % del total (incluye al prestador que lo cruza); B = hasta el 95 %; C = el resto. */
+type ParetoInfo = { acumulado: number; grupo: "A" | "B" | "C"; posicion: number };
+function calcularPareto(resultados: AuditoriaResultado[]): { mapa: Map<string, ParetoInfo>; total: number; conImpacto: number; nA: number } {
+  const lista = resultados
+    .map((r) => ({ id: r.prestador_id, v: mnum(r, "impacto_servicios") ?? 0 }))
+    .filter((x) => x.v > 0)
+    .sort((a, b) => b.v - a.v);
+  const total = lista.reduce((t, x) => t + x.v, 0);
+  const mapa = new Map<string, ParetoInfo>();
+  let acum = 0;
+  let nA = 0;
+  lista.forEach((x, i) => {
+    const antes = total > 0 ? acum / total : 0;
+    acum += x.v;
+    const grupo = antes < 0.8 ? "A" : antes < 0.95 ? "B" : "C";
+    if (grupo === "A") nA += 1;
+    mapa.set(x.id, { acumulado: total > 0 ? (100 * acum) / total : 0, grupo, posicion: i + 1 });
+  });
+  return { mapa, total, conImpacto: lista.length, nA };
+}
+
 type SortKey = "prestador" | "servicios" | "cerrados" | "prioridad" | "impacto" | "alerta" | "nivel";
 
-function descargarCsv(filas: AuditoriaResultado[], clave: string) {
+function descargarCsv(filas: AuditoriaResultado[], clave: string, pareto: ReturnType<typeof calcularPareto>) {
   const cols: [string, (r: AuditoriaResultado) => unknown][] = [
     ["Prestador", (r) => r.prestador],
     ["Segmento", (r) => r.segmento],
@@ -824,6 +868,9 @@ function descargarCsv(filas: AuditoriaResultado[], clave: string) {
     ["Cerrados", (r) => r.cerrados],
     ["Prioridad", (r) => r.prioridad],
     ["Servicios por encima de lo normal", (r) => mnum(r, "impacto_servicios")],
+    ["Aspecto del impacto", (r) => aspectoImpacto(r)],
+    ["Acumulado del total de servicios de mas (%)", (r) => { const p = pareto.mapa.get(r.prestador_id); return p ? Math.round(p.acumulado * 10) / 10 : null; }],
+    ["Grupo Pareto (A=80%)", (r) => pareto.mapa.get(r.prestador_id)?.grupo ?? null],
     ["Situacion", (r) => situacion(r).label],
     ["Confianza", (r) => r.confianza],
     ["% tarde comprobado", (r) => mnum(r, "tarde_comprobado%")],
@@ -917,6 +964,7 @@ export default function AuditoriaPanel({ buscarInicial = "" }: { buscarInicial?:
       return sort.dir === "asc" ? c : -c;
     });
   }, [data, search, fAlerta, fSegmento, sort]);
+  const pareto = useMemo(() => calcularPareto(data?.resultados ?? []), [data]);
 
   const corrida = data?.corrida || null;
   const resumen = corrida?.conteos?.resumen || {};
@@ -1066,19 +1114,19 @@ export default function AuditoriaPanel({ buscarInicial = "" }: { buscarInicial?:
               <Caja
                 titulo="Cumplen lo prometido"
                 valor={`${cada100(resumen.pct_cumple)} de cada 100`}
-                explicacion="Llegan a tiempo y dejan la llegada bien registrada."
+                explicacion="De los servicios con hora de llegada registrada, los que llegaron a tiempo."
                 tip={TIPS.cumplen}
               />
               <Caja
                 titulo="Llegan tarde"
                 valor={`${cada100(resumen.pct_tarde_comprobado)} de cada 100`}
-                explicacion="Con la hora de llegada registrada, llegaron después de lo prometido."
+                explicacion="De los servicios con hora de llegada registrada, los que llegaron después de lo prometido."
                 tip={TIPS.tardeComprobado}
               />
               <Caja
                 titulo="No registran la llegada"
                 valor={`${cada100(resumen.pct_sin_hora_llegada)} de cada 100`}
-                explicacion="No se puede comprobar si cumplieron."
+                explicacion="Problema de carga de datos: no cuenta como demora, pero se penaliza aparte."
                 tip={TIPS.sinHoraLlegada}
               />
               <Caja
@@ -1088,7 +1136,7 @@ export default function AuditoriaPanel({ buscarInicial = "" }: { buscarInicial?:
                 tip={TIPS.cargaRetroactiva}
               />
               <Caja
-                titulo="Incumplen en los últimos 90 días"
+                titulo="Llegan tarde en los últimos 90 días"
                 valor={`${cada100(v90)} de cada 100`}
                 badge={tendenciaRed?.texto}
                 badgeTone={tendenciaRed?.tone}
@@ -1148,7 +1196,7 @@ export default function AuditoriaPanel({ buscarInicial = "" }: { buscarInicial?:
               <button
                 type="button"
                 className="flex items-center gap-space-xs px-space-md py-1.5 rounded-lg bg-primary-container text-on-primary hover:bg-primary transition-all font-body-sm text-body-sm font-medium shadow-sm"
-                onClick={() => descargarCsv(filas, corrida.clave_semana)}
+                onClick={() => descargarCsv(filas, corrida.clave_semana, pareto)}
               >
                 <Icon name="download" className="text-[17px]" />
                 Descargar CSV
@@ -1211,6 +1259,13 @@ export default function AuditoriaPanel({ buscarInicial = "" }: { buscarInicial?:
             </div>
           </div>
         </div>
+        {pareto.conImpacto > 0 && (
+          <p className="px-md pb-sm font-body-md text-body-md text-on-surface-variant">
+            <b className="text-on-surface">{pareto.nA === 1 ? "1 prestador junta" : `${pareto.nA} prestadores juntan`}</b> el 80 % de los{" "}
+            {nf(pareto.total)} servicios de más de toda la red (hay {pareto.conImpacto} prestadores con alguna diferencia importante). Son los que tienen el punto rojo en
+            “Acumulado”: ahí se concentra el mayor esfuerzo de auditoría.
+          </p>
+        )}
         <div className="overflow-x-auto p-md pt-0">
           <table className="w-full text-body-md font-body-md whitespace-nowrap">
             <thead>
@@ -1221,6 +1276,12 @@ export default function AuditoriaPanel({ buscarInicial = "" }: { buscarInicial?:
                 {th("cerrados", "Terminados", TIPS.colCerrados, true)}
                 {th("prioridad", "Urgencia", TIPS.colPrioridad, true)}
                 {th("impacto", "Servicios de más", TIPS.colImpacto, true)}
+                <th className="py-2 pr-3 uppercase">
+                  <span className="flex items-center gap-1 justify-end">
+                    Acumulado
+                    <InfoTip {...TIPS.colPareto} />
+                  </span>
+                </th>
                 {th("alerta", "Situación", TIPS.colAlerta)}
                 <th className="py-2 pr-3 uppercase">
                   <span className="flex items-center gap-1">
@@ -1255,7 +1316,24 @@ export default function AuditoriaPanel({ buscarInicial = "" }: { buscarInicial?:
                         <span className="w-10 text-right">{r.prioridad == null ? "—" : nf(r.prioridad, 1)}</span>
                       </div>
                     </td>
-                    <td className="py-2 pr-3 text-right align-top">{mnum(r, "impacto_servicios") == null ? "—" : nf(mnum(r, "impacto_servicios"))}</td>
+                    <td className="py-2 pr-3 text-right align-top">
+                      {mnum(r, "impacto_servicios") == null ? "—" : nf(mnum(r, "impacto_servicios"))}
+                      {mnum(r, "impacto_servicios") != null && mnum(r, "impacto_servicios")! > 0 && aspectoImpacto(r) && (
+                        <span className="block font-body-sm text-body-sm text-on-surface-variant whitespace-normal">{aspectoImpacto(r)}</span>
+                      )}
+                    </td>
+                    <td className="py-2 pr-3 text-right align-top">
+                      {(() => {
+                        const p = pareto.mapa.get(r.prestador_id);
+                        if (!p) return "—";
+                        return (
+                          <span className="inline-flex items-center justify-end gap-1.5" title={`Puesto ${p.posicion} de ${pareto.conImpacto} por servicios de más · grupo ${p.grupo}`}>
+                            <span className={`inline-block w-2 h-2 rounded-full ${p.grupo === "A" ? "bg-error" : p.grupo === "B" ? "bg-[#f59e0b]" : "bg-outline-variant"}`} />
+                            {nf(p.acumulado)} %
+                          </span>
+                        );
+                      })()}
+                    </td>
                     <td className="py-2 pr-3 align-top">
                       <span className={`font-label-caps text-label-caps rounded-md px-2.5 py-0.5 uppercase font-bold whitespace-normal ${a.tone}`}>{a.label}</span>
                     </td>
@@ -1267,7 +1345,7 @@ export default function AuditoriaPanel({ buscarInicial = "" }: { buscarInicial?:
               })}
               {visibles.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="py-lg text-center font-body-md text-body-md text-on-surface-variant">
+                  <td colSpan={9} className="py-lg text-center font-body-md text-body-md text-on-surface-variant">
                     No hay prestadores con estos filtros.
                   </td>
                 </tr>
