@@ -106,9 +106,9 @@ const TIPS: Record<string, Tooltip> = {
     calculo: "Si el prestador tuviera el rendimiento normal, tendría X servicios con problemas; tiene más. La diferencia es este número. Se calcula en el aspecto donde más se aparta, y es un mínimo: no suma aspectos distintos para no contar dos veces el mismo servicio.",
   },
   colPareto: {
-    titulo: "Acumulado (regla de Pareto)",
-    leer: "Qué parte del total de “servicios de más” de toda la red ya se alcanzó al llegar a este prestador, ordenando de mayor a menor. El punto rojo marca al grupo chico que junta el 80 % del problema: ahí conviene empezar. Es un dato fijo de cada prestador: no cambia con los filtros ni con el orden de la tabla.",
-    calculo: "Se ordenan todos los prestadores de la corrida por “servicios de más” y se va sumando. Grupo A: hasta completar el 80 % del total (incluye al que lo cruza). Grupo B: del 80 % al 95 %. Grupo C: el resto.",
+    titulo: "Acumulado (regla de Pareto, por aspecto)",
+    leer: "Dentro del mismo aspecto (demora, falta de hora de llegada, datos incompletos…), qué parte del total de “servicios de más” de toda la red ya se alcanzó al llegar a este prestador, ordenando de mayor a menor. Se calcula por separado en cada aspecto, porque no es lo mismo un 55 % de demora que un 55 % de datos incompletos. El punto rojo marca al grupo chico que junta el 80 % de ese aspecto: ahí conviene empezar. Es un dato fijo de cada prestador: no cambia con los filtros ni con el orden de la tabla.",
+    calculo: "Por cada aspecto, se ordenan los prestadores por “servicios de más” y se va sumando. Grupo A: hasta completar el 80 % del total de ese aspecto (incluye al que lo cruza). Grupo B: del 80 % al 95 %. Grupo C: el resto.",
   },
   colAlerta: {
     titulo: "Situación",
@@ -835,26 +835,38 @@ function Detalle({ r, run, onClose }: { r: AuditoriaResultado; run: AuditoriaCor
   );
 }
 
-/* Regla de Pareto sobre el "servicios de más": se ordena TODA la corrida (sin filtros) de mayor a menor impacto y se
-   acumula. A = hasta el 80 % del total (incluye al prestador que lo cruza); B = hasta el 95 %; C = el resto. */
-type ParetoInfo = { acumulado: number; grupo: "A" | "B" | "C"; posicion: number };
-function calcularPareto(resultados: AuditoriaResultado[]): { mapa: Map<string, ParetoInfo>; total: number; conImpacto: number; nA: number } {
-  const lista = resultados
-    .map((r) => ({ id: r.prestador_id, v: mnum(r, "impacto_servicios") ?? 0 }))
-    .filter((x) => x.v > 0)
-    .sort((a, b) => b.v - a.v);
-  const total = lista.reduce((t, x) => t + x.v, 0);
+/* Regla de Pareto sobre el "servicios de más", SEPARADA POR ASPECTO (no se mezcla un 55 % de demora con un 55 % de datos
+   incompletos: las acciones son distintas). Dentro de cada aspecto se ordena TODA la corrida (sin filtros) de mayor a menor
+   impacto y se acumula. A = hasta el 80 % del total del aspecto (incluye al prestador que lo cruza); B = hasta el 95 %; C = el resto. */
+type ParetoInfo = { acumulado: number; grupo: "A" | "B" | "C"; posicion: number; aspecto: string; deAspecto: number };
+type ParetoAspecto = { aspecto: string; texto: string; total: number; conImpacto: number; nA: number };
+function calcularPareto(resultados: AuditoriaResultado[]): { mapa: Map<string, ParetoInfo>; aspectos: ParetoAspecto[] } {
+  const porAspecto = new Map<string, { id: string; v: number }[]>();
+  for (const r of resultados) {
+    const v = mnum(r, "impacto_servicios") ?? 0;
+    if (v <= 0) continue;
+    const k = typeof r.metricas?.["impacto_indicador"] === "string" ? (r.metricas["impacto_indicador"] as string) : "otro";
+    if (!porAspecto.has(k)) porAspecto.set(k, []);
+    porAspecto.get(k)!.push({ id: r.prestador_id, v });
+  }
   const mapa = new Map<string, ParetoInfo>();
-  let acum = 0;
-  let nA = 0;
-  lista.forEach((x, i) => {
-    const antes = total > 0 ? acum / total : 0;
-    acum += x.v;
-    const grupo = antes < 0.8 ? "A" : antes < 0.95 ? "B" : "C";
-    if (grupo === "A") nA += 1;
-    mapa.set(x.id, { acumulado: total > 0 ? (100 * acum) / total : 0, grupo, posicion: i + 1 });
-  });
-  return { mapa, total, conImpacto: lista.length, nA };
+  const aspectos: ParetoAspecto[] = [];
+  for (const [k, items] of porAspecto) {
+    items.sort((x, y) => y.v - x.v);
+    const total = items.reduce((t, x) => t + x.v, 0);
+    let acum = 0;
+    let nA = 0;
+    items.forEach((x, i) => {
+      const antes = total > 0 ? acum / total : 0;
+      acum += x.v;
+      const grupo = antes < 0.8 ? "A" : antes < 0.95 ? "B" : "C";
+      if (grupo === "A") nA += 1;
+      mapa.set(x.id, { acumulado: total > 0 ? (100 * acum) / total : 0, grupo, posicion: i + 1, aspecto: k, deAspecto: items.length });
+    });
+    aspectos.push({ aspecto: k, texto: ASPECTO_IMPACTO[k] ?? "otros aspectos", total, conImpacto: items.length, nA });
+  }
+  aspectos.sort((x, y) => y.total - x.total);
+  return { mapa, aspectos };
 }
 
 type SortKey = "prestador" | "servicios" | "cerrados" | "prioridad" | "impacto" | "alerta" | "nivel";
@@ -869,8 +881,8 @@ function descargarCsv(filas: AuditoriaResultado[], clave: string, pareto: Return
     ["Prioridad", (r) => r.prioridad],
     ["Servicios por encima de lo normal", (r) => mnum(r, "impacto_servicios")],
     ["Aspecto del impacto", (r) => aspectoImpacto(r)],
-    ["Acumulado del total de servicios de mas (%)", (r) => { const p = pareto.mapa.get(r.prestador_id); return p ? Math.round(p.acumulado * 10) / 10 : null; }],
-    ["Grupo Pareto (A=80%)", (r) => pareto.mapa.get(r.prestador_id)?.grupo ?? null],
+    ["Acumulado dentro de su aspecto (%)", (r) => { const p = pareto.mapa.get(r.prestador_id); return p ? Math.round(p.acumulado * 10) / 10 : null; }],
+    ["Grupo Pareto dentro de su aspecto (A=80%)", (r) => pareto.mapa.get(r.prestador_id)?.grupo ?? null],
     ["Situacion", (r) => situacion(r).label],
     ["Confianza", (r) => r.confianza],
     ["% tarde comprobado", (r) => mnum(r, "tarde_comprobado%")],
@@ -1259,12 +1271,20 @@ export default function AuditoriaPanel({ buscarInicial = "" }: { buscarInicial?:
             </div>
           </div>
         </div>
-        {pareto.conImpacto > 0 && (
-          <p className="px-md pb-sm font-body-md text-body-md text-on-surface-variant">
-            <b className="text-on-surface">{pareto.nA === 1 ? "1 prestador junta" : `${pareto.nA} prestadores juntan`}</b> el 80 % de los{" "}
-            {nf(pareto.total)} servicios de más de toda la red (hay {pareto.conImpacto} prestadores con alguna diferencia importante). Son los que tienen el punto rojo en
-            “Acumulado”: ahí se concentra el mayor esfuerzo de auditoría.
-          </p>
+        {pareto.aspectos.length > 0 && (
+          <div className="px-md pb-sm font-body-md text-body-md text-on-surface-variant flex flex-col gap-0.5">
+            <span className="text-on-surface font-semibold">Dónde se concentra el problema (cada aspecto por separado):</span>
+            <ul className="list-disc pl-5">
+              {pareto.aspectos.map((a) => (
+                <li key={a.aspecto}>
+                  <b className="text-on-surface">{a.texto.charAt(0).toUpperCase() + a.texto.slice(1)}:</b>{" "}
+                  {a.nA === 1 ? "1 prestador junta" : `${a.nA} prestadores juntan`} el 80 % de los {nf(a.total)} servicios de más (hay {a.conImpacto}{" "}
+                  {a.conImpacto === 1 ? "prestador" : "prestadores"} con diferencia importante en este aspecto).
+                </li>
+              ))}
+            </ul>
+            <span>Los que tienen el punto rojo en “Acumulado” son esos grupos: ahí conviene empezar a auditar.</span>
+          </div>
         )}
         <div className="overflow-x-auto p-md pt-0">
           <table className="w-full text-body-md font-body-md whitespace-nowrap">
@@ -1327,7 +1347,7 @@ export default function AuditoriaPanel({ buscarInicial = "" }: { buscarInicial?:
                         const p = pareto.mapa.get(r.prestador_id);
                         if (!p) return "—";
                         return (
-                          <span className="inline-flex items-center justify-end gap-1.5" title={`Puesto ${p.posicion} de ${pareto.conImpacto} por servicios de más · grupo ${p.grupo}`}>
+                          <span className="inline-flex items-center justify-end gap-1.5" title={`Puesto ${p.posicion} de ${p.deAspecto} ${ASPECTO_IMPACTO[p.aspecto] ?? "en su aspecto"} · grupo ${p.grupo}`}>
                             <span className={`inline-block w-2 h-2 rounded-full ${p.grupo === "A" ? "bg-error" : p.grupo === "B" ? "bg-[#f59e0b]" : "bg-outline-variant"}`} />
                             {nf(p.acumulado)} %
                           </span>

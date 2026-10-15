@@ -121,7 +121,7 @@ Se verificó por hash y por referencias (ningún import ni el `index.html` real 
 
 ## Actualización 2026-10-15 (3) — aspecto del impacto y regla de Pareto
 
-`AuditoriaPanel.tsx`: debajo de "Servicios de más" se muestra de qué aspecto sale (`metricas.impacto_indicador`, mapa `ASPECTO_IMPACTO`) y se agregó la columna "Acumulado" (regla de Pareto, `calcularPareto()`): se ordena TODA la corrida (sin filtros) por servicios de más y se acumula; grupo A hasta el 80 % del total (incluye al que lo cruza), B hasta el 95 %, C el resto. Es un dato fijo por prestador (no depende del filtro ni del orden de la tabla). También en el CSV y en una línea resumen sobre la tabla.
+`AuditoriaPanel.tsx`: debajo de "Servicios de más" se muestra de qué aspecto sale (`metricas.impacto_indicador`, mapa `ASPECTO_IMPACTO`) y se agregó la columna "Acumulado" (regla de Pareto, `calcularPareto()`): se calcula **por separado en cada aspecto** (demora, sin hora de llegada, datos incompletos…; un 55 % de demora no es comparable con un 55 % de datos incompletos): dentro de cada aspecto se ordena TODA la corrida (sin filtros) por servicios de más y se acumula; grupo A hasta el 80 % del total de ese aspecto (incluye al que lo cruza), B hasta el 95 %, C el resto. Es un dato fijo por prestador (no depende del filtro ni del orden de la tabla). También en el CSV y en un resumen sobre la tabla con una línea por aspecto.
 
 ## Archivo Excel en esta carpeta
 
