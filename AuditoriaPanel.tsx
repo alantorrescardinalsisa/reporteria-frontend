@@ -105,6 +105,11 @@ const TIPS: Record<string, Tooltip> = {
     leer: "Cuántos servicios con problemas tiene el prestador de más, comparado con lo que tendría si rindiera como los demás prestadores en servicios parecidos. Debajo del número se aclara por qué aspecto (demora, falta de hora de llegada, etc.). Ayuda a elegir por dónde empezar: un prestador grande con una diferencia chica puede sumar más servicios problemáticos que uno chico con una diferencia enorme. No cambia la urgencia, es un dato más.",
     calculo: "Si el prestador tuviera el rendimiento normal, tendría X servicios con problemas; tiene más. La diferencia es este número. Se calcula en el aspecto donde más se aparta, y es un mínimo: no suma aspectos distintos para no contar dos veces el mismo servicio.",
   },
+  colPareto: {
+    titulo: "Acumulado (regla de Pareto)",
+    leer: "Qué parte del total de “servicios de más” de toda la red ya se alcanzó al llegar a este prestador, ordenando de mayor a menor. El punto rojo marca al grupo chico que junta el 80 % del problema: ahí conviene empezar. Es un dato fijo de cada prestador: no cambia con los filtros ni con el orden de la tabla.",
+    calculo: "Se ordenan todos los prestadores de la corrida por “servicios de más” y se va sumando. Grupo A: hasta completar el 80 % del total (incluye al que lo cruza). Grupo B: del 80 % al 95 %. Grupo C: el resto.",
+  },
   colAlerta: {
     titulo: "Situación",
     leer: "Para auditar con prioridad: diferencia muy marcada y suficientes servicios. Para seguir de cerca: alguna diferencia importante. Sin problemas: dentro de lo normal.",
@@ -830,9 +835,31 @@ function Detalle({ r, run, onClose }: { r: AuditoriaResultado; run: AuditoriaCor
   );
 }
 
+/* Regla de Pareto sobre el "servicios de más": se ordena TODA la corrida (sin filtros) de mayor a menor impacto y se
+   acumula. A = hasta el 80 % del total (incluye al prestador que lo cruza); B = hasta el 95 %; C = el resto. */
+type ParetoInfo = { acumulado: number; grupo: "A" | "B" | "C"; posicion: number };
+function calcularPareto(resultados: AuditoriaResultado[]): { mapa: Map<string, ParetoInfo>; total: number; conImpacto: number; nA: number } {
+  const lista = resultados
+    .map((r) => ({ id: r.prestador_id, v: mnum(r, "impacto_servicios") ?? 0 }))
+    .filter((x) => x.v > 0)
+    .sort((a, b) => b.v - a.v);
+  const total = lista.reduce((t, x) => t + x.v, 0);
+  const mapa = new Map<string, ParetoInfo>();
+  let acum = 0;
+  let nA = 0;
+  lista.forEach((x, i) => {
+    const antes = total > 0 ? acum / total : 0;
+    acum += x.v;
+    const grupo = antes < 0.8 ? "A" : antes < 0.95 ? "B" : "C";
+    if (grupo === "A") nA += 1;
+    mapa.set(x.id, { acumulado: total > 0 ? (100 * acum) / total : 0, grupo, posicion: i + 1 });
+  });
+  return { mapa, total, conImpacto: lista.length, nA };
+}
+
 type SortKey = "prestador" | "servicios" | "cerrados" | "prioridad" | "impacto" | "alerta" | "nivel";
 
-function descargarCsv(filas: AuditoriaResultado[], clave: string) {
+function descargarCsv(filas: AuditoriaResultado[], clave: string, pareto: ReturnType<typeof calcularPareto>) {
   const cols: [string, (r: AuditoriaResultado) => unknown][] = [
     ["Prestador", (r) => r.prestador],
     ["Segmento", (r) => r.segmento],
@@ -841,6 +868,9 @@ function descargarCsv(filas: AuditoriaResultado[], clave: string) {
     ["Cerrados", (r) => r.cerrados],
     ["Prioridad", (r) => r.prioridad],
     ["Servicios por encima de lo normal", (r) => mnum(r, "impacto_servicios")],
+    ["Aspecto del impacto", (r) => aspectoImpacto(r)],
+    ["Acumulado del total de servicios de mas (%)", (r) => { const p = pareto.mapa.get(r.prestador_id); return p ? Math.round(p.acumulado * 10) / 10 : null; }],
+    ["Grupo Pareto (A=80%)", (r) => pareto.mapa.get(r.prestador_id)?.grupo ?? null],
     ["Situacion", (r) => situacion(r).label],
     ["Confianza", (r) => r.confianza],
     ["% tarde comprobado", (r) => mnum(r, "tarde_comprobado%")],
@@ -934,6 +964,7 @@ export default function AuditoriaPanel({ buscarInicial = "" }: { buscarInicial?:
       return sort.dir === "asc" ? c : -c;
     });
   }, [data, search, fAlerta, fSegmento, sort]);
+  const pareto = useMemo(() => calcularPareto(data?.resultados ?? []), [data]);
 
   const corrida = data?.corrida || null;
   const resumen = corrida?.conteos?.resumen || {};
@@ -1165,7 +1196,7 @@ export default function AuditoriaPanel({ buscarInicial = "" }: { buscarInicial?:
               <button
                 type="button"
                 className="flex items-center gap-space-xs px-space-md py-1.5 rounded-lg bg-primary-container text-on-primary hover:bg-primary transition-all font-body-sm text-body-sm font-medium shadow-sm"
-                onClick={() => descargarCsv(filas, corrida.clave_semana)}
+                onClick={() => descargarCsv(filas, corrida.clave_semana, pareto)}
               >
                 <Icon name="download" className="text-[17px]" />
                 Descargar CSV
@@ -1228,6 +1259,13 @@ export default function AuditoriaPanel({ buscarInicial = "" }: { buscarInicial?:
             </div>
           </div>
         </div>
+        {pareto.conImpacto > 0 && (
+          <p className="px-md pb-sm font-body-md text-body-md text-on-surface-variant">
+            <b className="text-on-surface">{pareto.nA === 1 ? "1 prestador junta" : `${pareto.nA} prestadores juntan`}</b> el 80 % de los{" "}
+            {nf(pareto.total)} servicios de más de toda la red (hay {pareto.conImpacto} prestadores con alguna diferencia importante). Son los que tienen el punto rojo en
+            “Acumulado”: ahí se concentra el mayor esfuerzo de auditoría.
+          </p>
+        )}
         <div className="overflow-x-auto p-md pt-0">
           <table className="w-full text-body-md font-body-md whitespace-nowrap">
             <thead>
@@ -1238,6 +1276,12 @@ export default function AuditoriaPanel({ buscarInicial = "" }: { buscarInicial?:
                 {th("cerrados", "Terminados", TIPS.colCerrados, true)}
                 {th("prioridad", "Urgencia", TIPS.colPrioridad, true)}
                 {th("impacto", "Servicios de más", TIPS.colImpacto, true)}
+                <th className="py-2 pr-3 uppercase">
+                  <span className="flex items-center gap-1 justify-end">
+                    Acumulado
+                    <InfoTip {...TIPS.colPareto} />
+                  </span>
+                </th>
                 {th("alerta", "Situación", TIPS.colAlerta)}
                 <th className="py-2 pr-3 uppercase">
                   <span className="flex items-center gap-1">
@@ -1278,6 +1322,18 @@ export default function AuditoriaPanel({ buscarInicial = "" }: { buscarInicial?:
                         <span className="block font-body-sm text-body-sm text-on-surface-variant whitespace-normal">{aspectoImpacto(r)}</span>
                       )}
                     </td>
+                    <td className="py-2 pr-3 text-right align-top">
+                      {(() => {
+                        const p = pareto.mapa.get(r.prestador_id);
+                        if (!p) return "—";
+                        return (
+                          <span className="inline-flex items-center justify-end gap-1.5" title={`Puesto ${p.posicion} de ${pareto.conImpacto} por servicios de más · grupo ${p.grupo}`}>
+                            <span className={`inline-block w-2 h-2 rounded-full ${p.grupo === "A" ? "bg-error" : p.grupo === "B" ? "bg-[#f59e0b]" : "bg-outline-variant"}`} />
+                            {nf(p.acumulado)} %
+                          </span>
+                        );
+                      })()}
+                    </td>
                     <td className="py-2 pr-3 align-top">
                       <span className={`font-label-caps text-label-caps rounded-md px-2.5 py-0.5 uppercase font-bold whitespace-normal ${a.tone}`}>{a.label}</span>
                     </td>
@@ -1289,7 +1345,7 @@ export default function AuditoriaPanel({ buscarInicial = "" }: { buscarInicial?:
               })}
               {visibles.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="py-lg text-center font-body-md text-body-md text-on-surface-variant">
+                  <td colSpan={9} className="py-lg text-center font-body-md text-body-md text-on-surface-variant">
                     No hay prestadores con estos filtros.
                   </td>
                 </tr>
