@@ -100,6 +100,11 @@ const TIPS: Record<string, Tooltip> = {
     leer: "Qué tan apartado de lo normal está el prestador. Sirve para ordenar la lista: cuanto más alto, antes conviene mirarlo. No es un porcentaje de incumplimiento.",
     calculo: "Suma ponderada de las diferencias importantes, sobre el máximo posible.",
   },
+  colImpacto: {
+    titulo: "Servicios de más",
+    leer: "Cuántos servicios problemáticos aporta el prestador por encima de lo que sería normal. Ayuda a elegir por dónde empezar: un prestador grande con una diferencia chica puede aportar más servicios problemáticos que uno chico con una diferencia enorme. No cambia la urgencia, es un dato más.",
+    calculo: "Diferencia con lo normal (en puntos) × servicios evaluados, en el aspecto donde más se aparta. Es un mínimo: un mismo servicio puede tener varios problemas y no se cuenta dos veces.",
+  },
   colAlerta: {
     titulo: "Situación",
     leer: "Para auditar con prioridad: diferencia muy marcada y suficientes servicios. Para seguir de cerca: alguna diferencia importante. Sin problemas: dentro de lo normal.",
@@ -545,6 +550,12 @@ function Detalle({ r, run, onClose }: { r: AuditoriaResultado; run: AuditoriaCor
                   {" "}
                   · Urgencia {nf(r.prioridad, 1)} de 100 <InfoTip {...TIPS.prioridad} />
                 </>
+              )}
+              {mnum(r, "impacto_servicios") != null && mnum(r, "impacto_servicios")! > 0 && (
+                <>
+                  {" "}
+                  · {nf(mnum(r, "impacto_servicios"))} servicios por encima de lo normal <InfoTip {...TIPS.colImpacto} />
+                </>
               )}{" "}
               · Confianza del resultado: {r.confianza || "—"} <InfoTip {...TIPS.confianza} />
             </span>
@@ -802,7 +813,7 @@ function Detalle({ r, run, onClose }: { r: AuditoriaResultado; run: AuditoriaCor
   );
 }
 
-type SortKey = "prestador" | "servicios" | "cerrados" | "prioridad" | "alerta" | "nivel";
+type SortKey = "prestador" | "servicios" | "cerrados" | "prioridad" | "impacto" | "alerta" | "nivel";
 
 function descargarCsv(filas: AuditoriaResultado[], clave: string) {
   const cols: [string, (r: AuditoriaResultado) => unknown][] = [
@@ -812,6 +823,7 @@ function descargarCsv(filas: AuditoriaResultado[], clave: string) {
     ["Servicios", (r) => r.servicios],
     ["Cerrados", (r) => r.cerrados],
     ["Prioridad", (r) => r.prioridad],
+    ["Servicios por encima de lo normal", (r) => mnum(r, "impacto_servicios")],
     ["Situacion", (r) => situacion(r).label],
     ["Confianza", (r) => r.confianza],
     ["% tarde comprobado", (r) => mnum(r, "tarde_comprobado%")],
@@ -889,6 +901,8 @@ export default function AuditoriaPanel({ buscarInicial = "" }: { buscarInicial?:
           return situacion(r).rank;
         case "nivel":
           return r.nivel;
+        case "impacto":
+          return mnum(r, "impacto_servicios");
         default:
           return r[sort.key];
       }
@@ -1206,6 +1220,7 @@ export default function AuditoriaPanel({ buscarInicial = "" }: { buscarInicial?:
                 {th("servicios", "Servicios", TIPS.colServicios, true)}
                 {th("cerrados", "Terminados", TIPS.colCerrados, true)}
                 {th("prioridad", "Urgencia", TIPS.colPrioridad, true)}
+                {th("impacto", "Servicios de más", TIPS.colImpacto, true)}
                 {th("alerta", "Situación", TIPS.colAlerta)}
                 <th className="py-2 pr-3 uppercase">
                   <span className="flex items-center gap-1">
@@ -1240,6 +1255,7 @@ export default function AuditoriaPanel({ buscarInicial = "" }: { buscarInicial?:
                         <span className="w-10 text-right">{r.prioridad == null ? "—" : nf(r.prioridad, 1)}</span>
                       </div>
                     </td>
+                    <td className="py-2 pr-3 text-right align-top">{mnum(r, "impacto_servicios") == null ? "—" : nf(mnum(r, "impacto_servicios"))}</td>
                     <td className="py-2 pr-3 align-top">
                       <span className={`font-label-caps text-label-caps rounded-md px-2.5 py-0.5 uppercase font-bold whitespace-normal ${a.tone}`}>{a.label}</span>
                     </td>
@@ -1251,7 +1267,7 @@ export default function AuditoriaPanel({ buscarInicial = "" }: { buscarInicial?:
               })}
               {visibles.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="py-lg text-center font-body-md text-body-md text-on-surface-variant">
+                  <td colSpan={8} className="py-lg text-center font-body-md text-body-md text-on-surface-variant">
                     No hay prestadores con estos filtros.
                   </td>
                 </tr>

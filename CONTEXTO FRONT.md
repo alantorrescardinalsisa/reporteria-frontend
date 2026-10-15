@@ -111,6 +111,10 @@ Se verificó por hash y por referencias (ningún import ni el `index.html` real 
 - **Verificación antes de dar por bueno un cambio:** `npx tsc -b --force` (NO `tsc --noEmit -p .`, que da falsos "sin errores" con esta configuración de referencias). En este entorno aparecen dos errores `TS5033` sobre `node_modules/.tmp/*.tsbuildinfo` que son ruido; solo importan los `error TS####` con ruta en `src/`. `npm run dev`/`vite build` no se pudieron correr en el entorno del asistente: no hay verificación visual automática, hay que revisar la pantalla desplegada.
 - **Despliegue:** el usuario sube los archivos a GitHub a mano (sin git local) desde esta carpeta, sin `node_modules`; Vercel despliega solo. Si el front se sube antes que el backend y las migraciones SQL, la pestaña de Auditoría muestra un error hasta que estén.
 
+## Actualización 2026-10-15 — columna "Servicios de más" en Auditoría
+
+`AuditoriaPanel.tsx`: nueva columna ordenable "Servicios de más" (tabla de prestadores, CSV y detalle del prestador) con tooltip `TIPS.colImpacto`. Lee `metricas.impacto_servicios` (lo calcula el motor, ver `CONTEXTO_AUDITORIA_PRESTADORES.md` §26); para corridas anteriores a este cambio muestra "—". Sin cambios en `api.ts` (`metricas` ya es un objeto libre) ni en el SQL del panel.
+
 ## Archivo Excel en esta carpeta
 
 `Reporte Metricas_de_prestadores Trackeo_de_servicios 2026-08-25 11_59_06.057.xlsx` — otra copia de muestra del reporte de Trackeo (mismo origen que el de `esquemas/esquema_supabase_prestadores/`, exportado de SMV). Está mezclado con el código fuente del frontend por descuido de organización, no tiene relación funcional con el build de Vite.
