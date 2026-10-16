@@ -134,3 +134,7 @@ Se verificó por hash y por referencias (ningún import ni el `index.html` real 
 ## Actualización 2026-10-16 (2) — "Peso en su problema" y filtro por aspecto
 
 `AuditoriaPanel.tsx`: la columna "Acumulado" pasó a llamarse **"Peso en su problema"**: muestra la parte propia del prestador sobre el total de "servicios de más" de su aspecto (el acumulado, que daba 100 % al último de la fila y confundía, quedó en la ayuda del mouse junto con el puesto y el grupo A/B/C; el punto de color sigue indicando el grupo). Nuevo filtro **Aspecto** (selector con la cantidad de prestadores de cada aspecto; usa `metricas.impacto_indicador`, solo prestadores con servicios de más). El CSV suma "Peso en su problema (%)". Sin cambios en el motor ni en la base.
+
+## Actualización 2026-10-16 (3) — filtro "Solo grupo rojo" y filtro de aspecto como botones
+
+`AuditoriaPanel.tsx`: el selector de aspecto (que se veía cortado) pasó a **botones** como los demás filtros (Todos + un botón por aspecto con la cantidad de prestadores). Nuevo filtro **"Solo grupo rojo"** (botón con punto rojo): deja solo a los prestadores del grupo A de su aspecto (los que juntan el 80 % del problema); se combina con situación, revisión y aspecto. Para esto el Pareto se calcula antes de la tabla filtrada (`pareto` y `filas` en ese orden).

@@ -112,6 +112,10 @@ const TIPS: Record<string, Tooltip> = {
     leer: "Qué parte del total de “servicios de más” de ese aspecto (demora, falta de hora de llegada, datos incompletos…) aporta este prestador por sí solo. El punto de color dice si pertenece al grupo chico que junta el 80 % del problema de su aspecto (rojo), si está entre el 80 % y el 95 % (naranja) o en el último tramo (gris). Al pasar el mouse se ve su puesto y el acumulado. No cambia con los filtros ni con el orden de la tabla.",
     calculo: "Servicios de más del prestador ÷ total de servicios de más de su aspecto en toda la corrida. El acumulado suma, de mayor a menor, el peso de los prestadores del mismo aspecto: grupo A hasta completar el 80 % (incluye al que lo cruza), grupo B hasta el 95 %, grupo C el resto.",
   },
+  filtroRojo: {
+    titulo: "Solo grupo rojo",
+    leer: "Muestra solo a los prestadores con punto rojo en “Peso en su problema”: los pocos que juntan el 80 % del problema de su aspecto. Combinalo con “Para auditar” y con un aspecto para armar la lista de arranque.",
+  },
   filtroAspecto: {
     titulo: "Filtrar por aspecto",
     leer: "Muestra solo los prestadores cuyo problema principal es ese aspecto (el que figura debajo de “Servicios de más”). Entre paréntesis, cuántos prestadores hay en cada uno. Los prestadores sin diferencia importante en ningún aspecto solo aparecen en “Todos los aspectos”.",
@@ -968,6 +972,7 @@ export default function AuditoriaPanel({ buscarInicial = "" }: { buscarInicial?:
   const [revs, setRevs] = useState<Map<string, AuditoriaRevisionActual>>(new Map());
   const [fRevision, setFRevision] = useState<"todas" | "sin" | "curso" | "cerrado">("todas");
   const [fAspecto, setFAspecto] = useState<string>("todos");
+  const [fRojo, setFRojo] = useState(false);
   const cargarRevs = () => {
     api
       .auditoriaRevisionesEstado()
@@ -997,6 +1002,7 @@ export default function AuditoriaPanel({ buscarInicial = "" }: { buscarInicial?:
     };
   }, [runId]);
 
+  const pareto = useMemo(() => calcularPareto(data?.resultados ?? []), [data]);
   const filas = useMemo(() => {
     const q = search.trim().toLowerCase();
     const arr = (data?.resultados || []).filter((r) => {
@@ -1004,6 +1010,7 @@ export default function AuditoriaPanel({ buscarInicial = "" }: { buscarInicial?:
       if (q && !(r.prestador || "").toLowerCase().includes(q)) return false;
       if (fRevision !== "todas" && infoEstado(revs.get(r.prestador_id)?.estado).grupo !== fRevision) return false;
       if (fAspecto !== "todos" && claveAspecto(r) !== fAspecto) return false;
+      if (fRojo && pareto.mapa.get(r.prestador_id)?.grupo !== "A") return false;
       const clave = situacion(r).clave;
       if (fAlerta === "auditar") return clave === "auditar";
       if (fAlerta === "seguir") return clave === "seguir";
@@ -1033,8 +1040,7 @@ export default function AuditoriaPanel({ buscarInicial = "" }: { buscarInicial?:
       const c = typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y), "es");
       return sort.dir === "asc" ? c : -c;
     });
-  }, [data, search, fAlerta, fSegmento, sort, fRevision, fAspecto, revs]);
-  const pareto = useMemo(() => calcularPareto(data?.resultados ?? []), [data]);
+  }, [data, search, fAlerta, fSegmento, sort, fRevision, fAspecto, fRojo, pareto, revs]);
   const resumenRevision = useMemo(() => {
     const r = { total: 0, sin: 0, curso: 0, cerrado: 0 };
     for (const x of data?.resultados ?? []) {
@@ -1364,26 +1370,48 @@ export default function AuditoriaPanel({ buscarInicial = "" }: { buscarInicial?:
               </span>
             </div>
             <div className="flex items-center gap-1 p-1 rounded-lg bg-surface-container-low font-body-sm text-body-sm flex-wrap">
-              <label className="flex items-center gap-1.5 pl-2">
-                <span className="text-on-surface-variant">Aspecto</span>
-                <select
-                  className="h-8 rounded-md border border-outline-variant/40 bg-surface-container-lowest px-2 text-on-surface"
-                  value={fAspecto}
-                  onChange={(e) => {
-                    setFAspecto(e.target.value);
+              <span className="pl-2 pr-1 text-on-surface-variant">Aspecto</span>
+              {(
+                [
+                  ["todos", "Todos"],
+                  ...pareto.aspectos.map((x) => [x.aspecto, `${x.texto.charAt(0).toUpperCase() + x.texto.slice(1)} (${x.conImpacto})`]),
+                ] as [string, string][]
+              ).map(([k, label]) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => {
+                    setFAspecto(k);
                     setPage(1);
                   }}
+                  className={`px-3 py-1 rounded-md transition-colors ${
+                    fAspecto === k ? "bg-surface-container-lowest text-on-surface font-medium shadow-xs" : "text-on-surface-variant hover:text-on-surface"
+                  }`}
                 >
-                  <option value="todos">Todos los aspectos</option>
-                  {pareto.aspectos.map((a) => (
-                    <option key={a.aspecto} value={a.aspecto}>
-                      {a.texto.charAt(0).toUpperCase() + a.texto.slice(1)} ({a.conImpacto})
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  {label}
+                </button>
+              ))}
               <span className="pr-2">
                 <InfoTip {...TIPS.filtroAspecto} />
+              </span>
+            </div>
+            <div className="flex items-center gap-1 p-1 rounded-lg bg-surface-container-low font-body-sm text-body-sm flex-wrap">
+              <button
+                type="button"
+                aria-pressed={fRojo}
+                onClick={() => {
+                  setFRojo(!fRojo);
+                  setPage(1);
+                }}
+                className={`px-3 py-1 rounded-md transition-colors flex items-center gap-1.5 ${
+                  fRojo ? "bg-surface-container-lowest text-on-surface font-medium shadow-xs" : "text-on-surface-variant hover:text-on-surface"
+                }`}
+              >
+                <span className="inline-block w-2 h-2 rounded-full bg-error" />
+                Solo grupo rojo
+              </button>
+              <span className="pr-2">
+                <InfoTip {...TIPS.filtroRojo} />
               </span>
             </div>
           </div>
