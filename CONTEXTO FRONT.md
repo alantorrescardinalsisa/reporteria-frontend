@@ -123,6 +123,10 @@ Se verificó por hash y por referencias (ningún import ni el `index.html` real 
 
 `AuditoriaPanel.tsx`: debajo de "Servicios de más" se muestra de qué aspecto sale (`metricas.impacto_indicador`, mapa `ASPECTO_IMPACTO`) y se agregó la columna "Acumulado" (regla de Pareto, `calcularPareto()`): se calcula **por separado en cada aspecto** (demora, sin hora de llegada, datos incompletos…; un 55 % de demora no es comparable con un 55 % de datos incompletos): dentro de cada aspecto se ordena TODA la corrida (sin filtros) por servicios de más y se acumula; grupo A hasta el 80 % del total de ese aspecto (incluye al que lo cruza), B hasta el 95 %, C el resto. Es un dato fijo por prestador (no depende del filtro ni del orden de la tabla). También en el CSV y en un resumen sobre la tabla con una línea por aspecto.
 
+## Actualización 2026-10-16 — registro de casos de auditoría
+
+`RegistroCaso.tsx` (nuevo): sección "Registro del caso" en el detalle del prestador (historia de decisiones, formulario con revisor de lista, estado, nota, fundamento y próxima revisión, y "Administrar revisores"). La clave compartida se pide una vez y se recuerda en `localStorage` (`auditoria_clave_revision`; también `auditoria_revisor_id`). `AuditoriaPanel.tsx`: columna "Revisión", filtro Sin revisar / En curso / Cerrados, línea resumen de los prestadores para auditar y columnas de revisión en el CSV. `api.ts`: tipos `Auditoria*Revision*` y 6 métodos (`auditoriaRevisionesEstado`, `…Prestador`, `auditoriaRevisores`, `auditoriaVerificarClave`, `auditoriaRegistrarRevision`, `auditoriaAdminRevisor`); las escrituras envían `X-Clave-Revision` y una clave de idempotencia (el cliente reintenta ante errores de red). Backend y SQL: `back_prestadores/CONTEXTO.md`.
+
 ## Archivo Excel en esta carpeta
 
 `Reporte Metricas_de_prestadores Trackeo_de_servicios 2026-08-25 11_59_06.057.xlsx` — otra copia de muestra del reporte de Trackeo (mismo origen que el de `esquemas/esquema_supabase_prestadores/`, exportado de SMV). Está mezclado con el código fuente del frontend por descuido de organización, no tiene relación funcional con el build de Vite.

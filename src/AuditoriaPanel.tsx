@@ -12,10 +12,12 @@ import type {
   AuditoriaEvidencia,
   AuditoriaHistorial,
   AuditoriaResultado,
+  AuditoriaRevisionActual,
 } from "./api";
 import { InfoTip } from "./InfoTip";
 import type { Tooltip } from "./InfoTip";
 import { CANDIDATO, OBSERVACION, situacion } from "./auditoriaSituacion";
+import RegistroCaso, { BadgeRevision, infoEstado } from "./RegistroCaso";
 
 /* Textos de ayuda (tooltips ⓘ) de toda la pantalla, en lenguaje llano. Las definiciones y umbrales salen del
    motor (auditoria_prestadores.py): si se cambian alla, actualizar aca. */
@@ -109,6 +111,14 @@ const TIPS: Record<string, Tooltip> = {
     titulo: "Acumulado (regla de Pareto, por aspecto)",
     leer: "Dentro del mismo aspecto (demora, falta de hora de llegada, datos incompletos…), qué parte del total de “servicios de más” de toda la red ya se alcanzó al llegar a este prestador, ordenando de mayor a menor. Se calcula por separado en cada aspecto, porque no es lo mismo un 55 % de demora que un 55 % de datos incompletos. El punto rojo marca al grupo chico que junta el 80 % de ese aspecto: ahí conviene empezar. Es un dato fijo de cada prestador: no cambia con los filtros ni con el orden de la tabla.",
     calculo: "Por cada aspecto, se ordenan los prestadores por “servicios de más” y se va sumando. Grupo A: hasta completar el 80 % del total de ese aspecto (incluye al que lo cruza). Grupo B: del 80 % al 95 %. Grupo C: el resto.",
+  },
+  colRevision: {
+    titulo: "Revisión",
+    leer: "En qué quedó el caso de cada prestador: sin revisar, en revisión, o cerrado (descartado o incumplimiento confirmado). Es la última decisión que registró una persona; se registra desde el detalle del prestador.",
+  },
+  filtroRevision: {
+    titulo: "Filtrar por revisión",
+    leer: "Sin revisar: nadie registró una decisión. En curso: en revisión o pide más evidencia. Cerrados: descartado o incumplimiento confirmado.",
   },
   colAlerta: {
     titulo: "Situación",
@@ -492,7 +502,17 @@ function estadoIndicador(z: number | null, diff: number | null, efectoMin: numbe
   return { texto: "Dentro de lo normal", tone: "text-on-surface-variant bg-surface-container-highest", activa: false };
 }
 
-function Detalle({ r, run, onClose }: { r: AuditoriaResultado; run: AuditoriaCorrida | null; onClose: () => void }) {
+function Detalle({
+  r,
+  run,
+  onClose,
+  onRegistrado,
+}: {
+  r: AuditoriaResultado;
+  run: AuditoriaCorrida | null;
+  onClose: () => void;
+  onRegistrado: () => void;
+}) {
   const [ev, setEv] = useState<AuditoriaEvidencia[] | null>(null);
   const [hist, setHist] = useState<AuditoriaHistorial[]>([]);
   const [err, setErr] = useState<string | null>(null);
@@ -760,6 +780,8 @@ function Detalle({ r, run, onClose }: { r: AuditoriaResultado; run: AuditoriaCor
             </Tarjeta>
           </section>
 
+          <RegistroCaso prestadorId={r.prestador_id} runId={run?.run_id ?? null} onRegistrado={onRegistrado} />
+
           <Tarjeta icono="manage_search" titulo="Servicios de ejemplo para revisar" tip={TIPS.evidencia}>
             <p className="font-body-md text-body-md text-on-surface-variant">
               Estos son casos reales de este prestador. Conviene revisarlos uno por uno antes de decidir.
@@ -871,7 +893,12 @@ function calcularPareto(resultados: AuditoriaResultado[]): { mapa: Map<string, P
 
 type SortKey = "prestador" | "servicios" | "cerrados" | "prioridad" | "impacto" | "alerta" | "nivel";
 
-function descargarCsv(filas: AuditoriaResultado[], clave: string, pareto: ReturnType<typeof calcularPareto>) {
+function descargarCsv(
+  filas: AuditoriaResultado[],
+  clave: string,
+  pareto: ReturnType<typeof calcularPareto>,
+  revs: Map<string, AuditoriaRevisionActual>,
+) {
   const cols: [string, (r: AuditoriaResultado) => unknown][] = [
     ["Prestador", (r) => r.prestador],
     ["Segmento", (r) => r.segmento],
@@ -884,6 +911,9 @@ function descargarCsv(filas: AuditoriaResultado[], clave: string, pareto: Return
     ["Acumulado dentro de su aspecto (%)", (r) => { const p = pareto.mapa.get(r.prestador_id); return p ? Math.round(p.acumulado * 10) / 10 : null; }],
     ["Grupo Pareto dentro de su aspecto (A=80%)", (r) => pareto.mapa.get(r.prestador_id)?.grupo ?? null],
     ["Situacion", (r) => situacion(r).label],
+    ["Revision", (r) => infoEstado(revs.get(r.prestador_id)?.estado).label],
+    ["Ultimo revisor", (r) => revs.get(r.prestador_id)?.responsable ?? null],
+    ["Fecha de la ultima revision", (r) => revs.get(r.prestador_id)?.created_at?.slice(0, 10) ?? null],
     ["Confianza", (r) => r.confianza],
     ["% tarde comprobado", (r) => mnum(r, "tarde_comprobado%")],
     ["% sin hora de llegada", (r) => mnum(r, "sin_hora_llegada%")],
@@ -919,6 +949,15 @@ export default function AuditoriaPanel({ buscarInicial = "" }: { buscarInicial?:
   const [sort, setSort] = useState<{ key: SortKey; dir: "asc" | "desc" }>({ key: "prioridad", dir: "desc" });
   const [page, setPage] = useState(1);
   const [sel, setSel] = useState<AuditoriaResultado | null>(null);
+  const [revs, setRevs] = useState<Map<string, AuditoriaRevisionActual>>(new Map());
+  const [fRevision, setFRevision] = useState<"todas" | "sin" | "curso" | "cerrado">("todas");
+  const cargarRevs = () => {
+    api
+      .auditoriaRevisionesEstado()
+      .then((d) => setRevs(new Map(d.estados.map((x) => [x.prestador_id, x]))))
+      .catch(() => undefined); // si falla, la tabla se muestra igual (todos "sin revisar")
+  };
+  useEffect(cargarRevs, []);
 
   useEffect(() => {
     api
@@ -946,6 +985,7 @@ export default function AuditoriaPanel({ buscarInicial = "" }: { buscarInicial?:
     const arr = (data?.resultados || []).filter((r) => {
       if (fSegmento !== "todos" && r.segmento !== fSegmento) return false;
       if (q && !(r.prestador || "").toLowerCase().includes(q)) return false;
+      if (fRevision !== "todas" && infoEstado(revs.get(r.prestador_id)?.estado).grupo !== fRevision) return false;
       const clave = situacion(r).clave;
       if (fAlerta === "auditar") return clave === "auditar";
       if (fAlerta === "seguir") return clave === "seguir";
@@ -975,8 +1015,17 @@ export default function AuditoriaPanel({ buscarInicial = "" }: { buscarInicial?:
       const c = typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y), "es");
       return sort.dir === "asc" ? c : -c;
     });
-  }, [data, search, fAlerta, fSegmento, sort]);
+  }, [data, search, fAlerta, fSegmento, sort, fRevision, revs]);
   const pareto = useMemo(() => calcularPareto(data?.resultados ?? []), [data]);
+  const resumenRevision = useMemo(() => {
+    const r = { total: 0, sin: 0, curso: 0, cerrado: 0 };
+    for (const x of data?.resultados ?? []) {
+      if (situacion(x).clave !== "auditar") continue;
+      r.total += 1;
+      r[infoEstado(revs.get(x.prestador_id)?.estado).grupo] += 1;
+    }
+    return r;
+  }, [data, revs]);
 
   const corrida = data?.corrida || null;
   const resumen = corrida?.conteos?.resumen || {};
@@ -1208,7 +1257,7 @@ export default function AuditoriaPanel({ buscarInicial = "" }: { buscarInicial?:
               <button
                 type="button"
                 className="flex items-center gap-space-xs px-space-md py-1.5 rounded-lg bg-primary-container text-on-primary hover:bg-primary transition-all font-body-sm text-body-sm font-medium shadow-sm"
-                onClick={() => descargarCsv(filas, corrida.clave_semana, pareto)}
+                onClick={() => descargarCsv(filas, corrida.clave_semana, pareto, revs)}
               >
                 <Icon name="download" className="text-[17px]" />
                 Descargar CSV
@@ -1269,8 +1318,41 @@ export default function AuditoriaPanel({ buscarInicial = "" }: { buscarInicial?:
                 <InfoTip {...TIPS.filtroSegmento} />
               </span>
             </div>
+            <div className="flex items-center gap-1 p-1 rounded-lg bg-surface-container-low font-body-sm text-body-sm flex-wrap">
+              {(
+                [
+                  ["todas", "Toda revisión"],
+                  ["sin", "Sin revisar"],
+                  ["curso", "En curso"],
+                  ["cerrado", "Cerrados"],
+                ] as ["todas" | "sin" | "curso" | "cerrado", string][]
+              ).map(([k, label]) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => {
+                    setFRevision(k);
+                    setPage(1);
+                  }}
+                  className={`px-3 py-1 rounded-md transition-colors ${
+                    fRevision === k ? "bg-surface-container-lowest text-on-surface font-medium shadow-xs" : "text-on-surface-variant hover:text-on-surface"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+              <span className="pr-2">
+                <InfoTip {...TIPS.filtroRevision} />
+              </span>
+            </div>
           </div>
         </div>
+        {resumenRevision.total > 0 && (
+          <p className="px-md pb-sm font-body-md text-body-md text-on-surface-variant">
+            <b className="text-on-surface">Revisión de los {nf(resumenRevision.total)} prestadores para auditar con prioridad:</b>{" "}
+            {nf(resumenRevision.sin)} sin revisar, {nf(resumenRevision.curso)} en curso y {nf(resumenRevision.cerrado)} cerrados.
+          </p>
+        )}
         {pareto.aspectos.length > 0 && (
           <div className="px-md pb-sm font-body-md text-body-md text-on-surface-variant flex flex-col gap-0.5">
             <span className="text-on-surface font-semibold">Dónde se concentra el problema (cada aspecto por separado):</span>
@@ -1303,6 +1385,12 @@ export default function AuditoriaPanel({ buscarInicial = "" }: { buscarInicial?:
                   </span>
                 </th>
                 {th("alerta", "Situación", TIPS.colAlerta)}
+                <th className="py-2 pr-3 uppercase">
+                  <span className="flex items-center gap-1">
+                    Revisión
+                    <InfoTip {...TIPS.colRevision} />
+                  </span>
+                </th>
                 <th className="py-2 pr-3 uppercase">
                   <span className="flex items-center gap-1">
                     Por qué
@@ -1357,6 +1445,14 @@ export default function AuditoriaPanel({ buscarInicial = "" }: { buscarInicial?:
                     <td className="py-2 pr-3 align-top">
                       <span className={`font-label-caps text-label-caps rounded-md px-2.5 py-0.5 uppercase font-bold whitespace-normal ${a.tone}`}>{a.label}</span>
                     </td>
+                    <td className="py-2 pr-3 align-top whitespace-normal">
+                      <BadgeRevision estado={revs.get(r.prestador_id)?.estado} />
+                      {revs.get(r.prestador_id)?.responsable && (
+                        <span className="block font-body-sm text-body-sm text-on-surface-variant">
+                          {revs.get(r.prestador_id)?.responsable} · {(revs.get(r.prestador_id)?.created_at || "").slice(0, 10)}
+                        </span>
+                      )}
+                    </td>
                     <td className="py-2 pr-3 font-body-sm text-body-sm text-on-surface-variant min-w-[340px] max-w-[480px] whitespace-normal align-top">
                       <MotivosLista texto={r.motivos} />
                     </td>
@@ -1365,7 +1461,7 @@ export default function AuditoriaPanel({ buscarInicial = "" }: { buscarInicial?:
               })}
               {visibles.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="py-lg text-center font-body-md text-body-md text-on-surface-variant">
+                  <td colSpan={10} className="py-lg text-center font-body-md text-body-md text-on-surface-variant">
                     No hay prestadores con estos filtros.
                   </td>
                 </tr>
@@ -1400,7 +1496,7 @@ export default function AuditoriaPanel({ buscarInicial = "" }: { buscarInicial?:
         </div>
       </section>
 
-      {sel && <Detalle r={sel} run={corrida} onClose={() => setSel(null)} />}
+      {sel && <Detalle r={sel} run={corrida} onClose={() => setSel(null)} onRegistrado={cargarRevs} />}
     </div>
   );
 }

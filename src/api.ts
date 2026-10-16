@@ -656,8 +656,70 @@ export type AuditoriaHistorial = {
   cerrados: number | null;
 };
 
+/* Registro de casos de auditoría: quién revisó a qué prestador y qué decidió (ver panel_auditoria.py). */
+export type AuditoriaEstadoRevision =
+  | "Pendiente"
+  | "En revision"
+  | "Requiere evidencia"
+  | "Descartado"
+  | "Incumplimiento confirmado";
+export type AuditoriaRevisionActual = {
+  prestador_id: string;
+  estado: AuditoriaEstadoRevision | string;
+  responsable: string | null;
+  created_at: string;
+  proxima_revision: string | null;
+  comentario: string | null;
+  n_revisiones: number;
+};
+export type AuditoriaRevision = {
+  id: string;
+  estado: AuditoriaEstadoRevision | string;
+  responsable: string | null;
+  comentario: string | null;
+  fundamento: string | null;
+  proxima_revision: string | null;
+  created_at: string;
+  clave_semana: string | null;
+};
+export type AuditoriaRevisor = { id: string; nombre: string; activo: boolean; ultima_actividad: string | null };
+export type NuevaRevisionBody = {
+  prestador_id: string;
+  run_id?: string | null;
+  estado: AuditoriaEstadoRevision;
+  revisor_id: string;
+  comentario?: string | null;
+  fundamento?: string | null;
+  proxima_revision?: string | null;
+  idempotencia: string;
+};
+
+const CLAVE_HEADER = "X-Clave-Revision";
+const postClave = <T,>(path: string, clave: string, body?: unknown) =>
+  request<T>(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", [CLAVE_HEADER]: clave },
+    body: JSON.stringify(body ?? {}),
+  });
+
 export const api = {
   url: API_URL,
+  auditoriaRevisionesEstado: () =>
+    request<{ estados: AuditoriaRevisionActual[] }>("/api/auditoria/revisiones/estado"),
+  auditoriaRevisionesPrestador: (prestadorId: string) =>
+    request<{ revisiones: AuditoriaRevision[] }>(
+      "/api/auditoria/revisiones/prestador/" + encodeURIComponent(prestadorId),
+    ),
+  auditoriaRevisores: (incluirInactivos = false) =>
+    request<{ revisores: AuditoriaRevisor[] }>(
+      "/api/auditoria/revisores" + (incluirInactivos ? "?incluir_inactivos=true" : ""),
+    ),
+  auditoriaVerificarClave: (clave: string) =>
+    postClave<{ ok: boolean }>("/api/auditoria/revisiones/verificar-clave", clave),
+  auditoriaRegistrarRevision: (clave: string, body: NuevaRevisionBody) =>
+    postClave<{ revision: AuditoriaRevision }>("/api/auditoria/revisiones", clave, body),
+  auditoriaAdminRevisor: (clave: string, body: { accion: "agregar" | "desactivar" | "activar"; nombre?: string; id?: string }) =>
+    postClave<{ revisores: AuditoriaRevisor[] }>("/api/auditoria/revisores", clave, body),
   health: () => request<{ ok: boolean; version: string }>("/health"),
   auditoriaCorridas: () =>
     request<{ corridas: AuditoriaCorridaResumen[] }>("/api/auditoria/corridas"),
