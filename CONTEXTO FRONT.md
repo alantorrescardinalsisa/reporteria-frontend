@@ -130,3 +130,7 @@ Se verificó por hash y por referencias (ningún import ni el `index.html` real 
 ## Archivo Excel en esta carpeta
 
 `Reporte Metricas_de_prestadores Trackeo_de_servicios 2026-08-25 11_59_06.057.xlsx` — otra copia de muestra del reporte de Trackeo (mismo origen que el de `esquemas/esquema_supabase_prestadores/`, exportado de SMV). Está mezclado con el código fuente del frontend por descuido de organización, no tiene relación funcional con el build de Vite.
+
+## Actualización 2026-10-16 (2) — "Peso en su problema" y filtro por aspecto
+
+`AuditoriaPanel.tsx`: la columna "Acumulado" pasó a llamarse **"Peso en su problema"**: muestra la parte propia del prestador sobre el total de "servicios de más" de su aspecto (el acumulado, que daba 100 % al último de la fila y confundía, quedó en la ayuda del mouse junto con el puesto y el grupo A/B/C; el punto de color sigue indicando el grupo). Nuevo filtro **Aspecto** (selector con la cantidad de prestadores de cada aspecto; usa `metricas.impacto_indicador`, solo prestadores con servicios de más). El CSV suma "Peso en su problema (%)". Sin cambios en el motor ni en la base.
