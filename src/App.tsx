@@ -686,6 +686,12 @@ function Card({
 }
 
 /* ---------- Fila de indicador operativo (lista compacta) ---------- */
+// NUEVO (2026-10-19, paquete de lectura): por debajo de esta cobertura de medicion, un cumplimiento NO es representativo
+// de todo el universo y se avisa junto al numero.
+const COBERTURA_BAJA = 0.5;
+// Minimo de prestadores comparables para mostrar un "Top lider" (mismo criterio que MIN_PARES_BENCHMARK del backend).
+const MIN_PARES_LIDER = 5;
+
 function IndicatorRow({
   icon,
   label,
@@ -869,6 +875,16 @@ const TREND_SERIES: {
 // (Catmull-Rom -> Bezier cúbica) en vez de segmentos rectos -- mismos
 // datos y mismas coordenadas x/y ya calculadas, solo cambia cómo se
 // dibuja la línea entre ellas.
+// NUEVO (2026-10-19, paquete de lectura): un dia SIN DATO (valor nulo) interrumpe la linea; antes se dibujaba como 0 %
+// (caida ficticia). Las lineas pasan a ser RECTAS entre dias con dato: la curva suave inventaba valores intermedios
+// (podia pasar de 100 % o de 0 %). Poner true para volver a la curva suave.
+const TENDENCIA_CURVA_SUAVE = false;
+const rectaLinePath = (pts: { x: number; y: number }[]) =>
+  pts.length === 0 ? "" : pts.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x} ${p.y}`).join(" ");
+const rectaAreaPath = (pts: { x: number; y: number }[], baseline: number) =>
+  pts.length === 0
+    ? ""
+    : `${rectaLinePath(pts)} L ${pts[pts.length - 1].x} ${baseline} L ${pts[0].x} ${baseline} Z`;
 const smoothLinePath = (pts: { x: number; y: number }[]) => {
   if (pts.length === 0) return "";
   if (pts.length === 1) return `M ${pts[0].x} ${pts[0].y}`;
@@ -914,8 +930,29 @@ function TrendSvg({
     P = 35,
     x = (i: number) => P + (i * (W - 2 * P)) / Math.max(1, data.length - 1),
     y = (v: number) => H - P - v * (H - 2 * P),
-    pointsOf = (k: keyof TrendPoint) =>
-      data.map((d, i) => ({ x: x(i), y: y(Number(d[k] || 0)) }));
+    // Valor de un dia, o null si NO hay dato (no es lo mismo que 0 %).
+    valorDe = (d: TrendPoint, k: keyof TrendPoint): number | null => {
+      const v = d[k];
+      return v == null || Number.isNaN(Number(v)) ? null : Number(v);
+    },
+    // Tramos de dias consecutivos CON dato; un dia sin dato corta el tramo.
+    segmentosDe = (k: keyof TrendPoint) => {
+      const tramos: { x: number; y: number }[][] = [];
+      let actual: { x: number; y: number }[] = [];
+      data.forEach((d, i) => {
+        const v = valorDe(d, k);
+        if (v == null) {
+          if (actual.length) tramos.push(actual);
+          actual = [];
+        } else {
+          actual.push({ x: x(i), y: y(v) });
+        }
+      });
+      if (actual.length) tramos.push(actual);
+      return tramos;
+    },
+    trazoLinea = TENDENCIA_CURVA_SUAVE ? smoothLinePath : rectaLinePath,
+    trazoArea = TENDENCIA_CURVA_SUAVE ? smoothAreaPath : rectaAreaPath;
 
   // NUEVO (ADITIVO): antes se etiquetaba CADA día en el eje X -- con
   // más de ~15-20 puntos las etiquetas se pisaban entre sí y quedaban
@@ -987,24 +1024,35 @@ function TrendSvg({
           </text>
         </g>
       ))}
-      {TREND_SERIES.slice(0, 2).map((s) => (
-        <path
-          key={`area-${s.key}`}
-          d={smoothAreaPath(pointsOf(s.key), H - P)}
-          fill={`url(#${gradId}-${s.key})`}
-          stroke="none"
-        />
-      ))}
-      {TREND_SERIES.map((s) => (
-        <path
-          key={s.key}
-          className={`fill-none ${s.stroke}`}
-          strokeWidth={s.key === "cumplimiento_demora" ? 2.5 : 2}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          d={smoothLinePath(pointsOf(s.key))}
-        />
-      ))}
+      {TREND_SERIES.slice(0, 2).flatMap((s) =>
+        segmentosDe(s.key)
+          .filter((seg) => seg.length > 1)
+          .map((seg, j) => (
+            <path
+              key={`area-${s.key}-${j}`}
+              d={trazoArea(seg, H - P)}
+              fill={`url(#${gradId}-${s.key})`}
+              stroke="none"
+            />
+          )),
+      )}
+      {TREND_SERIES.flatMap((s) =>
+        segmentosDe(s.key).map((seg, j) =>
+          seg.length === 1 ? (
+            // Un dia con dato entre dos dias sin dato: no alcanza para una linea, se marca el punto.
+            <circle key={`${s.key}-${j}`} cx={seg[0].x} cy={seg[0].y} r={3} className={s.fill} />
+          ) : (
+            <path
+              key={`${s.key}-${j}`}
+              className={`fill-none ${s.stroke}`}
+              strokeWidth={s.key === "cumplimiento_demora" ? 2.5 : 2}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d={trazoLinea(seg)}
+            />
+          ),
+        ),
+      )}
       {data.map(
         (d, i) =>
           mostrarEtiqueta(i) && (
@@ -1032,16 +1080,19 @@ function TrendSvg({
             strokeWidth={1}
             strokeDasharray="3,3"
           />
-          {TREND_SERIES.map((s) => (
-            <circle
-              key={s.key}
-              cx={hoverX}
-              cy={y(Number(hover[s.key] || 0))}
-              r={3.5}
-              className={`${s.fill} stroke-surface-container-lowest`}
-              strokeWidth={1.5}
-            />
-          ))}
+          {TREND_SERIES.map((s) => {
+            const v = valorDe(hover, s.key);
+            return v == null ? null : (
+              <circle
+                key={s.key}
+                cx={hoverX}
+                cy={y(v)}
+                r={3.5}
+                className={`${s.fill} stroke-surface-container-lowest`}
+                strokeWidth={1.5}
+              />
+            );
+          })}
           <rect
             x={tooltipX}
             y={tooltipY}
@@ -1071,7 +1122,10 @@ function TrendSvg({
                 y={tooltipY + 34 + i * 16}
                 className="fill-inverse-on-surface text-[10px]"
               >
-                {s.label}: {Math.round(Number(hover[s.key] || 0) * 100)}%
+                {s.label}:{" "}
+                {valorDe(hover, s.key) == null
+                  ? "sin datos"
+                  : `${Math.round((valorDe(hover, s.key) as number) * 100)}%`}
               </text>
             </g>
           ))}
@@ -2235,9 +2289,17 @@ function NotificationBell({
           </header>
           <div className="overflow-y-auto flex-1">
             {total === 0 && (
-              <p className="p-md font-body-md text-body-md text-on-surface-variant">
-                {alertas?.mensaje || "Sin alertas por ahora."}
-              </p>
+              <div className="p-md flex flex-col gap-1">
+                {alertas && !alertas.mes_anterior && (
+                  <p className="font-label-md text-label-md text-on-surface flex items-center gap-1">
+                    <Icon name="info" className="text-[16px] text-[#f59e0b]" />
+                    Comparación no disponible
+                  </p>
+                )}
+                <p className="font-body-md text-body-md text-on-surface-variant">
+                  {alertas?.mensaje || "Sin alertas por ahora."}
+                </p>
+              </div>
             )}
             {alertas && alertas.prestadores_alerta.length > 0 && (
               <div className="p-md flex flex-col gap-2">
@@ -3533,11 +3595,17 @@ export default function App() {
     const conTrazabilidad = providers.filter(
       (x) => x.porcentaje_trazabilidad_completa != null,
     );
-    const lider = providers.reduce<PrestadorMetric | null>((best, x) => {
-      if (x.score_ranking == null) return best;
-      if (!best || (best.score_ranking ?? -1) < x.score_ranking) return x;
-      return best;
-    }, null);
+    // CAMBIADO (2026-10-19, paquete de lectura): el "Top lider" solo se muestra si hay al menos MIN_PARES_LIDER prestadores
+    // comparables (con score y sin muestra baja, o sea 20 servicios o mas). Antes salia el de mayor score aunque tuviera
+    // 2 servicios o hubiera 3 prestadores en total.
+    const comparables = providers.filter((x) => x.score_ranking != null && !x.muestra_baja);
+    const lider =
+      comparables.length >= MIN_PARES_LIDER
+        ? comparables.reduce<PrestadorMetric | null>((best, x) => {
+            if (!best || (best.score_ranking ?? -1) < (x.score_ranking ?? -1)) return x;
+            return best;
+          }, null)
+        : null;
     return {
       total: providers.length,
       cumplimientoPromedio:
@@ -3553,6 +3621,7 @@ export default function App() {
           ) / conTrazabilidad.length
         : null,
       lider,
+      paresLider: comparables.length,
     };
   }, [providers]);
   const ranges: [
@@ -4055,6 +4124,11 @@ export default function App() {
                         </div>
                       </div>
                       <TrendChart data={trend} />
+                      {trend.some((d) => TREND_SERIES.some((s) => d[s.key] == null)) && (
+                        <p className="font-label-sm text-label-sm text-on-surface-variant pt-xs">
+                          Los días sin dato interrumpen la línea: no se muestran como 0 %.
+                        </p>
+                      )}
                     </div>
                   </div>
                   <div className="xl:col-span-4 flex flex-col gap-sm">
@@ -4153,7 +4227,7 @@ export default function App() {
                             ? pct(summary?.cumplimiento_demora_trazable)
                             : "N/A"
                         }
-                        detail={`${nf(summary?.servicios_cumplidos_trazable)} cumplen · ${nf(summary?.servicios_no_cumplidos_trazable)} no cumplen (con Demora Prometida y Real cargadas)`}
+                        detail={`${nf(summary?.servicios_cumplidos_trazable)} cumplen · ${nf(summary?.servicios_no_cumplidos_trazable)} no cumplen (con Demora Prometida y Real cargadas) · cobertura ${pct(summary?.cobertura_medicion_demora)} (${nf(summary?.servicios_evaluados_demora_trazable)} de ${nf(summary?.servicios_consultados)})${(summary?.cobertura_medicion_demora ?? 1) < COBERTURA_BAJA ? " · ⚠ cobertura baja: no representa a todo el universo" : ""}`}
                         progress={
                           (summary?.servicios_evaluados_demora_trazable ?? 0) > 0
                             ? ratioPct(summary?.cumplimiento_demora_trazable)
@@ -4171,7 +4245,7 @@ export default function App() {
                         icon={<Icon name="fact_check" className="text-[18px]" />}
                         label="Cobertura de medición de demora"
                         value={pct(summary?.cobertura_medicion_demora)}
-                        detail={`${nf(summary?.servicios_evaluados_demora_trazable)} de ${nf(summary?.servicios_consultados)} servicios con Demora Prometida y Real cargadas`}
+                        detail={`${nf(summary?.servicios_evaluados_demora_trazable)} de ${nf(summary?.servicios_consultados)} servicios con Demora Prometida y Real cargadas${(summary?.cobertura_medicion_demora ?? 1) < COBERTURA_BAJA ? " · cobertura baja: leer los cumplimientos con cautela" : ""}`}
                         progress={ratioPct(summary?.cobertura_medicion_demora)}
                         tooltip={{
                           leer: "Qué % del universo filtrado tiene los datos completos como para medir su cumplimiento de verdad. Si es bajo, los dos indicadores anteriores hay que leerlos con pinzas.",
@@ -5281,10 +5355,14 @@ export default function App() {
                             {pct(providerStats.lider.score_ranking)} score
                           </span>
                         </div>
+                        <span className="font-body-sm text-body-sm text-on-primary/80">
+                          entre {nf(providerStats.paresLider)} prestadores comparables
+                        </span>
                       </>
                     ) : (
                       <span className="font-body-sm text-body-sm text-on-primary/80">
-                        Sin datos suficientes
+                        Sin datos suficientes: se necesitan al menos {MIN_PARES_LIDER} prestadores con 20 o más
+                        servicios (hay {nf(providerStats.paresLider)}).
                       </span>
                     )}
                   </div>
@@ -5881,6 +5959,23 @@ export default function App() {
                       tendencia y la comparación entre prestadores sean confiables.
                       Mientras tanto, todos los prestadores se muestran como
                       "Muestra insuficiente", sin ranking ni recomendación.
+                    </p>
+                  </div>
+                )}
+
+                {/* NUEVO (2026-10-19): con pocos prestadores comparables un ranking no significa nada. */}
+                {inteligencia && inteligencia.periodo_suficiente && inteligencia.benchmark_valido === false && (
+                  <div className="flex items-start gap-2 bg-[#f59e0b]/10 border border-[#f59e0b]/30 rounded-xl px-md py-sm">
+                    <Icon
+                      name="warning"
+                      filled
+                      className="text-[#f59e0b] text-[20px] mt-0.5 shrink-0"
+                    />
+                    <p className="font-body-md text-body-md text-on-surface">
+                      Solo hay {nf(inteligencia.pares_comparables ?? 0)} prestador
+                      {(inteligencia.pares_comparables ?? 0) !== 1 ? "es" : ""} con muestra suficiente en el filtro
+                      actual; se necesitan al menos {nf(inteligencia.pares_minimos ?? 5)} para compararlos entre sí.
+                      Mientras tanto, todos se muestran como "Muestra insuficiente", sin ranking ni recomendación.
                     </p>
                   </div>
                 )}

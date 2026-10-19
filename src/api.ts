@@ -476,6 +476,10 @@ export type InteligenciaPrestadores = {
   periodo_dias: number;
   periodo_suficiente: boolean;
   dias_minimo_recomendado: number;
+  // v4.30.0: minimo de prestadores comparables para calcular ranking (backend: MIN_PARES_BENCHMARK)
+  pares_comparables?: number;
+  pares_minimos?: number;
+  benchmark_valido?: boolean;
 };
 // NUEVO v4.22.0 (ADITIVO): sistema de alertas (campanita del header).
 export type PrestadorAlerta = {

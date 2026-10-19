@@ -209,6 +209,7 @@ const TITULO_EVIDENCIA: Record<string, { titulo: string; leer: string }> = {
 
 const PAGE_SIZE = 15;
 const Z_MIN = 2; // mismos umbrales que el motor (ver auditoria_prestadores.py)
+const MIN_MEDIBLES = 20; // por debajo de esta cantidad de servicios medibles un indicador no se considera evaluable
 const INDICADORES: { clave: string; titulo: string; problema: string; efectoMin: number; informativo?: boolean }[] = [
   { clave: "incumple", titulo: "Cumplir con la demora prometida", problema: "servicios con hora de llegada que llegaron tarde (los que no tienen hora de llegada se miden aparte)", efectoMin: 3 },
   { clave: "sin_llegada", titulo: "Registrar la hora de llegada", problema: "servicios terminados sin hora de llegada (problema de carga de datos, no de demora)", efectoMin: 5 },
@@ -659,7 +660,11 @@ function Detalle({
               {INDICADORES.filter((i) => mnum(r, `${i.clave}_obs%`) != null).map((i) => {
                 const obs = mnum(r, `${i.clave}_obs%`);
                 const esp = mnum(r, `${i.clave}_esp%`);
-                const est = estadoIndicador(mnum(r, `${i.clave}_z_adj`), mnum(r, `${i.clave}_diff_pp`), i.efectoMin, i.informativo);
+                const n = mnum(r, `${i.clave}_n`) ?? 0;
+                const est0 = estadoIndicador(mnum(r, `${i.clave}_z_adj`), mnum(r, `${i.clave}_diff_pp`), i.efectoMin, i.informativo);
+                // Con muy pocos servicios medibles no se puede afirmar que este "dentro de lo normal": se avisa.
+                const pocos = !est0.activa && n < MIN_MEDIBLES;
+                const est = pocos ? { texto: "Pocos datos para evaluar", tone: "text-[#b5610a] bg-[#f59e0b]/10", activa: false } : est0;
                 return (
                   <Caja
                     key={i.clave}
@@ -667,7 +672,11 @@ function Detalle({
                     valor={`${cada100(obs)} de cada 100`}
                     badge={est.texto}
                     badgeTone={est.tone}
-                    explicacion={`${i.problema}. Lo normal en servicios parecidos: ${cada100(esp)} de cada 100 (sobre ${nf(mnum(r, `${i.clave}_n`))} servicios).`}
+                    explicacion={
+                      pocos
+                        ? `${i.problema}. Solo hay ${nf(n)} ${n === 1 ? "servicio medible" : "servicios medibles"} (se necesitan al menos ${MIN_MEDIBLES}): ese porcentaje no alcanza para decir si está bien o mal.`
+                        : `${i.problema}. Lo normal en servicios parecidos: ${cada100(esp)} de cada 100 (sobre ${nf(n)} servicios).`
+                    }
                   />
                 );
               })}
