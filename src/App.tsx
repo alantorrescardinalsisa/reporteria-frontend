@@ -51,6 +51,10 @@ import AuditoriaPanel from "./AuditoriaPanel";
 import GuiaEvaluaciones, { type DestinoEvaluacion } from "./GuiaEvaluaciones";
 import { situacion as situacionAuditoria } from "./auditoriaSituacion";
 import { InfoTip, type Tooltip } from "./InfoTip";
+import { PrimaryMetricsSection, type SeccionDestino } from "./components/metrics/PrimaryMetricsSection";
+import { buildExecutiveSummary } from "./domain/buildExecutiveSummary";
+import { buildPrimaryMetrics } from "./domain/buildPrimaryMetrics";
+import { COBERTURA_BAJA, MIN_PARES_LIDER, MINIMO_MEDIBLES } from "./domain/indicatorCatalog";
 
 /* ============================================================
  * Nota de mantenimiento: este archivo fue re-diseñado visualmente
@@ -160,6 +164,18 @@ const pctOf = (num?: number | null, den?: number | null) =>
 // NUEVO (ADITIVO): convierte una proporción 0-1 ya calculada (la misma
 // que formatea pct()) a 0-100 para el ancho de una barra de progreso.
 const ratioPct = (v?: number | null) => (v == null ? undefined : v * 100);
+// El backend devuelve 0 en el cumplimiento observado cuando NO hay servicios medibles (denominador 0). En pantalla eso es
+// "sin dato" ("—"), no 0 %: este helper devuelve null en ese caso.
+const cumplObs = (x: {
+  servicios_evaluados_demora_trazable?: number;
+  cumplimiento_demora_trazable?: number | null;
+}) => ((x.servicios_evaluados_demora_trazable ?? 0) > 0 ? (x.cumplimiento_demora_trazable ?? null) : null);
+// "2026-09-01" -> "01/09/2026"
+const fechaCorta = (iso?: string | null) => {
+  if (!iso) return "—";
+  const [y, m, d] = iso.split("-");
+  return y && m && d ? `${d}/${m}/${y}` : iso;
+};
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 // NUEVO v2.4.0 (memoria backend, ADITIVO). `load()` disparaba sus ~18
 // pedidos analiticos TODOS a la vez (Promise.allSettled), lo que hace
@@ -686,11 +702,31 @@ function Card({
 }
 
 /* ---------- Fila de indicador operativo (lista compacta) ---------- */
-// NUEVO (2026-10-19, paquete de lectura): por debajo de esta cobertura de medicion, un cumplimiento NO es representativo
-// de todo el universo y se avisa junto al numero.
-const COBERTURA_BAJA = 0.5;
-// Minimo de prestadores comparables para mostrar un "Top lider" (mismo criterio que MIN_PARES_BENCHMARK del backend).
-const MIN_PARES_LIDER = 5;
+// COBERTURA_BAJA y MIN_PARES_LIDER viven ahora en domain/indicatorCatalog.ts (catalogo unico de umbrales).
+
+// 2026-10-19: junto al cumplimiento observado de un prestador se muestra sobre CUANTOS servicios medibles esta calculado y se
+// marca "Pocos datos" si son menos de MINIMO_MEDIBLES: un 100 % sobre 1 servicio no es un 100 % confiable.
+function MuestraCumplimiento({ medibles }: { medibles?: number }) {
+  const n = medibles ?? 0;
+  return (
+    <>
+      <span
+        className="font-label-sm text-label-sm text-on-surface-variant whitespace-nowrap"
+        title="Servicios medibles: con demora prometida y demora real cargadas. El cumplimiento se calcula solo sobre estos."
+      >
+        n={new Intl.NumberFormat("es-AR").format(n)}
+      </span>
+      {n < MINIMO_MEDIBLES && (
+        <span
+          className="font-label-sm text-label-sm px-1.5 py-0.5 rounded-full text-[#b5610a] bg-[#f59e0b]/10 whitespace-nowrap"
+          title={`Menos de ${MINIMO_MEDIBLES} servicios medibles: el cumplimiento de este prestador no es confiable.`}
+        >
+          Pocos datos
+        </span>
+      )}
+    </>
+  );
+}
 
 function IndicatorRow({
   icon,
@@ -758,12 +794,14 @@ function IndicatorRow({
    vez. Puramente visual -- envuelve secciones ya existentes sin tocar
    su contenido ni sus cálculos. ---------- */
 function CollapsibleGroup({
+  id,
   title,
   icon,
   open,
   onToggle,
   children,
 }: {
+  id?: string;
   title: string;
   icon: string;
   open: boolean;
@@ -771,7 +809,7 @@ function CollapsibleGroup({
   children: ReactNode;
 }) {
   return (
-    <section className="flex flex-col gap-sm">
+    <section id={id} className="flex flex-col gap-sm scroll-mt-24">
       <button
         type="button"
         onClick={onToggle}
@@ -790,6 +828,28 @@ function CollapsibleGroup({
       {open && <div className="flex flex-col gap-xl pt-xs">{children}</div>}
     </section>
   );
+}
+
+const GRUPOS_POR_DEFECTO: Record<string, boolean> = {
+  resumen: true,
+  encuestas: false,
+  calidad: false,
+  tiempos: false,
+  asignacion: false,
+  outliers: false,
+};
+const GRUPOS_CLAVE = "reporteria.gruposAbiertos.v1";
+function leerGruposAbiertos(): Record<string, boolean> {
+  try {
+    const crudo = window.localStorage.getItem(GRUPOS_CLAVE);
+    if (!crudo) return { ...GRUPOS_POR_DEFECTO };
+    const guardado = JSON.parse(crudo) as Record<string, unknown>;
+    const out = { ...GRUPOS_POR_DEFECTO };
+    for (const k of Object.keys(out)) if (typeof guardado[k] === "boolean") out[k] = guardado[k] as boolean;
+    return out;
+  } catch {
+    return { ...GRUPOS_POR_DEFECTO };
+  }
 }
 
 /* ---------- Barra de progreso (Distribución / Calidad) ---------- */
@@ -849,8 +909,8 @@ const TREND_SERIES: {
   hex: string;
 }[] = [
   {
-    key: "cumplimiento_demora",
-    label: "Cumplimiento de demora",
+    key: "cumplimiento_demora_trazable",
+    label: "Cumplimiento observado",
     stroke: "stroke-tertiary",
     fill: "fill-tertiary",
     hex: "#571ac0",
@@ -932,6 +992,8 @@ function TrendSvg({
     y = (v: number) => H - P - v * (H - 2 * P),
     // Valor de un dia, o null si NO hay dato (no es lo mismo que 0 %).
     valorDe = (d: TrendPoint, k: keyof TrendPoint): number | null => {
+      // Cumplimiento observado: un dia sin servicios medibles llega como 0 desde el backend, pero es "sin dato".
+      if (k === "cumplimiento_demora_trazable" && (d.servicios_evaluados_demora_trazable ?? 0) === 0) return null;
       const v = d[k];
       return v == null || Number.isNaN(Number(v)) ? null : Number(v);
     },
@@ -1045,7 +1107,7 @@ function TrendSvg({
             <path
               key={`${s.key}-${j}`}
               className={`fill-none ${s.stroke}`}
-              strokeWidth={s.key === "cumplimiento_demora" ? 2.5 : 2}
+              strokeWidth={s.key === "cumplimiento_demora_trazable" ? 2.5 : 2}
               strokeLinecap="round"
               strokeLinejoin="round"
               d={trazoLinea(seg)}
@@ -2483,9 +2545,12 @@ const HELP_SECTIONS: HelpSection[] = [
             herramienta, a cuántos se les consiguió un móvil.
           </li>
           <li>
-            <b>Cumplimiento de demora</b>: de los servicios con tiempo
-            prometido y tiempo real cargados, cuántos llegaron dentro de
-            lo prometido.
+            <b>Cumplimiento de demora (observado)</b>: de los servicios con
+            tiempo prometido y tiempo real cargados, cuántos llegaron
+            dentro de lo prometido. Es el indicador principal y se lee
+            siempre junto a su <b>cobertura</b> (qué parte del universo
+            tiene esos datos). La fórmula histórica de Excel se conserva
+            aparte, solo para conciliar.
           </li>
         </ul>
         <p>
@@ -2955,14 +3020,8 @@ export default function App() {
     // NUEVO (ADITIVO): grupos colapsables en "Métricas de Trackeo" --
     // puramente visual (qué secciones se muestran), no toca ningún
     // cálculo ni pide nada nuevo al backend.
-    [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
-      resumen: true,
-      encuestas: true,
-      calidad: true,
-      tiempos: true,
-      asignacion: true,
-      outliers: true,
-    }),
+    // 2026-10-19: por defecto solo el resumen esta abierto; lo que el usuario abre o cierra se recuerda en este navegador.
+    [openGroups, setOpenGroups] = useState<Record<string, boolean>>(leerGruposAbiertos),
     [modalClasificacion, setModalClasificacion] =
       useState<Clasificacion | null>(null),
     // NUEVO (ADITIVO): detalle de IDs al hacer clic en las tarjetas de
@@ -3004,6 +3063,36 @@ export default function App() {
       vivo = false;
     };
   }, [page, auditoriaPorPrestador, auditoriaNoDisponible]);
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(GRUPOS_CLAVE, JSON.stringify(openGroups));
+    } catch {
+      /* sin almacenamiento (ventana privada, etc.): la pantalla funciona igual */
+    }
+  }, [openGroups]);
+  const abrirSeccion = (s: SeccionDestino) => {
+    setOpenGroups((previo) => ({ ...previo, [s]: true }));
+    requestAnimationFrame(() => document.getElementById(`section-${s}`)?.scrollIntoView({ behavior: "smooth", block: "start" }));
+  };
+  const metricasPrincipales = useMemo(
+    () =>
+      buildPrimaryMetrics({
+        summary,
+        universes,
+        trazabilidad,
+        acciones: {
+          cumplimiento: () => open("CUMPLE_DEMORA_TRAZABLE", "Cumple demora (trazable)"),
+          efectividad: () => open("ASIGNA_MOVIL", "Asigna móvil"),
+        },
+      }),
+    // `open` se redefine en cada render pero solo depende de estado que ya figura en estas dependencias
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [summary, universes, trazabilidad],
+  );
+  const frasesResumen = useMemo(
+    () => buildExecutiveSummary(metricasPrincipales, summary?.servicios_consultados ?? null),
+    [metricasPrincipales, summary],
+  );
   const irAEvaluacion = (destino: DestinoEvaluacion, buscar = "") => {
     if (destino === "providers") {
       setPage("providers");
@@ -3496,9 +3585,9 @@ export default function App() {
       )
       .filter((x) => {
         if (providerQuickFilter === "cumplen")
-          return (x.cumplimiento_demora ?? 0) > 0.8;
+          return (x.servicios_evaluados_demora_trazable ?? 0) >= MINIMO_MEDIBLES && (cumplObs(x) ?? 0) > 0.8;
         if (providerQuickFilter === "alerta")
-          return (x.cumplimiento_demora ?? 1) < 0.7;
+          return (x.servicios_evaluados_demora_trazable ?? 0) >= MINIMO_MEDIBLES && (cumplObs(x) ?? 1) < 0.7;
         if (providerQuickFilter === "alta") return x.total_general > 200;
         return true;
       }),
@@ -3586,9 +3675,9 @@ export default function App() {
   // (respeta los filtros globales, no la búsqueda ni el filtro rápido
   // locales), sin pedir nada nuevo al backend.
   const providerStats = useMemo(() => {
-    const cumplidos = providers.reduce((a, x) => a + (x.servicios_cumplidos || 0), 0);
+    const cumplidos = providers.reduce((a, x) => a + (x.servicios_cumplidos_trazable || 0), 0);
     const noCumplidos = providers.reduce(
-      (a, x) => a + (x.servicios_no_cumplidos || 0),
+      (a, x) => a + (x.servicios_no_cumplidos_trazable || 0),
       0,
     );
     const conCalidad = providers.filter((x) => x.indice_calidad_datos != null);
@@ -3998,9 +4087,19 @@ export default function App() {
 
             {page === "metrics" && (
               <>
+                {/* 2026-10-19: primer nivel de lectura (4 KPI + sintesis + accesos rapidos). Solo usa datos que la pantalla
+                    ya tiene; no cambia ningun calculo ni endpoint. */}
+                <PrimaryMetricsSection
+                  periodo={`${fechaCorta(filters.fecha_desde)} al ${fechaCorta(filters.fecha_hasta)}`}
+                  totalServicios={summary?.servicios_consultados ?? null}
+                  metricas={metricasPrincipales}
+                  frases={frasesResumen}
+                  onAbrirSeccion={abrirSeccion}
+                />
                 <CollapsibleGroup
                   title="Resumen general"
                   icon="dashboard"
+                  id="section-resumen"
                   open={openGroups.resumen}
                   onToggle={() =>
                     setOpenGroups({ ...openGroups, resumen: !openGroups.resumen })
@@ -4106,7 +4205,7 @@ export default function App() {
                           <div className="flex items-center gap-2">
                             <div className="w-3 h-3 rounded-full bg-tertiary" />
                             <span className="font-label-md text-label-md text-on-surface-variant">
-                              Cumplimiento de demora
+                              Cumplimiento observado
                             </span>
                           </div>
                           <div className="flex items-center gap-2">
@@ -4194,9 +4293,66 @@ export default function App() {
                           calculo: "EsProgramado = SI ÷ total del universo filtrado.",
                         }}
                       />
+                      {/* 2026-10-19: el cumplimiento OBSERVADO (solo servicios
+                          con demora prometida y real cargadas) es el KPI
+                          principal y va primero, con su cobertura. La
+                          fórmula histórica de Excel queda abajo, solo para
+                          conciliar. */}
+                      <IndicatorRow
+                        icon={<Icon name="verified" className="text-[18px]" />}
+                        label="Cumplimiento de demora (observado)"
+                        value={
+                          (summary?.servicios_evaluados_demora_trazable ?? 0) > 0
+                            ? pct(summary?.cumplimiento_demora_trazable)
+                            : "N/A"
+                        }
+                        detail={`${nf(summary?.servicios_cumplidos_trazable)} cumplen · ${nf(summary?.servicios_no_cumplidos_trazable)} no cumplen (con Demora Prometida y Real cargadas) · cobertura ${pct(summary?.cobertura_medicion_demora)} del universo filtrado (${nf(summary?.servicios_evaluados_demora_trazable)} de ${nf(summary?.servicios_consultados)})${summary?.cobertura_medicion_evaluable != null ? ` y ${pct(summary.cobertura_medicion_evaluable)} del universo evaluable (${nf(summary?.servicios_evaluados_demora_trazable)} de ${nf(summary?.universo_evaluable)})` : ""}${(summary?.cobertura_medicion_evaluable ?? summary?.cobertura_medicion_demora ?? 1) < COBERTURA_BAJA ? " · ⚠ cobertura baja: no representa a todo el universo" : ""}`}
+                        progress={
+                          (summary?.servicios_evaluados_demora_trazable ?? 0) > 0
+                            ? ratioPct(summary?.cumplimiento_demora_trazable)
+                            : undefined
+                        }
+                        onClick={() =>
+                          open("CUMPLE_DEMORA_TRAZABLE", "Cumple demora (trazable)")
+                        }
+                        tooltip={{
+                          leer: "El KPI principal de puntualidad: qué % de los servicios que se pueden medir (tienen el tiempo prometido y el real cargados) llegó dentro de lo prometido. Se lee SIEMPRE junto a la cobertura: hoy solo una parte del universo es medible, así que el resultado no representa a todos los servicios.",
+                          calculo: "Cumple si DemoraReal ≤ DemoraPrometida + 14, solo sobre filas con DemoraPrometida y DemoraReal cargadas. Los servicios sin esos datos no cuentan ni como cumplidos ni como incumplidos.",
+                        }}
+                      />
+                      <IndicatorRow
+                        icon={<Icon name="rule" className="text-[18px]" />}
+                        label="Cobertura de medición (universo evaluable)"
+                        value={
+                          summary?.cobertura_medicion_evaluable != null
+                            ? pct(summary.cobertura_medicion_evaluable)
+                            : "—"
+                        }
+                        detail={
+                          summary?.cobertura_medicion_evaluable != null
+                            ? `${nf(summary?.servicios_evaluados_demora_trazable)} de ${nf(summary?.universo_evaluable)} servicios del universo evaluable${summary.cobertura_medicion_evaluable < COBERTURA_BAJA ? " · cobertura baja: leer el cumplimiento con cautela" : ""}`
+                            : (summary?.cobertura_evaluable_nota ?? "No disponible")
+                        }
+                        progress={ratioPct(summary?.cobertura_medicion_evaluable)}
+                        tooltip={{
+                          leer: "Qué % de los servicios que SÍ se espera medir (el universo evaluable: vehiculares, con tipo y estado catalogados) tiene los datos completos para medir su cumplimiento. Es la cobertura más justa para saber cuánto confiar en el cumplimiento observado. Es referencial.",
+                          calculo: "Servicios con DemoraPrometida y DemoraReal cargadas ÷ servicios del universo evaluable. Solo se calcula con filtros de campaña, prestador y estado: el universo evaluable no se puede filtrar por tipo de servicio, póliza ni provincia. Es aproximada: los servicios medibles no están restringidos al universo evaluable.",
+                        }}
+                      />
+                      <IndicatorRow
+                        icon={<Icon name="fact_check" className="text-[18px]" />}
+                        label="Cobertura de medición (universo filtrado)"
+                        value={pct(summary?.cobertura_medicion_demora)}
+                        detail={`${nf(summary?.servicios_evaluados_demora_trazable)} de ${nf(summary?.servicios_consultados)} servicios con Demora Prometida y Real cargadas${(summary?.cobertura_medicion_demora ?? 1) < COBERTURA_BAJA ? " · baja porque el universo filtrado incluye servicios que no se esperan medir (no vehiculares, cancelados, sin catalogar)" : ""}`}
+                        progress={ratioPct(summary?.cobertura_medicion_demora)}
+                        tooltip={{
+                          leer: "Qué % del universo filtrado tiene los datos completos como para medir su cumplimiento de verdad. Si es bajo, el cumplimiento de arriba hay que leerlo con pinzas.",
+                          calculo: "Filas con DemoraPrometida y DemoraReal cargadas ÷ total del universo filtrado.",
+                        }}
+                      />
                       <IndicatorRow
                         icon={<Icon name="timer" className="text-[18px]" />}
-                        label="Cumplimiento de demora"
+                        label="Cumplimiento histórico (fórmula Excel)"
                         value={
                           (summary?.servicios_evaluados_demora ?? 0) > 0
                             ? pct(summary?.cumplimiento_demora)
@@ -4210,46 +4366,8 @@ export default function App() {
                         }
                         onClick={() => open("CUMPLE_DEMORA", "Cumple demora")}
                         tooltip={{
-                          leer: "El termómetro oficial de SLA: qué % llegó dentro del tiempo prometido (con 14 min de tolerancia). Si falta el tiempo real, igual cuenta como si hubiera llegado al instante — ver \"Cumplimiento observado\" al lado.",
+                          leer: "La fórmula histórica de Excel, que se conserva para conciliar con los reportes anteriores. NO es el KPI principal: si falta el tiempo real, el servicio cuenta como si hubiera llegado al instante, así que sobrestima el cumplimiento. El KPI principal es el cumplimiento observado.",
                           calculo: "Cumple si DemoraReal ≤ DemoraPrometida + 14 (celda vacía cuenta como 0).",
-                        }}
-                      />
-                      {/* NUEVO (ADITIVO): separa el cumplimiento "formula
-                          Excel" (arriba) del cumplimiento observado solo
-                          sobre servicios con trazabilidad completa, más
-                          qué proporción del universo tiene esa
-                          trazabilidad. No reemplaza la tarjeta anterior. */}
-                      <IndicatorRow
-                        icon={<Icon name="verified" className="text-[18px]" />}
-                        label="Cumplimiento observado (trazable)"
-                        value={
-                          (summary?.servicios_evaluados_demora_trazable ?? 0) > 0
-                            ? pct(summary?.cumplimiento_demora_trazable)
-                            : "N/A"
-                        }
-                        detail={`${nf(summary?.servicios_cumplidos_trazable)} cumplen · ${nf(summary?.servicios_no_cumplidos_trazable)} no cumplen (con Demora Prometida y Real cargadas) · cobertura ${pct(summary?.cobertura_medicion_demora)} (${nf(summary?.servicios_evaluados_demora_trazable)} de ${nf(summary?.servicios_consultados)})${(summary?.cobertura_medicion_demora ?? 1) < COBERTURA_BAJA ? " · ⚠ cobertura baja: no representa a todo el universo" : ""}`}
-                        progress={
-                          (summary?.servicios_evaluados_demora_trazable ?? 0) > 0
-                            ? ratioPct(summary?.cumplimiento_demora_trazable)
-                            : undefined
-                        }
-                        onClick={() =>
-                          open("CUMPLE_DEMORA_TRAZABLE", "Cumple demora (trazable)")
-                        }
-                        tooltip={{
-                          leer: "La misma pregunta, pero contestada SOLO con los servicios que tienen registrados tanto el tiempo prometido como el real — sin inflar el resultado. Suele ser más bajo, y es el número más honesto para evaluar performance real.",
-                          calculo: "Misma fórmula, pero solo sobre filas con DemoraPrometida y DemoraReal cargadas.",
-                        }}
-                      />
-                      <IndicatorRow
-                        icon={<Icon name="fact_check" className="text-[18px]" />}
-                        label="Cobertura de medición de demora"
-                        value={pct(summary?.cobertura_medicion_demora)}
-                        detail={`${nf(summary?.servicios_evaluados_demora_trazable)} de ${nf(summary?.servicios_consultados)} servicios con Demora Prometida y Real cargadas${(summary?.cobertura_medicion_demora ?? 1) < COBERTURA_BAJA ? " · cobertura baja: leer los cumplimientos con cautela" : ""}`}
-                        progress={ratioPct(summary?.cobertura_medicion_demora)}
-                        tooltip={{
-                          leer: "Qué % del universo filtrado tiene los datos completos como para medir su cumplimiento de verdad. Si es bajo, los dos indicadores anteriores hay que leerlos con pinzas.",
-                          calculo: "Filas con DemoraPrometida y DemoraReal cargadas ÷ total del universo filtrado.",
                         }}
                       />
                     </div>
@@ -4260,6 +4378,7 @@ export default function App() {
                 <CollapsibleGroup
                   title="Encuestas"
                   icon="forum"
+                  id="section-encuestas"
                   open={openGroups.encuestas}
                   onToggle={() =>
                     setOpenGroups({ ...openGroups, encuestas: !openGroups.encuestas })
@@ -4444,6 +4563,7 @@ export default function App() {
                 <CollapsibleGroup
                   title="Calidad de datos"
                   icon="verified"
+                  id="section-calidad"
                   open={openGroups.calidad}
                   onToggle={() =>
                     setOpenGroups({ ...openGroups, calidad: !openGroups.calidad })
@@ -4581,6 +4701,7 @@ export default function App() {
                 <CollapsibleGroup
                   title="Tiempos, campañas y estados"
                   icon="schedule"
+                  id="section-tiempos"
                   open={openGroups.tiempos}
                   onToggle={() =>
                     setOpenGroups({ ...openGroups, tiempos: !openGroups.tiempos })
@@ -4905,6 +5026,7 @@ export default function App() {
                 <CollapsibleGroup
                   title="Trazabilidad y asignación"
                   icon="route"
+                  id="section-asignacion"
                   open={openGroups.asignacion}
                   onToggle={() =>
                     setOpenGroups({ ...openGroups, asignacion: !openGroups.asignacion })
@@ -5112,6 +5234,7 @@ export default function App() {
                 <CollapsibleGroup
                   title="Outliers y auditoría"
                   icon="fact_check"
+                  id="section-outliers"
                   open={openGroups.outliers}
                   onToggle={() =>
                     setOpenGroups({ ...openGroups, outliers: !openGroups.outliers })
@@ -5300,13 +5423,13 @@ export default function App() {
                   />
                   <Card
                     icon={<Icon name="timer" filled />}
-                    title="Cumplimiento de demora promedio"
+                    title="Cumplimiento observado promedio"
                     value={pct(providerStats.cumplimientoPromedio)}
                     detail="Promedio ponderado del período filtrado"
                     progress={ratioPct(providerStats.cumplimientoPromedio)}
                     tooltip={{
-                      leer: "El cumplimiento de demora promedio de todos los prestadores del universo filtrado, ponderado por volumen (no es un promedio simple entre prestadores).",
-                      calculo: "Suma de servicios que cumplen ÷ (suma de servicios que cumplen + suma de los que no cumplen), sobre todos los prestadores filtrados.",
+                      leer: "El cumplimiento observado de todos los prestadores del universo filtrado, ponderado por volumen (no es un promedio simple entre prestadores). Solo cuenta servicios con tiempo prometido y real cargados.",
+                      calculo: "Suma de servicios medibles que cumplen ÷ suma de servicios medibles (cumplen + no cumplen), sobre todos los prestadores filtrados.",
                     }}
                   />
                   <Card
@@ -5468,13 +5591,21 @@ export default function App() {
                         />
                         <SortableTh
                           label="Cumple / No cumple"
-                          sortKey="servicios_cumplidos"
+                          sortKey="servicios_cumplidos_trazable"
                           sort={sortProvidersPageable}
+                          tooltip={{
+                            leer: "Servicios de ese prestador que llegaron dentro de lo prometido contra los que no, solo entre los que se pueden medir.",
+                            calculo: "Filas con DemoraPrometida y DemoraReal cargadas; las demás no cuentan.",
+                          }}
                         />
                         <SortableTh
-                          label="Cumplimiento"
-                          sortKey="cumplimiento_demora"
+                          label="Cumplimiento observado"
+                          sortKey="cumplimiento_demora_trazable"
                           sort={sortProvidersPageable}
+                          tooltip={{
+                            leer: "KPI principal de puntualidad del prestador, sobre los servicios medibles. Sin servicios medibles se muestra N/A.",
+                            calculo: "Cumple si DemoraReal ≤ DemoraPrometida + 14, solo con ambos datos cargados.",
+                          }}
                         />
                         <SortableTh
                           label="Índice calidad"
@@ -5526,8 +5657,8 @@ export default function App() {
                           sortKey="score_ranking"
                           sort={sortProvidersPageable}
                           tooltip={{
-                            leer: "Una nota de 0 a 100% que combina Cumplimiento observado, Trazabilidad, Reclamos y Reclamos por encuesta, con el mismo peso cada uno. El ⚠ avisa que ese prestador tiene menos de 20 servicios — con tan poca muestra, el score es poco confiable.",
-                            calculo: "37,5% Cumplimiento observado + 31,25% Trazabilidad + 18,75% Reclamos + 12,5% (1 − % reclamos por encuesta, según la pregunta \"opinión sobre el profesional\" de la encuesta, ≤2 = reclamo) — se renormaliza si falta algún componente. El componente de reclamos depende de la tasa de reclamos sobre los servicios del prestador (amortiguada para muestras chicas): sin reclamos no resta nada, y como máximo resta 18,75 puntos del score. Reclamos por encuesta solo se calcula para prestadores con encuestas respondidas en el período filtrado.",
+                            leer: "Una nota de 0 a 100% que combina Cumplimiento observado, Trazabilidad, Reclamos y Reclamos por encuesta, y a la que se le RESTA una penalización si el prestador carga los datos tarde (carga retroactiva). El ⚠ avisa que ese prestador tiene menos de 20 servicios — con tan poca muestra, el score es poco confiable. El ▼ rojo indica los puntos que perdió por carga tardía.",
+                            calculo: "37,5% Cumplimiento observado + 31,25% Trazabilidad + 18,75% Reclamos + 12,5% (1 − % reclamos por encuesta, según la pregunta \"opinión sobre el profesional\" de la encuesta, ≤2 = reclamo) — se renormaliza si falta algún componente. El componente de reclamos depende de la tasa de reclamos sobre los servicios del prestador (amortiguada para muestras chicas): sin reclamos no resta nada, y como máximo resta 18,75 puntos del score. Reclamos por encuesta solo se calcula para prestadores con encuestas respondidas en el período filtrado. PENALIZACIÓN POR CARGA TARDÍA: después se resta hasta 15 puntos según el % de servicios con carga retroactiva (demora real mayor a 3 veces el P90 del período filtrado: la llegada y el cierre se cargaron mucho después del hecho). Es una tasa amortiguada para muestras chicas — servicios con carga tardía ÷ (servicios con demora real + 20) — y llega al máximo cuando esa tasa es del 25 %. No depende del check \"Excluir outliers\".",
                           }}
                         />
                         {/* NUEVO (ADITIVO): situacion en la ultima auditoria semanal */}
@@ -5552,7 +5683,7 @@ export default function App() {
                           providerPage * providerPageSize,
                         )
                         .map((x, i) => {
-                        const alerta = (x.cumplimiento_demora ?? 1) < 0.35;
+                        const alerta = (x.servicios_evaluados_demora_trazable ?? 0) >= MINIMO_MEDIBLES && (cumplObs(x) ?? 1) < 0.35;
                         return (
                         <tr
                           key={x.prestador_id}
@@ -5592,9 +5723,9 @@ export default function App() {
                           <td className="py-2 pr-3 font-label-code text-label-code">{nf(x.servicios_programados)}</td>
                           <td className="py-2 pr-3">
                             <span className="inline-flex items-center gap-1 font-label-code text-label-code">
-                              <span className="text-primary font-semibold">{nf(x.servicios_cumplidos)}</span>
+                              <span className="text-primary font-semibold">{nf(x.servicios_cumplidos_trazable)}</span>
                               <span className="text-on-surface-variant">/</span>
-                              <span className="text-error font-semibold">{nf(x.servicios_no_cumplidos)}</span>
+                              <span className="text-error font-semibold">{nf(x.servicios_no_cumplidos_trazable)}</span>
                             </span>
                           </td>
                           <td className="py-2 pr-3 min-w-[140px]">
@@ -5603,15 +5734,16 @@ export default function App() {
                                 <div
                                   className={`h-full rounded-full ${alerta ? "bg-error" : "bg-primary"}`}
                                   style={{
-                                    width: `${Math.max(0, Math.min(100, ratioPct(x.cumplimiento_demora) ?? 0))}%`,
+                                    width: `${Math.max(0, Math.min(100, ratioPct(cumplObs(x)) ?? 0))}%`,
                                   }}
                                 />
                               </div>
                               <span
                                 className={`font-label-code text-label-code font-bold ${alerta ? "text-error" : "text-on-surface"}`}
                               >
-                                {pct(x.cumplimiento_demora)}
+                                {pct(cumplObs(x))}
                               </span>
+                              <MuestraCumplimiento medibles={x.servicios_evaluados_demora_trazable} />
                             </div>
                           </td>
                           <td className="py-2 pr-3 font-label-code text-label-code">{pct(x.indice_calidad_datos)}</td>
@@ -5639,6 +5771,14 @@ export default function App() {
                                 title="Menos de 20 servicios — score poco confiable"
                               >
                                 ⚠
+                              </span>
+                            )}
+                            {(x.score_penalizaciones?.carga_tardia?.penalizacion ?? 0) > 0.0005 && (
+                              <span
+                                className="ml-1 font-label-sm text-label-sm text-error whitespace-nowrap"
+                                title={`Penalización por carga tardía: ${new Intl.NumberFormat("es-AR", { maximumFractionDigits: 1 }).format((x.score_penalizaciones?.carga_tardia?.penalizacion ?? 0) * 100)} puntos. ${nf(x.score_penalizaciones?.carga_tardia?.servicios_carga_tardia ?? 0)} de ${nf(x.score_penalizaciones?.carga_tardia?.servicios_con_demora_real ?? 0)} servicios con demora real tienen carga retroactiva (demora real mayor a 3 veces el P90).`}
+                              >
+                                ▼{new Intl.NumberFormat("es-AR", { maximumFractionDigits: 1 }).format((x.score_penalizaciones?.carga_tardia?.penalizacion ?? 0) * 100)}
                               </span>
                             )}
                           </td>
@@ -5749,12 +5889,12 @@ export default function App() {
                         />
                         <SortableTh
                           label="Cumple / No cumple"
-                          sortKey="servicios_cumplidos"
+                          sortKey="servicios_cumplidos_trazable"
                           sort={sortCrossPageable}
                         />
                         <SortableTh
-                          label="Cumplimiento"
-                          sortKey="cumplimiento_demora"
+                          label="Cumplimiento observado"
+                          sortKey="cumplimiento_demora_trazable"
                           sort={sortCrossPageable}
                         />
                       </tr>
@@ -5777,9 +5917,9 @@ export default function App() {
                           <td className="py-2 pr-3 font-label-code text-label-code font-semibold text-secondary">{pct(x.efectividad_enviador)}</td>
                           <td className="py-2 pr-3">
                             <span className="inline-flex items-center gap-1 font-label-code text-label-code">
-                              <span className="text-primary font-semibold">{nf(x.servicios_cumplidos)}</span>
+                              <span className="text-primary font-semibold">{nf(x.servicios_cumplidos_trazable)}</span>
                               <span className="text-on-surface-variant">/</span>
-                              <span className="text-error font-semibold">{nf(x.servicios_no_cumplidos)}</span>
+                              <span className="text-error font-semibold">{nf(x.servicios_no_cumplidos_trazable)}</span>
                             </span>
                           </td>
                           <td className="py-2 pr-3 min-w-[140px]">
@@ -5788,13 +5928,14 @@ export default function App() {
                                 <div
                                   className="bg-primary h-full rounded-full"
                                   style={{
-                                    width: `${Math.max(0, Math.min(100, ratioPct(x.cumplimiento_demora) ?? 0))}%`,
+                                    width: `${Math.max(0, Math.min(100, ratioPct(cumplObs(x)) ?? 0))}%`,
                                   }}
                                 />
                               </div>
                               <span className="font-label-code text-label-code font-bold text-on-surface">
-                                {pct(x.cumplimiento_demora)}
+                                {pct(cumplObs(x))}
                               </span>
+                              <MuestraCumplimiento medibles={x.servicios_evaluados_demora_trazable} />
                             </div>
                           </td>
                         </tr>

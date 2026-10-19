@@ -95,6 +95,10 @@ export type TrackeoSummary = {
   servicios_no_cumplidos_trazable?: number;
   cumplimiento_demora_trazable?: number;
   cobertura_medicion_demora?: number;
+  // v4.30.0: cobertura sobre el universo EVALUABLE (referencial; null si no es comparable, ver cobertura_evaluable_nota)
+  universo_evaluable?: number | null;
+  cobertura_medicion_evaluable?: number | null;
+  cobertura_evaluable_nota?: string | null;
   menos_60_cantidad: number;
   menos_60_porcentaje: number;
   entre_61_90_cantidad: number;
@@ -130,6 +134,14 @@ export type ScoreComponentes = {
   reclamo_rotura: number | null;
   reclamo_encuesta: number | null;
 };
+// v4.30.0: penalizacion del score por carga tardia (carga retroactiva: demora real > 3 x P90). `penalizacion` es la
+// proporcion que se resta del score (0.15 = 15 puntos); null si no hay evidencia (ningun servicio con demora real).
+export type CargaTardia = {
+  servicios_carga_tardia: number;
+  servicios_con_demora_real: number;
+  tasa: number;
+  penalizacion: number;
+};
 export type PrestadorMetric = TrackeoSummary & {
   prestador_id: string;
   prestador: string;
@@ -138,6 +150,7 @@ export type PrestadorMetric = TrackeoSummary & {
   volumen_relativo?: number;
   score_ranking?: number | null;
   score_componentes?: ScoreComponentes;
+  score_penalizaciones?: { carga_tardia: CargaTardia | null };
   score_componentes_evaluados?: string[];
   muestra_baja?: boolean;
   cantidad_tipos_servicio?: number;
@@ -285,6 +298,11 @@ export type CampanaPrestadorMetric = {
   servicios_cumplidos: number;
   servicios_no_cumplidos: number;
   cumplimiento_demora: number;
+  // v4.30.0: KPI principal = cumplimiento observado (solo servicios con demora prometida y real cargadas)
+  servicios_evaluados_demora_trazable?: number;
+  servicios_cumplidos_trazable?: number;
+  servicios_no_cumplidos_trazable?: number;
+  cumplimiento_demora_trazable?: number | null;
   demora_real_promedio?: number | null;
   desvio_promedio?: number | null;
 };
