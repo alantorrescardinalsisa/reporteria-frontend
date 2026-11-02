@@ -43,6 +43,7 @@ import {
   type TrackeoService,
   type TrackeoSummary,
   type TrackeoUniversos,
+  type FocoServicios,
   type Trazabilidad,
   type TrendPoint,
 } from "./api";
@@ -55,6 +56,7 @@ import { PrimaryMetricsSection, type SeccionDestino } from "./components/metrics
 import { buildExecutiveSummary } from "./domain/buildExecutiveSummary";
 import { buildPrimaryMetrics } from "./domain/buildPrimaryMetrics";
 import { COBERTURA_BAJA, MIN_PARES_LIDER, MINIMO_MEDIBLES } from "./domain/indicatorCatalog";
+import { MOTIVO_NO_MEDIBLE_ETIQUETA, MuestraCumplimiento } from "./components/metrics/MuestraCumplimiento";
 
 /* ============================================================
  * Nota de mantenimiento: este archivo fue re-diseñado visualmente
@@ -94,6 +96,7 @@ type Drill = {
   loading: boolean;
   exporting: boolean;
   error: string | null;
+  foco?: FocoServicios; // listado restringido a un prestador (y/o campania), p. ej. los "no medibles" de una fila de la tabla
 };
 // NUEVO (ADITIVO): rango de fechas por defecto = "desde el mes anterior
 // al último mes cerrado, hasta el último mes cerrado" -- se calcula en
@@ -703,30 +706,6 @@ function Card({
 
 /* ---------- Fila de indicador operativo (lista compacta) ---------- */
 // COBERTURA_BAJA y MIN_PARES_LIDER viven ahora en domain/indicatorCatalog.ts (catalogo unico de umbrales).
-
-// 2026-10-19: junto al cumplimiento observado de un prestador se muestra sobre CUANTOS servicios medibles esta calculado y se
-// marca "Pocos datos" si son menos de MINIMO_MEDIBLES: un 100 % sobre 1 servicio no es un 100 % confiable.
-function MuestraCumplimiento({ medibles }: { medibles?: number }) {
-  const n = medibles ?? 0;
-  return (
-    <>
-      <span
-        className="font-label-sm text-label-sm text-on-surface-variant whitespace-nowrap"
-        title="Servicios medibles: con demora prometida y demora real cargadas. El cumplimiento se calcula solo sobre estos."
-      >
-        n={new Intl.NumberFormat("es-AR").format(n)}
-      </span>
-      {n < MINIMO_MEDIBLES && (
-        <span
-          className="font-label-sm text-label-sm px-1.5 py-0.5 rounded-full text-[#b5610a] bg-[#f59e0b]/10 whitespace-nowrap"
-          title={`Menos de ${MINIMO_MEDIBLES} servicios medibles: el cumplimiento de este prestador no es confiable.`}
-        >
-          Pocos datos
-        </span>
-      )}
-    </>
-  );
-}
 
 function IndicatorRow({
   icon,
@@ -2139,10 +2118,39 @@ function queHacer(c: Clasificacion): string {
   }
 }
 
-function csv(rows: Record<string, unknown>[], name: string) {
-  if (!rows.length) return;
-  const cols = Object.keys(rows[0]),
-    esc = (x: unknown) => `"${String(x ?? "").replace(/"/g, '""')}"`,
+/* 2026-10-19: las filas exportadas pueden traer objetos anidados (por ejemplo `score_componentes` y `score_penalizaciones` de
+   cada prestador). Antes se exportaban como el texto "[object Object]". Ahora se aplanan en columnas
+   ("score_penalizaciones.carga_tardia.penalizacion"), las listas se unen con comas y las columnas son la union de las claves de
+   todas las filas (la primera fila puede tener un objeto en null). */
+function aplanarFila(valor: unknown, prefijo = "", salida: Record<string, unknown> = {}): Record<string, unknown> {
+  if (valor !== null && typeof valor === "object" && !Array.isArray(valor)) {
+    for (const [k, v] of Object.entries(valor as Record<string, unknown>)) {
+      aplanarFila(v, prefijo ? `${prefijo}.${k}` : k, salida);
+    }
+  } else if (prefijo) {
+    salida[prefijo] = Array.isArray(valor) ? valor.join(",") : valor;
+  }
+  return salida;
+}
+function aplanarFilas(rows: Record<string, unknown>[]): { rows: Record<string, unknown>[]; cols: string[] } {
+  const planas = rows.map((r) => aplanarFila(r));
+  const cols: string[] = [];
+  const vistas = new Set<string>();
+  for (const f of planas) {
+    for (const k of Object.keys(f)) {
+      if (!vistas.has(k)) {
+        vistas.add(k);
+        cols.push(k);
+      }
+    }
+  }
+  return { rows: planas, cols };
+}
+
+function csv(rows0: Record<string, unknown>[], name: string) {
+  if (!rows0.length) return;
+  const { rows, cols } = aplanarFilas(rows0);
+  const esc = (x: unknown) => `"${String(x ?? "").replace(/"/g, '""')}"`,
     data =
       "﻿" +
       [
@@ -2170,9 +2178,9 @@ function downloadBlob(content: string, mime: string, name: string) {
    solo CSV) usando el formato XML de Excel 2003 ("SpreadsheetML") -- un
    único archivo de texto que Excel abre nativamente, sin necesitar
    ninguna librería externa para armar un .xlsx comprimido. ---------- */
-function excelXml(rows: Record<string, unknown>[]): string {
-  const cols = Object.keys(rows[0]),
-    esc = (x: unknown) =>
+function excelXml(rows0: Record<string, unknown>[]): string {
+  const { rows, cols } = aplanarFilas(rows0);
+  const esc = (x: unknown) =>
       String(x ?? "")
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
@@ -3411,10 +3419,12 @@ export default function App() {
     title: string,
     p = 1,
     size = 100,
+    foco?: FocoServicios,
   ) {
     setDrill((d) => ({
       title,
       metric,
+      foco,
       rows: d?.metric === metric ? d.rows : [],
       total: d?.metric === metric ? d.total : 0,
       page: p,
@@ -3425,10 +3435,11 @@ export default function App() {
       error: null,
     }));
     try {
-      const x = await api.trackeoServiciosPaginados(filters, metric, p, size);
+      const x = await api.trackeoServiciosPaginados(filters, metric, p, size, foco);
       setDrill({
         title,
         metric,
+        foco,
         rows: x.servicios,
         total: x.cantidad_total,
         page: x.pagina,
@@ -3450,7 +3461,7 @@ export default function App() {
       for (let p = 1; p <= Math.ceil(drill.total / 500); p++) {
         rows.push(
           ...(
-            await api.trackeoServiciosPaginados(filters, drill.metric, p, 500)
+            await api.trackeoServiciosPaginados(filters, drill.metric, p, 500, drill.foco)
           ).servicios,
         );
         await sleep(250);
@@ -3465,6 +3476,10 @@ export default function App() {
         d ? { ...d, exporting: false, error: String(e) } : null,
       );
     }
+  }
+  // Listado de los servicios que NO entran en el cumplimiento observado de un prestador (o campania x prestador).
+  function abrirNoMedibles(foco: FocoServicios, nombre: string) {
+    open("NO_MEDIBLE_DEMORA", `No medibles · ${nombre}`, 1, 100, foco);
   }
   function addUploadFiles(list: FileList | null) {
     if (!list || uploading) return;
@@ -5743,7 +5758,15 @@ export default function App() {
                               >
                                 {pct(cumplObs(x))}
                               </span>
-                              <MuestraCumplimiento medibles={x.servicios_evaluados_demora_trazable} />
+                              <MuestraCumplimiento
+                                medibles={x.servicios_evaluados_demora_trazable}
+                                total={x.total_general}
+                                cumplen={x.servicios_cumplidos_trazable}
+                                noCumplen={x.servicios_no_cumplidos_trazable}
+                                descarte={x.descarte_demora}
+                                titulo={x.prestador}
+                                onVer={() => abrirNoMedibles({ prestador_id: x.prestador_id }, x.prestador)}
+                              />
                             </div>
                           </td>
                           <td className="py-2 pr-3 font-label-code text-label-code">{pct(x.indice_calidad_datos)}</td>
@@ -5935,7 +5958,20 @@ export default function App() {
                               <span className="font-label-code text-label-code font-bold text-on-surface">
                                 {pct(cumplObs(x))}
                               </span>
-                              <MuestraCumplimiento medibles={x.servicios_evaluados_demora_trazable} />
+                              <MuestraCumplimiento
+                                medibles={x.servicios_evaluados_demora_trazable}
+                                total={x.total_general}
+                                cumplen={x.servicios_cumplidos_trazable}
+                                noCumplen={x.servicios_no_cumplidos_trazable}
+                                descarte={x.descarte_demora}
+                                titulo={`${x.prestador} · ${x.campana}`}
+                                onVer={() =>
+                                  abrirNoMedibles(
+                                    { prestador_id: x.prestador_id, campana_normalizada: x.campana_normalizada },
+                                    `${x.prestador} · ${x.campana}`,
+                                  )
+                                }
+                              />
                             </div>
                           </td>
                         </tr>
@@ -6654,6 +6690,9 @@ export default function App() {
                       sort={sortDrill}
                     />
                     <SortableTh label="Real" sortKey="demora_real" sort={sortDrill} />
+                    {drill.metric.startsWith("NO_MEDIBLE_DEMORA") && (
+                      <SortableTh label="Motivo" sortKey="motivo_no_medible_demora" sort={sortDrill} defaultDir="asc" />
+                    )}
                     <SortableTh
                       label="Rango"
                       sortKey="rango_demora_real"
@@ -6692,6 +6731,11 @@ export default function App() {
                       <td className="py-2 pr-3">{x.campana}</td>
                       <td className="py-2 pr-3">{x.demora_prometida}</td>
                       <td className="py-2 pr-3">{x.demora_real}</td>
+                      {drill.metric.startsWith("NO_MEDIBLE_DEMORA") && (
+                        <td className="py-2 pr-3">
+                          {MOTIVO_NO_MEDIBLE_ETIQUETA[x.motivo_no_medible_demora ?? ""] ?? x.motivo_no_medible_demora ?? "—"}
+                        </td>
+                      )}
                       <td className="py-2 pr-3">{x.rango_demora_real}</td>
                       <td className="py-2 pr-3">
                         {x.localidad_origen
@@ -6718,14 +6762,14 @@ export default function App() {
               <button
                 className="h-9 px-sm rounded bg-surface-container-low text-on-surface font-label-md text-label-md disabled:opacity-40 hover:bg-surface-container transition-colors"
                 disabled={drill.page <= 1}
-                onClick={() => open(drill.metric, drill.title, drill.page - 1)}
+                onClick={() => open(drill.metric, drill.title, drill.page - 1, drill.pageSize, drill.foco)}
               >
                 Anterior
               </button>
               <button
                 className="h-9 px-sm rounded bg-surface-container-low text-on-surface font-label-md text-label-md disabled:opacity-40 hover:bg-surface-container transition-colors"
                 disabled={drill.page >= drill.pages}
-                onClick={() => open(drill.metric, drill.title, drill.page + 1)}
+                onClick={() => open(drill.metric, drill.title, drill.page + 1, drill.pageSize, drill.foco)}
               >
                 Siguiente
               </button>

@@ -210,11 +210,18 @@ const TITULO_EVIDENCIA: Record<string, { titulo: string; leer: string }> = {
 const PAGE_SIZE = 15;
 const Z_MIN = 2; // mismos umbrales que el motor (ver auditoria_prestadores.py)
 const MIN_MEDIBLES = 20; // por debajo de esta cantidad de servicios medibles un indicador no se considera evaluable
-const INDICADORES: { clave: string; titulo: string; problema: string; efectoMin: number; informativo?: boolean }[] = [
-  { clave: "incumple", titulo: "Cumplir con la demora prometida", problema: "servicios con hora de llegada que llegaron tarde (los que no tienen hora de llegada se miden aparte)", efectoMin: 3 },
-  { clave: "sin_llegada", titulo: "Registrar la hora de llegada", problema: "servicios terminados sin hora de llegada (problema de carga de datos, no de demora)", efectoMin: 5 },
-  { clave: "incompleto", titulo: "Registrar bien cada servicio", problema: "servicios con datos incompletos (móvil, ubicación o envío)", efectoMin: 5 },
-  { clave: "extremo", titulo: "Cargar la llegada en el momento", problema: "servicios con la llegada cargada mucho después de que ocurrió", efectoMin: 1 },
+// `bien`: en las tarjetas cuyo titulo esta en positivo ("Cumplir...", "Registrar...") el motor mide el PROBLEMA (tarde, sin hora,
+// incompleto...). La tarjeta muestra el complemento ("37 de cada 100 cumplieron") para que el titulo y el numero digan lo mismo;
+// el estado ("se aparta de lo normal") se sigue calculando sobre el indicador del motor.
+const INDICADORES: { clave: string; titulo: string; problema: string; bien?: string; efectoMin: number; informativo?: boolean }[] = [
+  { clave: "incumple", titulo: "Cumplir con la demora prometida", problema: "servicios con hora de llegada que llegaron tarde (los que no tienen hora de llegada se miden aparte)",
+    bien: "servicios con hora de llegada que llegaron dentro de la demora prometida (los que no tienen hora de llegada se miden aparte)", efectoMin: 3 },
+  { clave: "sin_llegada", titulo: "Registrar la hora de llegada", problema: "servicios terminados sin hora de llegada (problema de carga de datos, no de demora)",
+    bien: "servicios terminados con la hora de llegada registrada (si falta, es un problema de carga de datos, no de demora)", efectoMin: 5 },
+  { clave: "incompleto", titulo: "Registrar bien cada servicio", problema: "servicios con datos incompletos (móvil, ubicación o envío)",
+    bien: "servicios con los datos completos (móvil, ubicación y envío)", efectoMin: 5 },
+  { clave: "extremo", titulo: "Cargar la llegada en el momento", problema: "servicios con la llegada cargada mucho después de que ocurrió",
+    bien: "servicios con la llegada cargada en el momento (no mucho después de que ocurrió)", efectoMin: 1 },
   { clave: "reclamo", titulo: "Reclamos de clientes", problema: "servicios con un reclamo o queja", efectoMin: 0.5 },
   { clave: "enc_baja", titulo: "Opinión de los clientes", problema: "encuestas con nota baja", efectoMin: 5 },
   { clave: "cancela", titulo: "Cancelaciones", problema: "servicios cancelados después de asignarlos (solo informativo)", efectoMin: 2, informativo: true },
@@ -665,17 +672,21 @@ function Detalle({
                 // Con muy pocos servicios medibles no se puede afirmar que este "dentro de lo normal": se avisa.
                 const pocos = !est0.activa && n < MIN_MEDIBLES;
                 const est = pocos ? { texto: "Pocos datos para evaluar", tone: "text-[#b5610a] bg-[#f59e0b]/10", activa: false } : est0;
+                // Titulo en positivo -> se muestra el complemento (100 - problema), tanto el valor como "lo normal".
+                const invertir = i.bien != null;
+                const mostrar = (v: number | null) => (v == null ? null : invertir ? 100 - v : v);
+                const texto = i.bien ?? i.problema;
                 return (
                   <Caja
                     key={i.clave}
                     titulo={i.titulo}
-                    valor={`${cada100(obs)} de cada 100`}
+                    valor={`${cada100(mostrar(obs))} de cada 100`}
                     badge={est.texto}
                     badgeTone={est.tone}
                     explicacion={
                       pocos
-                        ? `${i.problema}. Solo hay ${nf(n)} ${n === 1 ? "servicio medible" : "servicios medibles"} (se necesitan al menos ${MIN_MEDIBLES}): ese porcentaje no alcanza para decir si está bien o mal.`
-                        : `${i.problema}. Lo normal en servicios parecidos: ${cada100(esp)} de cada 100 (sobre ${nf(n)} servicios).`
+                        ? `${texto}. Solo hay ${nf(n)} ${n === 1 ? "servicio medible" : "servicios medibles"} (se necesitan al menos ${MIN_MEDIBLES}): ese porcentaje no alcanza para decir si está bien o mal.`
+                        : `${texto}. Lo normal en servicios parecidos: ${cada100(mostrar(esp))} de cada 100 (sobre ${nf(n)} servicios).`
                     }
                   />
                 );

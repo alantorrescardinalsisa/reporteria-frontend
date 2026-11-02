@@ -57,6 +57,19 @@ export type PrestadorOption = {
   prestador: string;
   servicios: number;
 };
+// v4.30.0: por que un servicio no entra en el cumplimiento observado. Motivos EXCLUYENTES: con `medibles` suman el total de
+// servicios del grupo, y `medibles` == servicios_evaluados_demora_trazable.
+export type DescarteDemora = {
+  medibles: number;
+  SIN_DEMORA_PROMETIDA: number;
+  SIN_LLEGADA_CERRADO: number;
+  EN_CURSO: number;
+  CANCELADO: number;
+  OTRO_ESTADO: number;
+  OUTLIER_EXCLUIDO: number;
+};
+// Restringe el listado de servicios a un prestador (y/o una campania normalizada) despues de calcular los outliers.
+export type FocoServicios = { prestador_id?: string; campana_normalizada?: string };
 export type TrackeoSummary = {
   servicios_consultados: number;
   enviador_no: number;
@@ -95,6 +108,7 @@ export type TrackeoSummary = {
   servicios_no_cumplidos_trazable?: number;
   cumplimiento_demora_trazable?: number;
   cobertura_medicion_demora?: number;
+  descarte_demora?: DescarteDemora;
   // v4.30.0: cobertura sobre el universo EVALUABLE (referencial; null si no es comparable, ver cobertura_evaluable_nota)
   universo_evaluable?: number | null;
   cobertura_medicion_evaluable?: number | null;
@@ -288,6 +302,7 @@ export type HabilitadoresAsignacion = {
   };
 };
 export type CampanaPrestadorMetric = {
+  descarte_demora?: DescarteDemora;
   campana: string;
   campana_normalizada: string;
   prestador_id: string;
@@ -337,6 +352,8 @@ export type TrackeoService = {
   // normalizar_rango_demora en la vista) — el que usa el desglose
   // "Distribucion de servicios cumplidos" desde v4.11.0.
   rango_demora_real?: string | null;
+  // Solo en el listado de "no medibles" (NO_MEDIBLE_DEMORA*): el motivo por el que ese servicio no entra en el cumplimiento.
+  motivo_no_medible_demora?: string | null;
   // Auxiliar de auditoria: version normalizada por SQL en la vista.
   rango_demora_real_normalizado?: string | null;
   // NUEVO v4.26.0 (ADITIVO): localidad/provincia de origen y destino,
@@ -366,6 +383,13 @@ export type MetricaTrackeo =
   | "NO_CUMPLE_DEMORA_SQL"
   | "CUMPLE_DEMORA_TRAZABLE"
   | "NO_CUMPLE_DEMORA_TRAZABLE"
+  | "NO_MEDIBLE_DEMORA"
+  | "NO_MEDIBLE_DEMORA_SIN_DEMORA_PROMETIDA"
+  | "NO_MEDIBLE_DEMORA_SIN_LLEGADA_CERRADO"
+  | "NO_MEDIBLE_DEMORA_EN_CURSO"
+  | "NO_MEDIBLE_DEMORA_CANCELADO"
+  | "NO_MEDIBLE_DEMORA_OTRO_ESTADO"
+  | "NO_MEDIBLE_DEMORA_OUTLIER_EXCLUIDO"
   | "MENOS_60"
   | "ENTRE_61_90"
   | "ENTRE_91_120"
@@ -930,10 +954,18 @@ export const api = {
     m: MetricaTrackeo,
     pagina = 1,
     tamanoPagina = 100,
+    foco?: FocoServicios,
   ) =>
     request<PaginatedServices>(
       "/api/metricas-trackeo/servicios-paginados" +
-      qs({ ...fp(f), metrica: m, pagina, tamano_pagina: tamanoPagina }),
+      qs({
+        ...fp(f),
+        metrica: m,
+        pagina,
+        tamano_pagina: tamanoPagina,
+        prestador_foco: foco?.prestador_id,
+        campana_foco: foco?.campana_normalizada,
+      }),
     ),
   ingest: async (file: File) => {
     const form = new FormData();
