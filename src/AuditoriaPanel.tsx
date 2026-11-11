@@ -182,8 +182,8 @@ const TIPS: Record<string, Tooltip> = {
   },
   tendencia: {
     titulo: "Evolución",
-    leer: "Compara los últimos 90 días del prestador con los 90 anteriores, para ver si mejora o empeora.",
-    calculo: "Diferencia entre los dos períodos en puntos porcentuales. Suma a la urgencia si empeora 5 puntos o más y es estadísticamente significativo.",
+    leer: "Compara los últimos 90 días del prestador con los 90 anteriores, para ver si mejora o empeora, en todos los aspectos medidos. Además, cada tarjeta de “Comparado con otros prestadores” muestra el valor de los últimos 90 días: sirve para ver si un problema del año ya se corrigió (“en recuperación”).",
+    calculo: "Diferencia entre los dos períodos en puntos porcentuales. Solo es informativo, salvo el empeoramiento de la demora (5 puntos o más y significativo), que sigue sumando a la urgencia. Los aspectos que mejoran no restan urgencia: el análisis anual pesa todos los servicios del año por igual.",
   },
   historial: {
     titulo: "Semana a semana",
@@ -280,6 +280,38 @@ const claveAspecto = (r: AuditoriaResultado): string | null => {
 const aspectoImpacto = (r: AuditoriaResultado): string | null => {
   const v = r.metricas?.["impacto_indicador"];
   return typeof v === "string" ? ASPECTO_IMPACTO[v] ?? null : null;
+};
+const mtxt = (r: AuditoriaResultado, k: string): string | null => {
+  const v = r.metricas?.[k];
+  return typeof v === "string" && v !== "" ? v : null;
+};
+
+/* Evolución reciente (informativa; el motor NO la usa en la urgencia ni en la alerta). El análisis anual pesa igual todos los
+   servicios del año; esto muestra si lo reciente (últimos 90 días) ya se parece más a lo normal ("en recuperación"), sigue
+   igual ("persiste") o es un problema nuevo. Las corridas anteriores a 2026-11-12 no traen estos datos: no se muestra nada. */
+const EVOLUCION_UI: Record<string, { label: string; tone: string; icono: string }> = {
+  "En recuperacion": { label: "En recuperación", tone: "text-[#0f7b4a] bg-[#0f7b4a]/10", icono: "trending_down" },
+  "Mejora parcial": { label: "Mejora parcial", tone: "text-[#0f7b4a] bg-[#0f7b4a]/10", icono: "trending_down" },
+  "Problema nuevo": { label: "Problema nuevo", tone: "text-[#b5610a] bg-[#f59e0b]/10", icono: "trending_up" },
+};
+const evolucionChip = (r: AuditoriaResultado) => {
+  const e = mtxt(r, "evolucion");
+  return e ? EVOLUCION_UI[e] ?? null : null;
+};
+const EVOLUCION_FRASE: Record<string, string> = {
+  "En recuperacion": "En recuperación: en los últimos 90 días ya no se aparta de lo normal.",
+  Persiste: "Sigue apartado de lo normal en los últimos 90 días.",
+  "Problema nuevo": "Problema nuevo: no aparece en el acumulado del año, sí en los últimos 90 días.",
+  "Pocos datos recientes": "Hay pocos servicios en los últimos 90 días para opinar.",
+};
+const TEND_CORTO: Record<string, string> = {
+  incumple: "llegar tarde",
+  sin_llegada: "no registrar la hora de llegada",
+  incompleto: "cargar datos incompletos",
+  extremo: "cargar la llegada a destiempo",
+  reclamo: "recibir reclamos",
+  enc_baja: "recibir notas bajas en las encuestas",
+  cancela: "cancelar servicios",
 };
 
 function Icon({ name, className = "", filled = false }: { name: string; className?: string; filled?: boolean }) {
@@ -428,6 +460,7 @@ function Caja({
   badgeTone = "text-[#b5610a] bg-[#f59e0b]/10",
   tip,
   valorTone = "text-on-surface",
+  nota,
 }: {
   titulo: string;
   valor: string;
@@ -436,6 +469,7 @@ function Caja({
   badgeTone?: string;
   tip?: Tooltip;
   valorTone?: string;
+  nota?: string;
 }) {
   return (
     <div className="flex flex-col gap-1 bg-surface-container-low rounded-lg p-sm">
@@ -446,6 +480,7 @@ function Caja({
       <span className={`font-headline-sm text-headline-sm ${valorTone}`}>{valor}</span>
       {badge && <span className={`font-label-md text-label-md rounded-full px-2 py-0.5 w-fit uppercase tracking-wide ${badgeTone}`}>{badge}</span>}
       {explicacion && <span className="font-label-sm text-label-sm text-on-surface-variant">{explicacion}</span>}
+      {nota && <span className="font-label-sm text-label-sm text-on-surface border-t border-outline-variant/30 pt-1 mt-1">{nota}</span>}
     </div>
   );
 }
@@ -584,8 +619,26 @@ function Detalle({
     if (v <= -5) return { icono: "trending_down", tone: "text-tertiary", texto: `Está mejorando: ${que} ${nf(Math.abs(v), 1)} puntos porcentuales menos que en los 90 días anteriores.` };
     return { icono: "trending_flat", tone: "text-on-surface-variant", texto: `Se mantiene parecido a los 90 días anteriores (${signed(v)} puntos porcentuales).` };
   };
-  const evolInc = frasesTendencia(tendInc, "incumple");
-  const evolComp = frasesTendencia(tendComp, "carga datos incompletos en");
+  // Tendencia (últimos 90 días contra los 90 anteriores) de TODOS los aspectos medidos; antes solo demora y datos incompletos.
+  // Las corridas anteriores a 2026-11-12 solo traen esos dos (con umbral fijo de 5 puntos): se mantiene su frase.
+  const lineasEvol = INDICADORES.map((i) => {
+    const pp = mnum(r, `${i.clave}_tend_pp`);
+    if (pp == null) return null;
+    const etq = mtxt(r, `${i.clave}_tendencia`);
+    if (etq == null) {
+      if (i.clave === "incumple") return frasesTendencia(tendInc, "incumple");
+      if (i.clave === "incompleto") return frasesTendencia(tendComp, "carga datos incompletos en");
+      return null;
+    }
+    if (etq === "Mejorando")
+      return { icono: "trending_down", tone: "text-tertiary", texto: `Está mejorando en ${TEND_CORTO[i.clave]}: ${nf(Math.abs(pp), 1)} puntos porcentuales menos que en los 90 días anteriores.` };
+    if (etq === "Empeorando")
+      return { icono: "trending_up", tone: "text-error", texto: `Está empeorando en ${TEND_CORTO[i.clave]}: ${nf(pp, 1)} puntos porcentuales más que en los 90 días anteriores.` };
+    return null;
+  }).filter((e): e is NonNullable<typeof e> => e != null);
+  const hayEstables = INDICADORES.some((i) => mtxt(r, `${i.clave}_tendencia`) === "Estable");
+  const evolChip = evolucionChip(r);
+  const evolDetalle = mtxt(r, "evolucion_detalle");
   const semanasAuditar = hist.filter((h) => h.alerta === CANDIDATO).length;
   const semanasSeguir = hist.filter((h) => h.alerta === OBSERVACION).length;
 
@@ -602,6 +655,15 @@ function Detalle({
             <div className="flex items-center gap-space-sm flex-wrap">
               <h3 className="font-headline-md text-headline-md text-on-surface font-semibold">{r.prestador || "Sin nombre"}</h3>
               <span className={`font-label-caps text-label-caps rounded-md px-2.5 py-0.5 uppercase font-bold ${sit.tone}`}>{sit.label}</span>
+              {evolChip && (
+                <span
+                  className={`font-label-caps text-label-caps rounded-md px-2.5 py-0.5 uppercase font-bold inline-flex items-center gap-1 ${evolChip.tone}`}
+                  title="Lo reciente (últimos 90 días) se compara con el acumulado del año. Es informativo: no cambia la urgencia."
+                >
+                  <Icon name={evolChip.icono} className="text-[16px]" />
+                  {evolChip.label}
+                </span>
+              )}
             </div>
             <span className="font-body-sm text-body-sm text-on-surface-variant">
               {registra ? "Registra la llegada de sus servicios" : "No registra la llegada de sus servicios"}
@@ -660,6 +722,11 @@ function Detalle({
                 <b>Dato informativo (no suma a la urgencia):</b> {acentuar(r.informativo)}
               </p>
             )}
+            {evolChip && evolDetalle && (
+              <p className="font-body-sm text-body-sm text-on-surface-variant">
+                <b>Lo más reciente ({evolChip.label.toLowerCase()}; no cambia la urgencia):</b> {acentuar(evolDetalle)}
+              </p>
+            )}
           </Tarjeta>
 
           <Tarjeta icono="compare_arrows" titulo="Comparado con otros prestadores" tip={TIPS.indicadores}>
@@ -676,11 +743,24 @@ function Detalle({
                 const invertir = i.bien != null;
                 const mostrar = (v: number | null) => (v == null ? null : invertir ? 100 - v : v);
                 const texto = i.bien ?? i.problema;
+                // Últimos 90 días (informativo; no entra en la urgencia).
+                const recObs = mnum(r, `${i.clave}_rec_obs%`);
+                const recEsp = mnum(r, `${i.clave}_rec_esp%`);
+                const recN = mnum(r, `${i.clave}_rec_n`);
+                const evo = mtxt(r, `${i.clave}_evolucion`);
+                const tend = mtxt(r, `${i.clave}_tendencia`);
+                const nota =
+                  recObs != null && recN != null
+                    ? `Últimos 90 días: ${cada100(mostrar(recObs))} de cada 100 (lo normal: ${cada100(mostrar(recEsp))}; sobre ${nf(recN)} ${recN === 1 ? "servicio" : "servicios"}).` +
+                      (evo ? ` ${EVOLUCION_FRASE[evo] ?? ""}` : "") +
+                      (tend === "Mejorando" ? " Tendencia: mejorando." : tend === "Empeorando" ? " Tendencia: empeorando." : "")
+                    : undefined;
                 return (
                   <Caja
                     key={i.clave}
                     titulo={i.titulo}
                     valor={`${cada100(mostrar(obs))} de cada 100`}
+                    nota={nota}
                     badge={est.texto}
                     badgeTone={est.tone}
                     explicacion={
@@ -782,17 +862,23 @@ function Detalle({
             </Tarjeta>
 
             <Tarjeta icono="timeline" titulo="Cómo viene evolucionando" tip={TIPS.tendencia}>
-              {[evolInc, evolComp].filter(Boolean).length === 0 && (
+              {lineasEvol.length === 0 && !hayEstables && (
                 <p className="font-body-md text-body-md text-on-surface-variant">Todavía no hay suficientes datos para comparar los últimos 90 días con los anteriores.</p>
               )}
-              {[evolInc, evolComp].map(
-                (e, i) =>
-                  e && (
-                    <p key={i} className="flex items-start gap-2 font-body-md text-body-md text-on-surface">
-                      <Icon name={e.icono} className={`${e.tone} text-[20px] shrink-0`} />
-                      {e.texto}
-                    </p>
-                  ),
+              {lineasEvol.map((e, i) => (
+                <p key={i} className="flex items-start gap-2 font-body-md text-body-md text-on-surface">
+                  <Icon name={e.icono} className={`${e.tone} text-[20px] shrink-0`} />
+                  {e.texto}
+                </p>
+              ))}
+              {lineasEvol.length === 0 && hayEstables && (
+                <p className="flex items-start gap-2 font-body-md text-body-md text-on-surface">
+                  <Icon name="trending_flat" className="text-on-surface-variant text-[20px] shrink-0" />
+                  Ningún aspecto cambió de forma significativa respecto de los 90 días anteriores.
+                </p>
+              )}
+              {lineasEvol.length > 0 && hayEstables && (
+                <p className="font-body-sm text-body-sm text-on-surface-variant">Los demás aspectos se mantienen parecidos a los 90 días anteriores.</p>
               )}
               <h5 className="font-label-caps text-label-caps text-on-surface-variant uppercase flex items-center gap-1 pt-1">
                 Semana a semana
@@ -951,6 +1037,8 @@ function descargarCsv(
     ["Acumulado dentro de su aspecto (%)", (r) => { const p = pareto.mapa.get(r.prestador_id); return p ? Math.round(p.acumulado * 10) / 10 : null; }],
     ["Grupo Pareto dentro de su aspecto (A=80%)", (r) => pareto.mapa.get(r.prestador_id)?.grupo ?? null],
     ["Situacion", (r) => situacion(r).label],
+    ["Evolucion reciente (90 dias)", (r) => evolucionChip(r)?.label ?? null],
+    ["Detalle de la evolucion reciente", (r) => mtxt(r, "evolucion_detalle")],
     ["Revision", (r) => infoEstado(revs.get(r.prestador_id)?.estado).label],
     ["Ultimo revisor", (r) => revs.get(r.prestador_id)?.responsable ?? null],
     ["Fecha de la ultima revision", (r) => revs.get(r.prestador_id)?.created_at?.slice(0, 10) ?? null],
@@ -1498,7 +1586,20 @@ export default function AuditoriaPanel({ buscarInicial = "" }: { buscarInicial?:
                     className="border-t border-outline-variant/20 hover:bg-surface-container-low cursor-pointer"
                     onClick={() => setSel(r)}
                   >
-                    <td className="py-2 pr-3 font-body-md text-body-md text-on-surface font-medium align-top">{r.prestador || "Sin nombre"}</td>
+                    <td className="py-2 pr-3 font-body-md text-body-md text-on-surface font-medium align-top">
+                      {r.prestador || "Sin nombre"}
+                      {(() => {
+                        const ev = evolucionChip(r);
+                        return ev ? (
+                          <span
+                            className={`ml-2 align-middle font-label-sm text-label-sm rounded-full px-2 py-0.5 uppercase tracking-wide ${ev.tone}`}
+                            title="Evolución en los últimos 90 días (informativa: no cambia la urgencia)"
+                          >
+                            {ev.label}
+                          </span>
+                        ) : null;
+                      })()}
+                    </td>
                     <td className="py-2 pr-3 text-on-surface-variant align-top capitalize">{NIVEL_TEXTO[r.nivel || ""] || "—"}</td>
                     <td className="py-2 pr-3 text-right align-top">{nf(r.servicios)}</td>
                     <td className="py-2 pr-3 text-right align-top">{nf(r.cerrados)}</td>
