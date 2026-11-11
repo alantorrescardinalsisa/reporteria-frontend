@@ -293,6 +293,13 @@ const EVOLUCION_UI: Record<string, { label: string; tone: string; icono: string 
   "En recuperacion": { label: "En recuperación", tone: "text-[#0f7b4a] bg-[#0f7b4a]/10", icono: "trending_down" },
   "Mejora parcial": { label: "Mejora parcial", tone: "text-[#0f7b4a] bg-[#0f7b4a]/10", icono: "trending_down" },
   "Problema nuevo": { label: "Problema nuevo", tone: "text-[#b5610a] bg-[#f59e0b]/10", icono: "trending_up" },
+  Empeorando: { label: "Empeorando", tone: "text-[#ba1a1a] bg-[#ba1a1a]/10", icono: "trending_up" },
+};
+const EVOLUCION_CORTO: Record<string, string> = {
+  "En recuperacion": "en recuperación",
+  Persiste: "persiste",
+  "Problema nuevo": "problema nuevo",
+  "Pocos datos recientes": "pocos datos recientes",
 };
 const evolucionChip = (r: AuditoriaResultado) => {
   const e = mtxt(r, "evolucion");
@@ -638,7 +645,17 @@ function Detalle({
   }).filter((e): e is NonNullable<typeof e> => e != null);
   const hayEstables = INDICADORES.some((i) => mtxt(r, `${i.clave}_tendencia`) === "Estable");
   const evolChip = evolucionChip(r);
-  const evolDetalle = mtxt(r, "evolucion_detalle");
+  // Detalle de lo reciente, en el mismo sentido que las tarjetas (las de título positivo muestran el complemento).
+  const lineasRec = INDICADORES.filter((i) => !i.informativo)
+    .map((i) => {
+      const evo = mtxt(r, `${i.clave}_evolucion`);
+      const recObs = mnum(r, `${i.clave}_rec_obs%`);
+      const obs = mnum(r, `${i.clave}_obs%`);
+      if (!evo || !EVOLUCION_CORTO[evo] || recObs == null || obs == null) return null;
+      const m = (v: number | null) => (v == null ? null : i.bien != null ? 100 - v : v);
+      return `${i.titulo}: ${cada100(m(recObs))} de cada 100 en los últimos 90 días (en el año: ${cada100(m(obs))}; lo normal: ${cada100(m(mnum(r, `${i.clave}_rec_esp%`)))}) · ${EVOLUCION_CORTO[evo]}`;
+    })
+    .filter((t): t is string => t != null);
   const semanasAuditar = hist.filter((h) => h.alerta === CANDIDATO).length;
   const semanasSeguir = hist.filter((h) => h.alerta === OBSERVACION).length;
 
@@ -722,10 +739,15 @@ function Detalle({
                 <b>Dato informativo (no suma a la urgencia):</b> {acentuar(r.informativo)}
               </p>
             )}
-            {evolChip && evolDetalle && (
-              <p className="font-body-sm text-body-sm text-on-surface-variant">
-                <b>Lo más reciente ({evolChip.label.toLowerCase()}; no cambia la urgencia):</b> {acentuar(evolDetalle)}
-              </p>
+            {lineasRec.length > 0 && (
+              <div className="font-body-sm text-body-sm text-on-surface-variant">
+                <b>Lo más reciente (últimos 90 días; no cambia la urgencia):</b>
+                <ul className="list-disc pl-5">
+                  {lineasRec.map((t, i) => (
+                    <li key={i}>{t}</li>
+                  ))}
+                </ul>
+              </div>
             )}
           </Tarjeta>
 
