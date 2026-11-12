@@ -288,7 +288,7 @@ const mtxt = (r: AuditoriaResultado, k: string): string | null => {
 
 /* Evolución reciente (informativa; el motor NO la usa en la urgencia ni en la alerta). El análisis anual pesa igual todos los
    servicios del año; esto muestra si lo reciente (últimos 90 días) ya se parece más a lo normal ("en recuperación"), sigue
-   igual ("persiste") o es un problema nuevo. Las corridas anteriores a 2026-11-12 no traen estos datos: no se muestra nada. */
+   igual ("persiste") o es un problema nuevo. Las corridas anteriores a 2026-11-11 no traen estos datos: no se muestra nada. */
 const EVOLUCION_UI: Record<string, { label: string; tone: string; icono: string }> = {
   "En recuperacion": { label: "En recuperación", tone: "text-[#0f7b4a] bg-[#0f7b4a]/10", icono: "trending_down" },
   "Mejora parcial": { label: "Mejora parcial", tone: "text-[#0f7b4a] bg-[#0f7b4a]/10", icono: "trending_down" },
@@ -627,7 +627,7 @@ function Detalle({
     return { icono: "trending_flat", tone: "text-on-surface-variant", texto: `Se mantiene parecido a los 90 días anteriores (${signed(v)} puntos porcentuales).` };
   };
   // Tendencia (últimos 90 días contra los 90 anteriores) de TODOS los aspectos medidos; antes solo demora y datos incompletos.
-  // Las corridas anteriores a 2026-11-12 solo traen esos dos (con umbral fijo de 5 puntos): se mantiene su frase.
+  // Las corridas anteriores a 2026-11-11 solo traen esos dos (con umbral fijo de 5 puntos): se mantiene su frase.
   const lineasEvol = INDICADORES.map((i) => {
     const pp = mnum(r, `${i.clave}_tend_pp`);
     if (pp == null) return null;

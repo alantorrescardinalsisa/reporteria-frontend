@@ -50,6 +50,8 @@ import {
 import "./App.css";
 import AuditoriaPanel from "./AuditoriaPanel";
 import GuiaEvaluaciones, { type DestinoEvaluacion } from "./GuiaEvaluaciones";
+import TrazabilidadDetalle from "./TrazabilidadDetalle";
+import type { TrazPaso } from "./api";
 import { situacion as situacionAuditoria } from "./auditoriaSituacion";
 import { InfoTip, type Tooltip } from "./InfoTip";
 import { PrimaryMetricsSection, type SeccionDestino } from "./components/metrics/PrimaryMetricsSection";
@@ -2972,6 +2974,8 @@ export default function App() {
     [error, setError] = useState<string | null>(null),
     [backend, setBackend] = useState({ ok: false, version: "" }),
     [drill, setDrill] = useState<Drill | null>(null),
+    // NUEVO (2026-11-12): detalle de la trazabilidad completa (paso elegido en el embudo; null = cerrado)
+    [trazDetalle, setTrazDetalle] = useState<TrazPaso | null>(null),
     [uploadItems, setUploadItems] = useState<UploadItem[]>([]),
     [uploading, setUploading] = useState(false),
     [dragOver, setDragOver] = useState(false),
@@ -5072,12 +5076,39 @@ export default function App() {
                         {nf(trazabilidad?.servicios_trazabilidad_completa)} de{" "}
                         {nf(trazabilidad?.total)} con secuencia completa
                       </span>
+                      <button
+                        type="button"
+                        onClick={() => setTrazDetalle("algun")}
+                        className="ml-auto h-9 px-sm rounded bg-primary-container text-on-primary-container font-label-md text-label-md flex items-center gap-2 hover:bg-primary hover:text-on-primary transition-colors"
+                      >
+                        <Icon name="list_alt" className="text-[18px]" />
+                        Ver servicios con secuencia incompleta
+                      </button>
                     </div>
+                    <p className="font-label-sm text-label-sm text-on-surface-variant -mt-2">
+                      Hacé clic en un paso para ver los servicios a los que les falta (o que lo completaron).
+                    </p>
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-space-sm pt-2">
                       {(trazabilidad?.funnel_completitud || []).map((e, i) => (
                         <div
                           key={e.etapa}
-                          className="p-space-md rounded-xl bg-surface-container-low flex flex-col justify-between relative overflow-hidden group hover:bg-surface-container-high transition-colors"
+                          role="button"
+                          tabIndex={0}
+                          title="Ver el detalle de los servicios de este paso"
+                          onClick={() =>
+                            setTrazDetalle(
+                              (["alta", "despachador", "asignado", "envio_ok", "llego", "finalizo"] as TrazPaso[])[i] ?? "algun",
+                            )
+                          }
+                          onKeyDown={(ev) => {
+                            if (ev.key === "Enter" || ev.key === " ") {
+                              ev.preventDefault();
+                              setTrazDetalle(
+                                (["alta", "despachador", "asignado", "envio_ok", "llego", "finalizo"] as TrazPaso[])[i] ?? "algun",
+                              );
+                            }
+                          }}
+                          className="p-space-md rounded-xl bg-surface-container-low flex flex-col justify-between relative overflow-hidden group cursor-pointer hover:bg-surface-container-high transition-colors"
                         >
                           <div className="flex items-center justify-between text-on-surface-variant font-label-code text-label-code">
                             <span>{String(i + 1).padStart(2, "0")}</span>
@@ -6562,6 +6593,10 @@ export default function App() {
           </div>
         </main>
       </div>
+
+      {trazDetalle && (
+        <TrazabilidadDetalle filters={filters} pasoInicial={trazDetalle} onClose={() => setTrazDetalle(null)} />
+      )}
 
       {/* ---------- Modal de drill-down ---------- */}
       {drill && (

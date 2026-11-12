@@ -268,6 +268,46 @@ export type Trazabilidad = {
   servicios_trazabilidad_completa: number;
   porcentaje_trazabilidad_completa: number;
 };
+// NUEVO (2026-11-12, ADITIVO): detalle de la trazabilidad completa (servicios a los que les falta, o no, un paso de la
+// secuencia). paso "algun" = cualquiera de los 6 (falta) / los 6 (tiene).
+export type TrazPaso = "algun" | "alta" | "despachador" | "asignado" | "envio_ok" | "llego" | "finalizo";
+export type TrazDetalleOpciones = {
+  paso: TrazPaso;
+  modo: "falta" | "tiene";
+  pagina?: number;
+  tamano_pagina?: number;
+  prestador_foco?: string;
+  campana_foco?: string;
+  tipo_foco?: string;
+  exportar?: boolean;
+};
+export type TrazDetalle = {
+  paso: TrazPaso;
+  modo: "falta" | "tiene";
+  pasos: { clave: Exclude<TrazPaso, "algun">; etiqueta: string }[];
+  n_tarjeta: number;
+  excluidos_por_estado: number;
+  cantidad_total: number;
+  pagina: number;
+  tamano_pagina: number;
+  total_paginas: number;
+  truncado: boolean;
+  ranking: { prestador_id: string; prestador: string; cantidad: number; total: number; porcentaje: number }[];
+  ranking_total: number;
+  campanas: { valor: string; etiqueta: string }[];
+  tipos: string[];
+  servicios: {
+    id_orden_de_servicio: number | null;
+    id_servicio_prestado: number | null;
+    prestador: string | null;
+    prestador_id: string | null;
+    campana: string | null;
+    tipo_de_servicio: string | null;
+    estado: string | null;
+    pasos: Record<string, string | null>;
+    faltan: string[];
+  }[];
+};
 // NUEVO v4.25.0 (Poka-Yoke, ADITIVO): valores estructuralmente
 // imposibles (demoras negativas, eventos fuera de orden cronológico).
 // Ver /api/metricas-trackeo/calidad-datos.
@@ -966,6 +1006,21 @@ export const api = {
         prestador_foco: foco?.prestador_id,
         campana_foco: foco?.campana_normalizada,
       }),
+    ),
+  trackeoTrazabilidadDetalle: (f: TrackeoFilters, o: TrazDetalleOpciones) =>
+    request<TrazDetalle>(
+      "/api/metricas-trackeo/trazabilidad-detalle" +
+        qs({
+          ...fp(f),
+          paso: o.paso,
+          modo: o.modo,
+          pagina: o.pagina,
+          tamano_pagina: o.tamano_pagina,
+          prestador_foco: o.prestador_foco,
+          campana_foco: o.campana_foco,
+          tipo_foco: o.tipo_foco,
+          exportar: o.exportar ? "true" : undefined,
+        }),
     ),
   ingest: async (file: File) => {
     const form = new FormData();
