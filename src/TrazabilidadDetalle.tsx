@@ -176,7 +176,7 @@ export default function TrazabilidadDetalle({
     <div className="fixed inset-0 bg-on-surface/40 z-[100] flex items-center justify-center p-md" onMouseDown={onClose}>
       <section
         className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 w-full max-w-6xl flex flex-col overflow-hidden"
-        style={{ height: "92vh" }}
+        style={{ height: "calc(100vh - 2rem)", maxHeight: "100%" }}
         onMouseDown={(e) => e.stopPropagation()}
       >
         <header className="flex items-start justify-between gap-3 px-md py-sm border-b border-outline-variant/20" style={{ flexShrink: 0 }}>
@@ -324,14 +324,14 @@ export default function TrazabilidadDetalle({
                   key={r.prestador_id}
                   type="button"
                   onClick={() => cambiar(() => setPrestador(prestador === r.prestador_id ? "" : r.prestador_id))}
-                  style={{ flexShrink: 0, minWidth: "13rem", maxWidth: "16rem" }}
+                  style={{ flexShrink: 0, minWidth: "13rem", maxWidth: "16rem", lineHeight: 1.3 }}
                   className={`px-sm py-1 rounded-lg text-left transition-colors ${
                     prestador === r.prestador_id ? "bg-primary text-on-primary" : "bg-surface-container-low hover:bg-surface-container"
                   }`}
                   title={`${r.prestador}: ${nf(r.cantidad)} de ${nf(r.total)} servicios (${pct(r.porcentaje)})`}
                 >
-                  <span className="block font-label-md text-label-md max-w-[16rem] truncate">{r.prestador}</span>
-                  <span className="block font-label-sm text-label-sm opacity-80">
+                  <span className="block font-label-md text-label-md truncate" style={{ lineHeight: 1.3 }}>{r.prestador}</span>
+                  <span className="block font-label-sm text-label-sm opacity-80" style={{ lineHeight: 1.3 }}>
                     {nf(r.cantidad)} de {nf(r.total)} · {pct(r.porcentaje)}
                   </span>
                 </button>
@@ -342,7 +342,7 @@ export default function TrazabilidadDetalle({
 
         {error && <div className="bg-error-container text-on-error-container px-md py-sm font-body-md text-body-md">{error}</div>}
 
-        <div className="overflow-auto px-md py-sm" style={{ flex: "1 1 0", minHeight: "14rem" }}>
+        <div className="overflow-auto px-md py-sm" style={{ flex: "1 1 0", minHeight: 0 }}>
           {cargando && !datos ? (
             <p className="py-lg text-center text-on-surface-variant">Cargando…</p>
           ) : (
@@ -389,7 +389,7 @@ export default function TrazabilidadDetalle({
           )}
         </div>
 
-        <footer className="flex items-center justify-between gap-3 px-md py-sm border-t border-outline-variant/20" style={{ flexShrink: 0 }}>
+        <footer className="flex items-center justify-between gap-3 px-md py-sm border-t border-outline-variant/20 bg-surface-container-lowest" style={{ flexShrink: 0 }}>
           <span className="font-label-sm text-label-sm text-on-surface-variant">
             {datos ? `${nf(datos.cantidad_total)} servicios · página ${datos.pagina} de ${datos.total_paginas}` : ""}
           </span>
