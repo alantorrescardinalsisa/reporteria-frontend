@@ -175,10 +175,11 @@ export default function TrazabilidadDetalle({
   return (
     <div className="fixed inset-0 bg-on-surface/40 z-[100] flex items-center justify-center p-md" onMouseDown={onClose}>
       <section
-        className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 w-full max-w-6xl max-h-[90vh] flex flex-col overflow-hidden"
+        className="bg-surface-container-lowest rounded-xl card-shadow border border-outline-variant/20 w-full max-w-6xl flex flex-col overflow-hidden"
+        style={{ height: "92vh" }}
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <header className="flex items-start justify-between gap-3 px-md py-md border-b border-outline-variant/20">
+        <header className="flex items-start justify-between gap-3 px-md py-sm border-b border-outline-variant/20" style={{ flexShrink: 0 }}>
           <div className="min-w-0">
             <h2 className="font-title-lg text-title-lg text-on-surface">{titulo}</h2>
             {datos && (
@@ -221,7 +222,7 @@ export default function TrazabilidadDetalle({
           </div>
         </header>
 
-        <div className="px-md py-sm border-b border-outline-variant/20 flex flex-col gap-sm">
+        <div className="px-md py-sm border-b border-outline-variant/20 flex flex-col gap-sm" style={{ flexShrink: 0 }}>
           <div className="flex flex-wrap items-center gap-2">
             <div className="flex rounded-full bg-surface-container-low p-0.5">
               {(["falta", "tiene"] as const).map((m) => (
@@ -299,7 +300,7 @@ export default function TrazabilidadDetalle({
         </div>
 
         {datos && datos.ranking.length > 0 && (
-          <div className="px-md py-sm border-b border-outline-variant/20">
+          <div className="px-md py-sm border-b border-outline-variant/20" style={{ flexShrink: 0 }}>
             <div className="flex items-center justify-between mb-1">
               <span className="font-label-caps text-label-caps uppercase text-on-surface-variant">
                 {modo === "falta" ? "Prestadores con más faltantes" : "Prestadores con más servicios"} · clic para filtrar
@@ -310,12 +311,20 @@ export default function TrazabilidadDetalle({
                 </button>
               )}
             </div>
-            <div className={`flex flex-wrap gap-2 ${verTodos ? "max-h-40 overflow-auto" : ""}`}>
+            <div
+              className="flex gap-2"
+              style={
+                verTodos
+                  ? { flexWrap: "wrap", maxHeight: "9rem", overflowY: "auto" }
+                  : { flexWrap: "nowrap", overflowX: "auto", paddingBottom: 4 }
+              }
+            >
               {ranking.map((r) => (
                 <button
                   key={r.prestador_id}
                   type="button"
                   onClick={() => cambiar(() => setPrestador(prestador === r.prestador_id ? "" : r.prestador_id))}
+                  style={{ flexShrink: 0, minWidth: "13rem", maxWidth: "16rem" }}
                   className={`px-sm py-1 rounded-lg text-left transition-colors ${
                     prestador === r.prestador_id ? "bg-primary text-on-primary" : "bg-surface-container-low hover:bg-surface-container"
                   }`}
@@ -333,7 +342,7 @@ export default function TrazabilidadDetalle({
 
         {error && <div className="bg-error-container text-on-error-container px-md py-sm font-body-md text-body-md">{error}</div>}
 
-        <div className="overflow-auto px-md py-sm flex-1 min-h-[12rem]">
+        <div className="overflow-auto px-md py-sm" style={{ flex: "1 1 0", minHeight: "14rem" }}>
           {cargando && !datos ? (
             <p className="py-lg text-center text-on-surface-variant">Cargando…</p>
           ) : (
@@ -380,7 +389,7 @@ export default function TrazabilidadDetalle({
           )}
         </div>
 
-        <footer className="flex items-center justify-between gap-3 px-md py-sm border-t border-outline-variant/20">
+        <footer className="flex items-center justify-between gap-3 px-md py-sm border-t border-outline-variant/20" style={{ flexShrink: 0 }}>
           <span className="font-label-sm text-label-sm text-on-surface-variant">
             {datos ? `${nf(datos.cantidad_total)} servicios · página ${datos.pagina} de ${datos.total_paginas}` : ""}
           </span>
