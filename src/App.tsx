@@ -2455,9 +2455,12 @@ function NotificationBell({
   );
 }
 
-/* ---------- NUEVO (ADITIVO): instructivo de ayuda (botón "?" del
-   header) -- explica toda la plataforma en lenguaje simple, sin dar
-   por sentado ningún conocimiento técnico previo. ---------- */
+/* ---------- Instructivo de ayuda (botón "?" del header) -- explica toda la
+   plataforma en lenguaje simple, sin dar por sentado ningún conocimiento
+   técnico previo. Reescrito el 2026-11-13 para incluir lo agregado desde
+   octubre (outliers, programados, detalle de trazabilidad, Auditoría, avisos
+   por correo). Si cambia una regla, actualizar también
+   GUIA_FUNCIONAL_Y_AUTOMATIZACIONES.md. ---------- */
 type HelpSection = { id: string; icon: string; title: string; body: ReactNode };
 const HELP_SECTIONS: HelpSection[] = [
   {
@@ -2467,17 +2470,25 @@ const HELP_SECTIONS: HelpSection[] = [
     body: (
       <>
         <p>
-          Reportería de Prestadores toma el mismo Excel de Trackeo que ya
-          se usa hoy y lo convierte en indicadores listos para leer, sin
-          tener que armar tablas dinámicas a mano. Todo lo que ves acá se
-          calcula a partir de esos mismos datos — nada se inventa ni se
-          estima: si un número te llama la atención, siempre podés
-          contrastarlo filtrando el Excel de la misma forma.
+          Reportería de Prestadores toma los reportes que ya se usan hoy
+          (el Excel de Trackeo, las encuestas, la ficha de seguimiento) y los
+          convierte en indicadores listos para leer, sin armar tablas
+          dinámicas a mano. Todo lo que ves se calcula a partir de esos
+          mismos datos: nada se inventa ni se estima. Si un número te llama
+          la atención, siempre podés contrastarlo filtrando el Excel de la
+          misma forma.
         </p>
         <p>
           Está pensada para el área de Prestadores: para saber cómo viene
-          rindiendo cada prestador, cada campaña, y para detectar rápido
-          a quién conviene prestarle atención.
+          rindiendo cada prestador y cada campaña, y para detectar rápido a
+          quién conviene revisar.
+        </p>
+        <p>
+          <b>Los datos se cargan solos.</b> De lunes a viernes, una tarea
+          automática descarga los reportes del día y los sube a la
+          plataforma. Por eso, lo que ves llega hasta el día hábil anterior.
+          No hace falta subir nada a mano, salvo casos puntuales (ver
+          "Cargar reportes").
         </p>
       </>
     ),
@@ -2493,93 +2504,117 @@ const HELP_SECTIONS: HelpSection[] = [
           Operativa y Cargar reportes) hay 7 filtros: <b>Desde</b> /{" "}
           <b>Hasta</b> (rango de fechas), <b>Campañas</b>, <b>Prestadores</b>
           , <b>Estados</b>, <b>Tipo de servicio</b>, <b>Tipo de póliza</b> y{" "}
-          <b>Provincia de origen</b>. Estos 7 filtros mandan en toda la
-          plataforma — cada indicador que ves ya está calculado solo sobre
-          los servicios que cumplen lo que seleccionaste ahí arriba.
+          <b>Provincia de origen</b>. Todo lo que ves en pantalla está
+          calculado solo con los servicios que cumplen lo que elegiste ahí.
         </p>
         <p>
-          <b>
-            Estado, Tipo de servicio, Tipo de póliza y Provincia de origen son
-            100% manuales
-          </b>
-          : si no elegís nada en esos, se incluyen TODOS los valores — igual
-          que si en Excel no filtraras esa columna. No hay ningún filtro
-          escondido aplicándose sin que lo elijas vos. <b>Tipo de póliza</b>{" "}
-          agrupa los servicios por tipo de cobertura (Vehículos, AP, Hogar,
-          Viajeros) a partir del Tipo de servicio — es un dato temporal
-          mientras la plataforma se conecta a la base de datos de la
-          empresa. <b>Provincia de origen</b> viene de un archivo separado
-          (el de despachador, cruzado por número de servicio) y solo cubre
-          los servicios que matchearon con ese archivo — el resto queda sin
-          clasificar hasta que se suba un archivo que los incluya.
+          <b>Si no elegís nada en un filtro, se incluyen todos los valores</b>
+          , igual que si en Excel no filtraras esa columna. No hay ningún
+          filtro escondido aplicándose sin que lo elijas vos.
         </p>
         <ul>
           <li>
-            Después de cambiar algo, tocá <b>Aplicar filtros</b> para que
-            los indicadores se actualicen.
+            <b>Tipo de póliza</b> agrupa los servicios por tipo de cobertura
+            (Vehículos, AP, Hogar, Viajeros).
           </li>
           <li>
-            <b>Restablecer</b> vuelve todo a los valores por defecto (los
-            últimos ~2 meses, sin ningún otro filtro).
+            <b>Provincia de origen</b> viene de un archivo aparte (el de
+            despachador) y solo cubre los servicios que se pudieron cruzar
+            con ese archivo. El resto queda sin clasificar.
           </li>
           <li>
-            Podés elegir varias campañas, prestadores, estados o tipos a
-            la vez — no hace falta ver de a uno.
+            Al lado hay dos casilleros: <b>Excluir outliers</b> y{" "}
+            <b>Excluir programados</b>. Vienen tildados de entrada y se
+            explican más abajo, cada uno en su sección.
+          </li>
+          <li>
+            Después de cambiar algo, tocá <b>Aplicar filtros</b> para que se
+            actualicen los números.
+          </li>
+          <li>
+            <b>Restablecer</b> vuelve todo a los valores de inicio (los dos
+            últimos meses cerrados, sin ningún otro filtro).
+          </li>
+          <li>
+            Podés elegir varias campañas, prestadores, estados o tipos a la
+            vez.
           </li>
         </ul>
+        <p>
+          Ojo: la pestaña <b>Auditoría de prestadores</b> no responde a estos
+          filtros (se explica en su propia sección).
+        </p>
       </>
     ),
   },
   {
     id: "metricas",
     icon: "bar_chart",
-    title: "Métricas de Trackeo — lo esencial",
+    title: "Métricas de Trackeo: cómo está armada",
     body: (
       <>
         <p>
-          Es la pantalla principal. Arriba de todo tenés los{" "}
-          <b>Universos analíticos</b>: cuántos servicios hay en total,
-          cuántos son vehiculares, cuántos quedaron cancelados, etc. Sirven
-          para entender el tamaño del universo que estás mirando antes de
-          leer los porcentajes de abajo (un 50% sobre 10 servicios no
-          significa lo mismo que un 50% sobre 10.000).
+          Es la pantalla principal. Se lee de arriba hacia abajo, de lo más
+          importante a lo más detallado.
         </p>
-        <p>Después vienen los indicadores operativos principales:</p>
+        <p>
+          <b>1. Estado operativo.</b> Arriba de todo hay cuatro tarjetas con
+          lo esencial del período: el resultado de puntualidad, qué parte de
+          los servicios tiene datos para medirlo (la cobertura), cuántos
+          servicios se asignaron y cuántos tienen la secuencia completa
+          cargada. Debajo, un cartel amarillo resume en pocas frases lo que
+          conviene mirar. Y abajo, botones de acceso rápido (Calidad y
+          trazabilidad, Tiempos y SLA, Encuestas, Asignación, Outliers).
+        </p>
+        <p>
+          <b>2. Secciones que se abren y se cierran.</b> Todo el detalle
+          está en seis bloques desplegables: Resumen general, Encuestas,
+          Calidad de datos, Tiempos campañas y estados, Trazabilidad y
+          asignación, y Outliers y auditoría. Abrís solo el que necesites.
+        </p>
+        <p>
+          <b>3. Resumen general.</b> Empieza con el tamaño del universo:
+          cuántos servicios hay en el período, cuántos son vehiculares,
+          cuántos se cancelaron y cuántos siguen sin terminar. Sirve para
+          entender sobre cuánto se calculan los porcentajes (un 50% sobre 10
+          servicios no significa lo mismo que sobre 10.000). Sigue la{" "}
+          <b>Tendencia diaria</b> (los indicadores día por día, con zoom) y
+          los <b>Indicadores operativos</b>:
+        </p>
         <ul>
           <li>
-            <b>Uso del enviador</b>: de los servicios, cuántos pasaron por
-            la herramienta de asignación automática.
+            <b>Uso del enviador</b>: de los servicios, cuántos pasaron por la
+            herramienta de asignación automática de móviles.
           </li>
           <li>
-            <b>Efectividad de asignación</b>: de los que usaron esa
-            herramienta, a cuántos se les consiguió un móvil.
+            <b>Efectividad de asignación</b>: de los que la usaron, a cuántos
+            se les consiguió un móvil.
           </li>
           <li>
-            <b>Cumplimiento de demora (observado)</b>: de los servicios con
-            tiempo prometido y tiempo real cargados, cuántos llegaron
-            dentro de lo prometido. Es el indicador principal y se lee
-            siempre junto a su <b>cobertura</b> (qué parte del universo
-            tiene esos datos). La fórmula histórica de Excel se conserva
-            aparte, solo para conciliar.
+            <b>Cumplimiento de demora</b>: de los servicios que tienen cargado
+            tanto el tiempo prometido como el tiempo real, cuántos llegaron
+            dentro de lo prometido (con una tolerancia de 14 minutos). Es el
+            indicador principal y se lee siempre junto a su{" "}
+            <b>cobertura</b>: qué parte de los servicios tiene esos datos. Si
+            la cobertura es baja, el porcentaje describe solo a una parte.
           </li>
         </ul>
         <p>
-          Cada tarjeta con una flechita (›) se puede clickear para ver el
-          listado exacto de servicios que forman ese número — nunca tenés
-          que confiar en el porcentaje "a ciegas".
+          Cada tarjeta con una flechita (›) se puede tocar para ver el
+          listado exacto de servicios que forman ese número: nunca tenés que
+          confiar en un porcentaje "a ciegas".
         </p>
         <p>
-          El gráfico <b>"Tendencia diaria"</b> muestra esos mismos
-          indicadores día por día. Podés cambiar el período (última
-          semana, último mes, etc.) y hacer zoom para ver el detalle día a
-          día — el botón "Zoom" activa el arrastre con el mouse para
-          moverte por el gráfico.
+          <b>Calidad de datos</b> (otro bloque) muestra qué tan completos
+          están los datos cargados y detecta valores imposibles, como una
+          demora negativa o una llegada registrada antes del alta: señales de
+          un dato mal cargado, no de un mal servicio.
         </p>
         <p>
-          <b>"Impacto por campaña"</b> no ordena las campañas por
-          porcentaje, sino por cuánto se ganaría en la práctica si esa
-          campaña mejorara — una campaña grande con un problema chico
-          puede pesar más que una campaña chica con un problema grande.
+          <b>Impacto por campaña</b> no ordena las campañas por porcentaje
+          sino por cuánto se ganaría en la práctica si esa campaña mejorara:
+          una campaña grande con un problema chico puede pesar más que una
+          chica con un problema grande.
         </p>
       </>
     ),
@@ -2587,83 +2622,232 @@ const HELP_SECTIONS: HelpSection[] = [
   {
     id: "tiempos",
     icon: "schedule",
-    title: "Cómo leer los tiempos del prestador",
+    title: "Cómo leer los tiempos",
     body: (
       <>
         <p>
-          La sección "Tiempos del prestador" traduce los tiempos técnicos
-          a preguntas simples: cuánto tarda en llegar, cuánto tarda en
-          resolver el servicio, cuánto dura todo el proceso de punta a
-          punta. A propósito <b>no incluye</b> el tiempo previo a que se
-          le asigna el servicio al prestador — eso es operativa interna
-          de Cardinal, no depende del prestador.
+          En "Tiempos, campañas y estados", la sección{" "}
+          <b>Tiempos del prestador</b> traduce los tiempos técnicos a
+          preguntas simples: cuánto tarda en llegar el móvil, cuánto dura
+          el servicio y cuánto dura todo el proceso de punta a punta. A
+          propósito <b>no incluye</b> el tiempo previo a que el servicio se le
+          asigna al prestador: eso es trabajo interno de Cardinal y no
+          depende del prestador.
         </p>
-        <p>Cada tarjeta muestra 4 datos:</p>
+        <p>Cada tarjeta muestra cuatro datos:</p>
         <ul>
           <li>
-            <b>Tiempo típico</b>: la mitad de los casos tarda menos que
-            esto (es el valor "del medio", no un promedio que se puede
-            distorsionar por un caso extremo).
+            <b>Tiempo típico</b>: la mitad de los casos tarda menos que esto.
+            Es el valor "del medio", así un caso extremo no lo distorsiona.
           </li>
           <li>
-            <b>En los casos más lentos</b>: cuánto tardan los peores 10 de
-            cada 100 casos — para saber qué tan mal puede llegar a salir,
-            no solo el caso típico.
+            <b>En los casos más lentos</b>: cuánto tardan los 10 peores de
+            cada 100 casos. Sirve para saber qué tan mal puede salir, no solo
+            el caso típico.
           </li>
           <li>
-            <b>Casos medidos</b>: sobre cuántos servicios se pudo calcular
-            esto (si es un número chico, el dato hay que tomarlo con
-            pinzas).
+            <b>Casos medidos</b>: sobre cuántos servicios se pudo calcular.
+            Si es un número chico, hay que tomarlo con pinzas.
           </li>
           <li>
-            <b>Calidad del dato</b>: si se detectaron datos cargados con
-            error en esa etapa.
+            <b>Calidad del dato</b>: si en esa etapa se detectaron datos
+            cargados con error.
+          </li>
+        </ul>
+        <p>
+          Esta sección también trae el <b>SLA de llegada</b> (qué parte de los
+          móviles llegó dentro del plazo), el <b>Impacto por campaña</b>,{" "}
+          <b>Servicios por hora del día</b> (a qué hora entra más trabajo, útil
+          para dimensionar la dotación) y <b>Estados por categoría</b> (agrupa
+          los estados del Excel en categorías fáciles de leer: Finalizado,
+          Cancelado, En curso, etc.).
+        </p>
+        <p>
+          Los tiempos y el SLA se ven afectados por los casilleros{" "}
+          <b>Excluir outliers</b> y <b>Excluir programados</b>: ver las
+          secciones siguientes.
+        </p>
+      </>
+    ),
+  },
+  {
+    id: "encuestas",
+    icon: "forum",
+    title: "Encuestas a los clientes",
+    body: (
+      <>
+        <p>
+          Después de un servicio, al cliente le llega una encuesta por
+          WhatsApp. En el bloque <b>Encuestas</b> ves:
+        </p>
+        <ul>
+          <li>
+            <b>Encuesta post-servicio</b>: cuántos servicios por día están en
+            estado "encuesta final" (ya respondida) y cuántos en "encuesta
+            pendiente" (enviada, sin respuesta), con un gráfico que marca los
+            días que se salen de lo normal.
+          </li>
+          <li>
+            <b>Cobertura de encuestas automáticas</b>: de los servicios que
+            debieron disparar la encuesta (finalizados, de una compañía que
+            tiene la función habilitada), cuántas se enviaron de verdad y
+            cuántas faltaron. Tiene su propio selector de compañía, que no
+            afecta al resto de la pantalla.
+          </li>
+        </ul>
+        <p>
+          <b>Aviso por correo:</b> cuando un cliente califica con 2 o menos
+          (en calidad, demora o profesional), el sistema manda solo un mail de
+          alerta con el detalle y el comentario del cliente. Hoy está
+          activado para las campañas <b>FORD</b> y <b>AUXILIO 24</b>, y se
+          avisa una sola vez por servicio. Los mails los envía una tarea
+          automática de la PC de lunes a viernes.
+        </p>
+      </>
+    ),
+  },
+  {
+    id: "trazabilidad",
+    icon: "route",
+    title: "Trazabilidad y detalle de servicios",
+    body: (
+      <>
+        <p>
+          Cada servicio debería dejar registrados seis momentos, uno atrás
+          del otro: <b>alta</b>, <b>pasado al despachador</b>,{" "}
+          <b>asignado</b>, <b>envío confirmado</b>, <b>llegada</b> y{" "}
+          <b>finalización</b>. La tarjeta <b>Trazabilidad completa del
+          servicio</b> (en "Trazabilidad y asignación") mide qué porcentaje de
+          los servicios tiene los seis cargados. Si falta alguno, no se sabe
+          bien qué pasó, y esa falta de datos es justamente lo que se quiere
+          detectar.
+        </p>
+        <p>
+          <b>Para ver exactamente qué servicios tienen el problema</b>, tocá
+          cualquiera de los seis pasos del embudo (o el botón "Ver servicios
+          con secuencia incompleta"). Se abre una ventana donde podés:
+        </p>
+        <ul>
+          <li>
+            Elegir entre <b>Les falta</b> (los que no cargaron ese paso) y{" "}
+            <b>Lo completaron</b>.
+          </li>
+          <li>
+            Elegir un paso puntual o <b>Cualquier paso</b>, para ver los
+            servicios a los que les falta uno o más de los seis.
+          </li>
+          <li>
+            Filtrar por campaña y por tipo de servicio, y ver el{" "}
+            <b>ranking de prestadores</b> con más faltantes. Tocando un
+            prestador de ese ranking, la lista se limita a él.
+          </li>
+          <li>
+            Ver, servicio por servicio, qué pasos están cargados (✓) y cuáles
+            no (✗). Con el mouse sobre cada marca ves la fecha y hora.
+          </li>
+          <li>
+            Descargar todo en <b>Excel</b> (hasta 20.000 servicios). En
+            pantalla se ven de a 100, con los botones Anterior y Siguiente.
+          </li>
+        </ul>
+        <p>
+          <b>Qué servicios no se cuentan como "faltantes":</b> los
+          cancelados, los que siguen en curso y los pendientes, porque es
+          normal que todavía no tengan llegada o finalización. La ventana te
+          dice cuántos quedaron afuera por eso.
+        </p>
+        <p>
+          En el mismo bloque hay dos indicadores más sobre la asignación:{" "}
+          <b>Coordenadas</b> (si el servicio tiene la ubicación cargada, que
+          es lo que permite asignar un móvil) y <b>Móvil registrado</b> (si
+          quedó anotado qué móvil lo atendió).
+        </p>
+      </>
+    ),
+  },
+  {
+    id: "outliers",
+    icon: "query_stats",
+    title: "Outliers (casos extremos)",
+    body: (
+      <>
+        <p>
+          Un <b>outlier</b> es un servicio con una demora <b>exageradamente
+          larga</b>, mucho más que lo normal. Concretamente: más de tres veces
+          el valor por debajo del cual está el 90% de los servicios.
+        </p>
+        <p>
+          <b>Ejemplo:</b> si el 90% de los servicios llega en 200 minutos o
+          menos, todo servicio que figure con más de 600 minutos es outlier.
+        </p>
+        <p>
+          <b>Por qué importa:</b> una demora de, por ejemplo, dos días casi
+          nunca es una espera real del cliente. Casi siempre significa que la
+          llegada y el cierre se <b>cargaron mucho después de que ocurrieron</b>.
+          Por eso un outlier no prueba que el prestador llegó tarde: prueba
+          que <b>la hora quedó mal registrada</b>. Y esos casos, si se dejan
+          adentro, ensucian los promedios y los porcentajes.
+        </p>
+        <ul>
+          <li>
+            El casillero <b>Excluir outliers</b> (tildado de entrada) saca a
+            estos casos del cumplimiento de demora y de los tiempos, para que
+            el resultado refleje la operación normal.
+          </li>
+          <li>
+            La tabla <b>Outliers por tramo</b> (en "Outliers y auditoría")
+            muestra siempre todos los casos extremos, caso por caso, estén o
+            no excluidos, para poder revisarlos.
+          </li>
+          <li>
+            En el <b>Score</b> del prestador, la carga tardía <b>resta
+            puntos</b> (hasta 15), tengas o no tildado el casillero.
+          </li>
+          <li>
+            En la <b>Auditoría</b> no se descartan: forman un aspecto propio
+            ("cargar la llegada en el momento") que se cuenta como falta de
+            registro, no como demora.
           </li>
         </ul>
       </>
     ),
   },
   {
-    id: "horaria",
-    icon: "insights",
-    title: "Otros gráficos y tablas de esta pantalla",
+    id: "programados",
+    icon: "event",
+    title: "Servicios programados",
     body: (
       <>
         <p>
-          <b>"Servicios por hora del día"</b> muestra a qué hora llega más
-          trabajo — útil para pensar la dotación de personal según la
-          demanda real de cada franja horaria, no contra el promedio del
-          día entero. Se puede filtrar por prestador o por campaña sin
-          perder los filtros globales de arriba.
+          Un servicio <b>programado</b> es uno que el cliente pidió para una
+          fecha y hora futuras, en lugar de pedirlo para ya (por ejemplo, un
+          traslado agendado para el jueves a las 9). Su "demora" no mide una
+          espera de urgencia como la de un servicio normal, así que
+          mezclarlo con los demás distorsiona los tiempos.
         </p>
-        <p>
-          <b>"Distribución de servicios cumplidos"</b> y{" "}
-          <b>"Calidad de información"</b> muestran, respectivamente, qué
-          tan ajustado (o con margen) fue el cumplimiento de los
-          servicios que sí cumplieron, y qué tan completos están los
-          datos cargados en el Excel (un campo vacío puede ser tan
-          importante como un mal resultado).
-        </p>
-        <p>
-          <b>"Estados por categoría"</b> agrupa los estados individuales
-          del Excel en categorías más fáciles de leer (Finalizado,
-          Cancelado, En curso, etc.). <b>"Trazabilidad completa del
-          servicio"</b> mide qué % de los servicios tiene registrada toda
-          la cadena de eventos, de punta a punta.
-        </p>
-        <p>
-          <b>"Gestión completa de servicios programados"</b> sigue el
-          camino completo de un servicio programado (con fecha y hora
-          agendada) y en particular la <b>"Llegada en horario"</b>: si el
-          prestador llegó dentro de la ventana prometida. Haciendo clic
-          se puede ver por separado quiénes cumplieron y quiénes no.
-        </p>
-        <p>
-          <b>"Outliers por tramo"</b> muestra, caso por caso, los 20
-          valores más altos de cada tramo de tiempo — para auditar los
-          casos extremos en vez de que queden escondidos dentro de un
-          promedio.
-        </p>
+        <ul>
+          <li>
+            El casillero <b>Excluir programados</b> (tildado de entrada) los
+            saca de los tiempos de llegada y de duración total, y del SLA de
+            llegada.
+          </li>
+          <li>
+            <b>Los reclamos no se excluyen</b>: si el cliente de un servicio
+            programado se queja, esa queja cuenta igual.
+          </li>
+          <li>
+            El bloque <b>Gestión completa de servicios programados</b> sigue
+            su camino completo (programado, con prestador, envío confirmado,
+            con móvil, ejecutado, finalizado) y mide la{" "}
+            <b>llegada en horario</b>: si el prestador llegó a la hora
+            pactada o antes. Haciendo clic ves por separado quiénes cumplieron
+            y quiénes no. No es lo mismo que el cumplimiento de demora.
+          </li>
+          <li>
+            En la <b>Auditoría</b> se dejan afuera (hoy sus eventos no están
+            bien registrados), salvo las quejas de clientes, que sí entran.
+          </li>
+        </ul>
       </>
     ),
   },
@@ -2674,25 +2858,47 @@ const HELP_SECTIONS: HelpSection[] = [
     body: (
       <>
         <p>
-          Esta pantalla muestra, prestador por prestador, todos los
-          indicadores anteriores en una sola fila. Se puede buscar por
-          nombre, ordenar por cualquier columna haciendo clic en su
-          encabezado (un clic más invierte el orden), y exportar la
-          tabla completa.
+          Esta pantalla muestra, prestador por prestador, los indicadores en
+          una sola fila. Se puede buscar por nombre, ordenar por cualquier
+          columna haciendo clic en su título (otro clic invierte el orden) y
+          exportar la tabla. Usa los filtros de arriba y siempre está al día.
         </p>
         <p>
-          La columna <b>Score</b> es una nota de 0% a 100% que combina 4
-          cosas en una sola: cumplimiento de demora (37,5%), efectividad
-          de asignación (31,25%), calidad de los datos cargados (18,75%)
-          y qué tan grande es el prestador en volumen (12,5%). Si a un
-          prestador le falta alguno de esos datos, el score se calcula
-          solo con lo que sí tiene, ajustando los porcentajes — nunca se
-          asume "0" para un dato faltante.
+          La columna <b>Score</b> es una nota de 0% a 100% que combina cuatro
+          cosas:
+        </p>
+        <ul>
+          <li>
+            <b>Cumplimiento de la demora prometida</b> (37,5%).
+          </li>
+          <li>
+            <b>Registro completo</b> de la secuencia del servicio, o
+            trazabilidad (31,25%).
+          </li>
+          <li>
+            <b>Reclamos de clientes</b> (18,75%).
+          </li>
+          <li>
+            <b>Reclamos que aparecen en las encuestas</b> (12,5%).
+          </li>
+        </ul>
+        <p>
+          Si a un prestador le falta alguno de esos datos, el score se calcula
+          solo con lo que sí tiene, ajustando los porcentajes: nunca se asume
+          "0" para un dato que falta. Además, si tiene casos de{" "}
+          <b>carga tardía</b> (los outliers), el score <b>pierde hasta 15
+          puntos</b>, según qué tantos casos tenga.
         </p>
         <p>
-          El ⚠️ al lado del score avisa que ese prestador tiene menos de
-          20 servicios en el período filtrado — con tan poca muestra, el
-          número es menos confiable y conviene mirarlo con cautela.
+          El ⚠️ al lado del score avisa que ese prestador tiene menos de 20
+          servicios en el período: con tan poca muestra el número es menos
+          confiable.
+        </p>
+        <p>
+          Al pasar el mouse por la cantidad de servicios (<b>n</b>) de un
+          prestador ves por qué algunos servicios no entran en el
+          cumplimiento (cancelados, en curso, sin hora de llegada, sin
+          demora prometida, etc.), y con un clic podés ver cuáles son.
         </p>
       </>
     ),
@@ -2702,39 +2908,229 @@ const HELP_SECTIONS: HelpSection[] = [
     icon: "campaign",
     title: "Campaña × prestador",
     body: (
-      <p>
-        Es la misma idea que "Detalle por prestador", pero cruzando cada
-        prestador con cada campaña en la que trabajó — para responder
-        "¿este prestador rinde igual en todas las campañas, o hay alguna
-        en particular donde le va peor?". También se puede ordenar por
-        columna y exportar.
-      </p>
+      <>
+        <p>
+          Es la misma idea que "Detalle por prestador", pero cruzando cada
+          prestador con cada campaña en la que trabajó. Responde: "¿este
+          prestador rinde igual en todas las campañas, o hay alguna donde le
+          va peor?". También se puede ordenar por columna y exportar.
+        </p>
+      </>
+    ),
+  },
+  {
+    id: "tres-formas",
+    icon: "tips_and_updates",
+    title: "Tres formas de mirar a un prestador",
+    body: (
+      <>
+        <p>
+          La plataforma tiene tres miradas sobre cada prestador. Cada una
+          responde una pregunta distinta, <b>por eso los resultados no tienen
+          por qué coincidir</b>. Ninguna es una sanción automática: sirven
+          para decidir a quién revisar.
+        </p>
+        <ul>
+          <li>
+            <b>Detalle por prestador — "¿Cuánto vale este prestador?"</b> Un
+            puntaje de 0 a 100% con los filtros que elijas. Siempre está
+            actualizado.
+          </li>
+          <li>
+            <b>Panorama de la red — "¿Quién viene peor o mejor que los
+            demás?"</b> Clasifica a los prestadores del período elegido.
+            También responde a los filtros y está al día.
+          </li>
+          <li>
+            <b>Auditoría de prestadores — "¿A quién conviene auditar?"</b>{" "}
+            Compara a cada prestador solo con otros que hacen servicios
+            parecidos. Es una foto que se renueva los lunes y no cambia con
+            los filtros. <b>Es la que hay que usar para decidir auditorías.</b>
+          </li>
+        </ul>
+        <p>
+          <b>Por qué un mismo prestador puede verse distinto en cada una:</b>{" "}
+          (1) los servicios sin hora de llegada no suman ni restan al
+          cumplimiento, y la falta de esa hora se castiga aparte; (2) el
+          Detalle y el Panorama lo comparan con todos, mientras que la
+          Auditoría lo compara solo con quienes hacen trabajo parecido; (3) el
+          Detalle y el Panorama miran el período que elijas, y la Auditoría
+          mira todos los servicios terminados desde enero; (4) las dos
+          primeras cambian al instante, la Auditoría es la foto del último
+          lunes.
+        </p>
+      </>
     ),
   },
   {
     id: "inteligencia",
     icon: "psychology",
-    title: "Inteligencia Operativa",
+    title: "Panorama de la red",
     body: (
       <>
         <p>
-          Esta pantalla identifica rápido a quién conviene revisar con
-          urgencia, a quién prestarle atención media, y quién se está
-          destacando — combinando la tendencia reciente de cada prestador
-          (¿mejoró o empeoró dentro del período filtrado?) con su
-          posición frente a sus pares (¿rinde mejor o peor que el resto?).
+          Está en <b>Inteligencia Operativa</b>, pestaña "Panorama de la
+          red". Identifica rápido a quién revisar con urgencia, a quién
+          prestarle atención y quién se está destacando, mirando dos cosas:
+          si el prestador <b>mejoró o empeoró</b> dentro del período
+          filtrado (primera mitad contra segunda mitad) y <b>cómo le va frente
+          a los demás</b> prestadores.
         </p>
         <p>
-          <b>Importante: no es un pronóstico.</b> Todo se calcula sobre
-          datos que ya ocurrieron — no hay ninguna probabilidad de lo que
-          "podría pasar" a futuro. Es un motor de reglas simples
-          (umbrales y comparaciones), no un modelo de inteligencia
-          artificial entrenado.
+          <b>No es un pronóstico.</b> Todo se calcula con datos que ya
+          ocurrieron. No hay probabilidades de lo que "podría pasar", ni
+          inteligencia artificial: son reglas simples de comparación.
+        </p>
+        <ul>
+          <li>
+            <b>Necesitan atención urgente</b>: bajaron mucho su cumplimiento
+            en el período o quedaron entre el 20% más bajo.
+          </li>
+          <li>
+            <b>Requieren atención</b>: vienen bajando un poco o rinden por
+            debajo del promedio, sin llegar a urgente (y con cumplimiento de
+            85% o menos).
+          </li>
+          <li>
+            <b>Se están destacando</b>: están entre los mejores y no muestran
+            caídas (con cumplimiento mayor a 85%).
+          </li>
+        </ul>
+        <p>
+          Las tarjetas se pueden tocar para ver el listado de cada grupo.
+          Más abajo hay una tabla comparativa con todos. Si el período es muy
+          corto, o hay pocos prestadores con servicios suficientes, la
+          pantalla lo avisa y marca a todos como "Muestra insuficiente":
+          preferible eso a mostrar un ranking que sería puro ruido.
+        </p>
+      </>
+    ),
+  },
+  {
+    id: "auditoria",
+    icon: "fact_check",
+    title: "Auditoría de prestadores",
+    body: (
+      <>
+        <p>
+          Está en <b>Inteligencia Operativa</b>, pestaña "Auditoría de
+          prestadores". Responde a una sola pregunta: <b>¿a qué prestadores
+          conviene auditar primero?</b> Compara a cada prestador con otros
+          que hacen servicios parecidos (misma campaña y mismo tipo de
+          servicio), para no castigar a quien trabaja en condiciones más
+          difíciles.
         </p>
         <p>
-          Las tarjetas de arriba (Urgente / Atención / Destacado) se
-          pueden clickear para ver el listado de prestadores de esa
-          categoría. Más abajo aparece una tabla comparativa con todos.
+          <b>Cómo funciona.</b> Todos los lunes un proceso automático analiza
+          los servicios terminados desde enero y guarda el resultado. La
+          pantalla muestra esa <b>foto del lunes</b>: no cambia con los
+          filtros de arriba. Con el selector de <b>Semana</b> podés ver
+          fotos anteriores. Cada lunes, además, se envía por correo un
+          resumen con un Excel con el detalle.
+        </p>
+        <p>
+          <b>Las dos tarjetas de arriba.</b> La primera cuenta a los
+          prestadores según su situación:
+        </p>
+        <ul>
+          <li>
+            <b>Para auditar con prioridad</b>: se aparta mucho de lo normal en
+            algún aspecto (que no sea solo reclamos) y tiene al menos 300
+            servicios terminados. Son los primeros para revisar.
+          </li>
+          <li>
+            <b>Para seguir de cerca</b>: tiene alguna diferencia importante,
+            pero menos marcada, o con menos servicios. Los reclamos solos
+            alcanzan para esta categoría.
+          </li>
+          <li>
+            <b>Sin problemas</b>: dentro de lo normal.
+          </li>
+          <li>
+            <b>No registran la llegada</b>: menos de la mitad de sus servicios
+            tiene hora de llegada, así que no se les puede medir la demora. Se
+            listan aparte porque el problema es que no usan el sistema.
+          </li>
+        </ul>
+        <p>
+          La segunda tarjeta, <b>Cómo está la red</b>, resume cuántos de cada
+          100 servicios de toda la red cumplen lo prometido, llegan tarde, no
+          tienen hora de llegada, etc., y si en los últimos 90 días eso
+          empeoró, mejoró o quedó igual.
+        </p>
+        <p>
+          <b>La tabla "Prestadores, del más al menos urgente".</b> Tocá una
+          fila para abrir el detalle. Columnas principales:
+        </p>
+        <ul>
+          <li>
+            <b>Urgencia (0 a 100)</b>: es lo que ordena la lista. Mide qué tan
+            lejos está el prestador de lo normal. <b>No es un porcentaje de
+            incumplimiento.</b>
+          </li>
+          <li>
+            <b>Servicios de más</b>: cuántos servicios con problemas tiene de
+            más, comparado con lo que tendría si rindiera como los demás en
+            servicios parecidos. Ayuda a elegir por dónde empezar: un
+            prestador grande con una diferencia chica puede sumar más
+            servicios problemáticos que uno chico con una diferencia enorme.
+          </li>
+          <li>
+            <b>Peso en su problema</b>: qué parte del problema de la red, en
+            ese aspecto, aporta este prestador. El punto rojo marca al grupo
+            chico de prestadores que concentra el 80% del problema; el
+            naranja, hasta el 95%; el gris, el resto. Si querés resolver la
+            mayor parte del problema con el menor esfuerzo, empezá por los
+            rojos.
+          </li>
+          <li>
+            <b>Volumen</b>: alto, medio o bajo. Con menos de 20 servicios no
+            se evalúa porque no alcanza para sacar conclusiones.
+          </li>
+          <li>
+            <b>Revisión</b>: qué se decidió con ese caso (ver más abajo).
+          </li>
+          <li>
+            <b>Por qué</b>: hasta tres motivos escritos en palabras, con
+            números.
+          </li>
+        </ul>
+        <p>
+          <b>Las etiquetas de evolución.</b> Muestran qué pasó en los últimos
+          90 días, porque el análisis de todo el año reacciona lento a los
+          cambios: <b>En recuperación</b> (ya se normalizó),{" "}
+          <b>Mejora parcial</b> (lo principal mejoró, algo sigue),{" "}
+          <b>Empeorando</b> (el problema principal sigue y va peor) y{" "}
+          <b>Problema nuevo</b> (no estaba en el año, pero apareció
+          recientemente). Son informativas: no cambian la urgencia.
+        </p>
+        <p>
+          <b>La ventana de un prestador.</b> De arriba hacia abajo: un
+          resumen en palabras ("carga datos incompletos en 33 de cada 100
+          servicios; lo normal es 4"); una tarjeta por aspecto comparando con
+          lo normal (cumplir la demora, registrar la hora de llegada,
+          registrar bien cada servicio, cargar la llegada en el momento,
+          reclamos, opinión de los clientes y cancelaciones); cómo viene
+          evolucionando semana a semana; y <b>servicios de ejemplo</b>{" "}
+          reales para revisar. En los ejemplos con reclamo hay una columna{" "}
+          <b>Motivo del reclamo</b>: rotura o daños, demora u otro motivo.
+        </p>
+        <p>
+          <b>Registro del caso.</b> Al final de la ventana se puede anotar qué
+          pasó con el prestador: "En revisión", "Requiere evidencia",
+          "Descartado" o "Incumplimiento confirmado", con una nota (obligatoria
+          en los tres últimos) y la persona que revisó. Se guarda el historial
+          completo: nunca se edita ni se borra lo anterior. Para escribir se
+          pide la clave del equipo.
+        </p>
+        <p>
+          <b>Cómo leerla bien.</b> Una urgencia alta no significa "incumple
+          mucho": significa "se aparta mucho de lo normal en servicios
+          parecidos". Muchas veces el problema es <b>de carga de datos</b> y no
+          de demora real. Nada de esto es una sanción: siempre hay que mirar
+          los servicios de ejemplo antes de decidir. Y con pocos servicios es
+          muy difícil detectar a un prestador, aunque la diferencia parezca
+          grande.
         </p>
       </>
     ),
@@ -2746,24 +3142,28 @@ const HELP_SECTIONS: HelpSection[] = [
     body: (
       <>
         <p>
-          La campanita de arriba a la derecha avisa, sin que tengas que
-          ir a buscarlo, dos situaciones puntuales:
+          La campanita de arriba a la derecha avisa, sin que tengas que ir a
+          buscarlo, tres situaciones:
         </p>
         <ul>
           <li>
-            Prestadores cuyo Score se mantiene bajo dos meses calendario
-            seguidos (no un mal mes puntual).
+            Prestadores cuyo Score se mantiene bajo <b>dos meses calendario
+            seguidos</b> (no un mal mes puntual).
           </li>
           <li>
-            Campañas enteras cuyo cumplimiento de demora bajó de un mes
-            al siguiente.
+            Campañas enteras cuyo cumplimiento de demora <b>bajó de un mes al
+            siguiente</b>.
+          </li>
+          <li>
+            <b>Calidad de los datos</b>: que el porcentaje de servicios con la
+            secuencia completa haya caído de un mes al siguiente.
           </li>
         </ul>
         <p>
-          Un número al lado de la campana indica cuántas alertas hay
-          activas ahora mismo. Haciendo clic en cualquier alerta te lleva
-          directo a la pantalla con el detalle de ese prestador o esa
-          campaña.
+          Un número al lado de la campana indica cuántas alertas hay activas.
+          Tocando una alerta vas directo a la pantalla con el detalle. Si no
+          hay dos meses completos con datos, la campana lo aclara: "sin
+          comparación" no es lo mismo que "sin alertas".
         </p>
       </>
     ),
@@ -2774,36 +3174,66 @@ const HELP_SECTIONS: HelpSection[] = [
     title: "Exportar datos",
     body: (
       <>
-        <p>
-          Los botones "Exportar" abren un menú con dos opciones:
-        </p>
+        <p>Los botones "Exportar" abren un menú con dos opciones:</p>
         <ul>
           <li>
-            <b>Planilla de Excel</b>: descarga los datos de esa tabla en
-            un archivo que Excel abre directamente, para seguir
-            trabajando con esos números ahí.
+            <b>Planilla de Excel</b>: descarga los datos de esa tabla en un
+            archivo que Excel abre directamente, para seguir trabajando con
+            esos números.
           </li>
           <li>
-            <b>Documento PDF (vista actual)</b>: genera un PDF con la
-            pantalla tal cual se ve en ese momento — mismos gráficos,
-            mismos colores — para compartir o guardar como reporte.
+            <b>Documento PDF (vista actual)</b>: genera un PDF con la pantalla
+            tal cual se ve en ese momento, para compartir o guardar como
+            reporte.
           </li>
         </ul>
+        <p>
+          La ventana de trazabilidad y la tabla de Auditoría tienen sus
+          propias descargas (Excel y CSV, respectivamente).
+        </p>
       </>
     ),
   },
   {
     id: "cargar",
     icon: "upload_file",
-    title: "Cargar reportes",
+    title: "Cargar reportes y avisos automáticos",
     body: (
-      <p>
-        Desde esta pantalla se sube el Excel de Trackeo (.xlsx o .xlsm)
-        para que la plataforma lo procese y sus datos queden disponibles
-        en todas las demás pantallas. Se selecciona el archivo, se toca
-        "Procesar reporte", y abajo va apareciendo el estado de la carga
-        (cuántas filas se procesaron).
-      </p>
+      <>
+        <p>
+          <b>La carga normal es automática.</b> De lunes a viernes, un proceso
+          descarga los reportes del día y los sube solo. Esta pantalla queda
+          para los casos puntuales: cargar un período atrasado, un feriado que
+          se salteó, o un archivo que se quiera sumar.
+        </p>
+        <p>
+          Se pueden subir cuatro tipos de archivo, y la plataforma detecta
+          cuál es por el nombre: el <b>Excel de Trackeo</b>, el archivo de{" "}
+          <b>despachador</b> (trae origen y destino; si pesa más de 50 MB
+          conviene exportarlo como .xlsb, que es mucho más liviano), el{" "}
+          <b>Reporte de Métricas de Encuestas</b> y el <b>Reporte Ficha de
+          Seguimiento</b> (de ahí salen los reclamos). Se selecciona el
+          archivo, se toca "Procesar reporte" y abajo aparece el estado de la
+          carga.
+        </p>
+        <p>
+          <b>Avisos por correo que se envían solos:</b>
+        </p>
+        <ul>
+          <li>
+            <b>Calificaciones bajas</b> de encuestas (2 o menos), de lunes a
+            viernes, para las campañas habilitadas.
+          </li>
+          <li>
+            <b>Resumen semanal de la Auditoría</b>, los lunes, con el Excel
+            adjunto.
+          </li>
+        </ul>
+        <p>
+          Si un correo no llega, no se pierde: queda en una cola y se
+          reintenta. Quien administra la plataforma puede reenviarlo.
+        </p>
+      </>
     ),
   },
   {
@@ -2814,35 +3244,65 @@ const HELP_SECTIONS: HelpSection[] = [
       <ul>
         <li>
           <b>Universo filtrado</b>: el conjunto de servicios que quedó
-          después de aplicar los 5 filtros de arriba — la base sobre la
-          que se calcula todo lo demás en esa pantalla.
+          después de aplicar los filtros de arriba. Es la base sobre la que
+          se calcula todo lo demás en esa pantalla.
         </li>
         <li>
-          <b>Demora prometida / Demora real</b>: el tiempo que se prometió
-          y el tiempo que efectivamente tardó un servicio. Un servicio
-          "cumple" si la demora real no superó la prometida.
+          <b>Demora prometida / Demora real</b>: el tiempo que se prometió y
+          el que realmente tardó el servicio. Un servicio "cumple" si la
+          demora real no superó la prometida (con una pequeña tolerancia de
+          14 minutos).
+        </li>
+        <li>
+          <b>Cobertura</b>: qué parte de los servicios tiene los datos
+          necesarios para medir un indicador. Con cobertura baja, el
+          porcentaje habla solo de una parte.
         </li>
         <li>
           <b>Enviador</b>: la herramienta de asignación automática de
-          móviles. "Uso del enviador" = cuántos servicios pasaron por
-          ahí; "Efectividad" = a cuántos de esos se les consiguió un
-          móvil.
+          móviles. "Uso del enviador" = cuántos servicios pasaron por ahí;
+          "Efectividad" = a cuántos de esos se les consiguió un móvil.
         </li>
         <li>
-          <b>Trazabilidad</b>: qué tan completa está la cadena de eventos
-          de un servicio (alta, asignación, llegada, finalización, etc.)
+          <b>Trazabilidad</b>: qué tan completa está la cadena de registros
+          de un servicio (alta, despachador, asignación, envío, llegada,
+          finalización).
         </li>
         <li>
-          <b>Percentil</b>: en qué posición queda un prestador frente a
-          sus pares. Percentil 80 significa que rinde mejor que 80 de
-          cada 100 prestadores comparables.
+          <b>Outlier</b>: servicio con una demora exageradamente larga, casi
+          siempre por haber cargado la hora mucho después. Ver la sección
+          "Outliers".
         </li>
         <li>
-          <b>Muestra insuficiente / baja</b>: cuando un prestador o
-          campaña tiene muy pocos servicios en el período filtrado como
-          para que el número sea confiable — se marca en vez de
-          ocultarse, para que quien lo lea sepa que hay que tomarlo con
-          cautela.
+          <b>Servicio programado</b>: el que se pidió para una fecha y hora
+          futuras. Ver la sección "Servicios programados".
+        </li>
+        <li>
+          <b>Carga tardía</b>: cuando la llegada o el cierre se registran
+          mucho después de que ocurrieron.
+        </li>
+        <li>
+          <b>Pares</b>: otros prestadores que hacen servicios parecidos
+          (misma campaña y mismo tipo de servicio). La Auditoría compara a
+          cada uno solo con sus pares.
+        </li>
+        <li>
+          <b>Percentil</b>: en qué posición queda un prestador frente a los
+          demás. Percentil 80 significa que rinde mejor que 80 de cada 100
+          prestadores comparables.
+        </li>
+        <li>
+          <b>Servicios de más</b>: cuántos servicios con problemas tiene un
+          prestador por encima de lo esperable para su tipo de trabajo.
+        </li>
+        <li>
+          <b>Grupo rojo (Pareto)</b>: el grupo chico de prestadores que
+          concentra el 80% de un problema.
+        </li>
+        <li>
+          <b>Muestra insuficiente / baja</b>: cuando un prestador o campaña
+          tiene muy pocos servicios como para que el número sea confiable.
+          Se marca en vez de ocultarse, para tomarlo con cautela.
         </li>
       </ul>
     ),
